@@ -8,7 +8,10 @@
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
     Permissions-Policy = "camera=(), microphone=(), geolocation=()"
-    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://api.the-odds-api.com https://api.groq.com https://generativelanguage.googleapis.com https://openrouter.ai https://api-inference.huggingface.co;"
+    # Permitir XHR + WebSocket al backend Render. Si vivís en Netlify y el
+    # backend está en Render, agregá su dominio acá (ej.
+    # https://betsafe.onrender.com y wss://betsafe.onrender.com).
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https: wss: https://api.groq.com https://generativelanguage.googleapis.com https://openrouter.ai;"
 
 [[headers]]
   for = "/assets/css/*"

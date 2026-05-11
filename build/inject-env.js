@@ -17,13 +17,15 @@ const path = require('path');
 const OUT_PATH = path.join(__dirname, '..', 'assets', 'js', 'env.js');
 
 const KEYS = {
-  odds:           process.env.BS_ODDS_API_KEY || '',
   groq:           process.env.BS_GROQ_API_KEY || '',
   gemini:         process.env.BS_GEMINI_API_KEY || '',
   openrouter:     process.env.BS_OPENROUTER_API_KEY || '',
   footballData:   process.env.BS_FOOTBALL_DATA_API_KEY || '',
   supabaseUrl:    process.env.BS_SUPABASE_URL || '',
-  supabaseAnonKey: process.env.BS_SUPABASE_ANON_KEY || ''
+  supabaseAnonKey: process.env.BS_SUPABASE_ANON_KEY || '',
+  // Para split-deploy (frontend en CDN + backend en Render).
+  // En single-deploy queda vacío y BSLive usa same-origin.
+  apiBase:        process.env.BS_API_BASE || ''
 };
 
 // Solo incluir keys con valor (las vacías quedan undefined y el código de la

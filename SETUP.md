@@ -1,258 +1,164 @@
-# BetSafe — Setup pre-deploy
+# BetSafe — Setup y deploy
 
-Esta guía te lleva de **demo en local** → **producción con datos reales**.
-Lo que hay que hacer es **crear cuentas, copiar keys, deployar**. Todo el código ya está enchufable.
+> Plataforma argentina de análisis cuantitativo de apuestas legales.
+> **NO somos casa de apuestas.** Vos operás en las 12 casas LOTBA / IPLyC y
+> nosotros te damos comparador en vivo (scraping real cada 30s), IA, banca y
+> arbitraje.
 
----
+## Arquitectura
 
-## TL;DR (15 min)
+```
+┌──────────────────────────────────────────────────────┐
+│              FRONTEND (HTML/CSS/JS vanilla)          │
+│   • Sin frameworks, sin build step pesado            │
+│   • Consume backend via REST + WebSocket             │
+│   • CERO datos sintéticos: si el backend no entregó  │
+│     snapshot, la UI muestra "cargando" honesto       │
+└──────────────────────────────────────────────────────┘
+                         ▲
+                         │  REST /api/* + WS /api/live
+                         ▼
+┌──────────────────────────────────────────────────────┐
+│              BACKEND (Node 20 + Playwright)          │
+│   • 12 scrapers (server/scrapers/*.js)               │
+│   • Orquestador: ciclo cada SCRAPE_INTERVAL_MS       │
+│   • Detector de surebets (cruza las 12 casas)        │
+│   • Detector de steam moves (snapshots consecutivos) │
+│   • Sirve también el frontend estático en /          │
+└──────────────────────────────────────────────────────┘
+                         │
+       ┌─────────────────┼─────────────────┐
+       ▼                 ▼                 ▼
+   Bplay, Betano,    Bet365 AR,         Codere, Caliente,
+   BetWarrior       Betsson, …          PlayCity, …
+   (Kaizen)         (varios SPAs)       (varios SPAs)
+```
 
-1. Crear cuenta en **The Odds API** → copiar key
-2. Crear cuenta en **Groq** → copiar key
-3. Crear proyecto en **Supabase** → correr SQL → copiar URL + anon key
-4. Push del repo a **GitHub**
-5. Conectar a **Render** → pegar env vars → deploy
+## Las 12 casas argentinas legales (LOTBA / IPLyC)
 
-Después de eso la app corre con datos reales: cuotas live, IA generativa, auth multi-device, slip sincronizado.
+| Key           | Nombre        | License | URL pública                              |
+| ------------- | ------------- | ------- | ---------------------------------------- |
+| `bplay`       | Bplay         | LOTBA   | https://www.bplay.com.ar                 |
+| `betano`      | Betano        | LOTBA   | https://www.betano.com.ar                |
+| `betwarrior`  | BetWarrior    | LOTBA   | https://www.betwarrior.bet.ar            |
+| `bet365ar`    | Bet365 AR     | LOTBA   | https://www.bet365.com.ar                |
+| `codere`      | Codere        | LOTBA   | https://www.codere.bet.ar                |
+| `caliente`    | Caliente      | LOTBA   | https://www.caliente.bet                 |
+| `casinomagic` | Magic         | LOTBA   | https://www.casinomagiconline.com.ar     |
+| `betsson`     | Betsson AR    | LOTBA   | https://www.betsson.bet.ar               |
+| `jugabet`     | JugaBet       | LOTBA   | https://www.jugabet.com.ar               |
+| `24bet`       | 24bet         | LOTBA   | https://www.24bet.ar                     |
+| `playcity`    | PlayCity      | LOTBA   | https://www.playcity.com.ar              |
+| `megapuesta`  | MegaPuesta    | LOTBA   | https://www.megapuesta.com.ar            |
 
----
-
-## Paso 1 — Cuotas: The Odds API
-
-**Free tier: 500 requests/mes.** Cubre EPL, La Liga, Serie A, Bundesliga, Champions, NBA, NFL, MLB, NHL, MMA y más.
-
-1. Andá a https://the-odds-api.com
-2. Sign up → confirmá email
-3. Dashboard → copiá tu API key
-4. Guardala como `BS_ODDS_API_KEY` en `.env` (o en Render vars)
-
-**Mercados disponibles en plan free:** `h2h` (1X2), `spreads` (hándicap), `totals` (más/menos).
-**Plan paid** ($25/mes en adelante) suma BTTS, alternate spreads/totals, más requests.
-
----
-
-## Paso 2 — IA generativa (Groq, Gemini, OpenRouter)
-
-La app usa cascada: prueba Groq primero (más rápido), si falla pasa a Gemini, después OpenRouter.
-Con que tengas **una** te alcanza para que la IA ande. Configurá las 3 para redundancia.
-
-### Groq (recomendado primero)
-1. https://console.groq.com → Sign up
-2. API Keys → Create API Key
-3. `BS_GROQ_API_KEY=gsk_...`
-- Free tier: ~30 req/min, llama-3.3-70b-versatile + llama-3.1-8b-instant.
-
-### Google Gemini
-1. https://aistudio.google.com/app/apikey → Get API Key
-2. `BS_GEMINI_API_KEY=AIza...`
-- Free tier generoso con `gemini-flash-latest`.
-
-### OpenRouter
-1. https://openrouter.ai/keys → Create Key
-2. `BS_OPENROUTER_API_KEY=sk-or-v1-...`
-- Acceso a varios modelos free (Llama, GLM).
-
----
-
-## Paso 3 — Supabase (auth + DB + realtime)
-
-**Free tier:** 500 MB DB, 50k usuarios, 2 GB bandwidth.
-
-1. https://supabase.com → New project
-2. Anotá la **password** del DB (no la vas a necesitar para la app, pero la pide al crear)
-3. Esperá ~2 min a que provisione
-4. **SQL Editor** → New Query → pegá TODO el contenido de [`SUPABASE_SCHEMA.sql`](./SUPABASE_SCHEMA.sql) → Run
-   Esto crea: `profiles`, `bankroll`, `bet_history`, `slips`, `saved_picks`, `tracker_notes`, `arb_history` + RLS + triggers + view `v_user_stats`.
-5. **Authentication → Providers** → Email está habilitado por default. Si querés Google/Apple, configurálos acá.
-6. **Settings → API**:
-   - Copiá **Project URL** → `BS_SUPABASE_URL`
-   - Copiá **anon public key** → `BS_SUPABASE_ANON_KEY`
-
-### Realtime para slips
-El SQL ya ejecuta `alter publication supabase_realtime add table public.slips`.
-Verificá: **Database → Replication** → la tabla `slips` debe aparecer con Realtime ON.
-
-### Email templates (opcional)
-**Authentication → Email Templates** — personalizá el email de verificación con el branding BetSafe.
-
----
-
-## Paso 4 — Football-data.org (opcional, suma fixtures)
-
-Free tier: 10 req/min, fixtures + standings + scorers para top leagues europeas.
-
-1. https://www.football-data.org/client/register
-2. Copiá el token → `BS_FOOTBALL_DATA_API_KEY=...`
-
-Sin esto la app sigue andando — solo no carga datos de fixtures detallados.
-
----
-
-## Paso 5 — Variables de entorno
-
-Copiá `.env.example` a `.env` y completá:
+## Cómo arranca el backend (local)
 
 ```bash
-BS_ODDS_API_KEY=tu_key
-BS_GROQ_API_KEY=tu_key
-BS_GEMINI_API_KEY=tu_key
-BS_OPENROUTER_API_KEY=tu_key
-BS_FOOTBALL_DATA_API_KEY=tu_key
-
-BS_SUPABASE_URL=https://xxxxxxxxxxxx.supabase.co
-BS_SUPABASE_ANON_KEY=eyJ...
+cd server
+npm install
+npx playwright install chromium    # solo la primera vez
+PORT=8787 SCRAPE_INTERVAL_MS=30000 npm start
 ```
 
-`.env` está en `.gitignore` — **nunca lo pushees al repo**.
-
----
-
-## Paso 6 — Probar en local
-
-```bash
-node build/inject-env.js   # genera assets/js/env.js con tus keys
-python3 -m http.server 8080
-# abrí http://localhost:8080
+Logs esperados:
+```
+[14:02:11] [server] listening on :8787
+[14:02:11] [server] enabled books: bplay,betano,…,megapuesta
+[14:02:11] [server] scrape interval: 30s
+[14:02:13] [scrape] bplay OK · 18 eventos · 2147ms
+[14:02:14] [scrape] betano OK · 22 eventos · 2820ms
+[14:02:14] [scrape] betwarrior OK · 15 eventos · 1980ms
+...
+[14:02:18] [orchestrator] ciclo #1 · 41 eventos · 0 surebets nuevas · 0 steam · 6920ms
 ```
 
-Validá en la consola del browser:
-```js
-window.__BS_CONFIG          // → { odds: '...', groq: '...', supabaseUrl: '...' }
-BSApi.STATUS                 // → { odds: 'live', ai: 'idle' }
-BSData.loadEnrichedMatches().then(m => console.log('Matches:', m.length, m[0]))
-BSSupabase.isConfigured()    // → true
-```
+Una vez funcionando, abrí `http://localhost:8787/` — el frontend conecta solo
+via WebSocket y empezás a ver cuotas reales en vivo.
 
-Si todo da los valores esperados, andás bien.
+## Endpoints API
 
----
+| Método | Path                  | Descripción                                  |
+| ------ | --------------------- | -------------------------------------------- |
+| GET    | `/api/health`         | Uptime, ciclos completados, estado por casa  |
+| GET    | `/api/books`          | Status detallado de cada scraper             |
+| GET    | `/api/odds?sport=X`   | Eventos en vivo, filtrables                  |
+| GET    | `/api/odds/match/:id` | Un evento específico                         |
+| GET    | `/api/surebets`       | Surebets detectadas (últimas 200)            |
+| GET    | `/api/steam`          | Steam moves recientes (últimos 200)          |
+| GET    | `/api/snapshot`       | Estado completo en un solo response          |
+| WS     | `/api/live`           | Push de updates en tiempo real               |
 
-## Paso 7 — Deploy a Render
+## Por qué no scrapeamos "cada segundo"
 
-### 7.1 Push a GitHub
+Tres razones técnicas:
 
-```bash
-git init
-git add .
-git commit -m "BetSafe — production-ready release"
-git remote add origin https://github.com/<tu-usuario>/betsafe.git
-git push -u origin main
-```
+1. **Anti-bot ban**: las casas usan Cloudflare / DataDome. Si pegás 12 sitios
+   distintos cada segundo desde la misma IP, todas te bloquean en <10 min.
+2. **Latencia natural**: cada casa tarda 1-3s en cargar su SPA y exponer los
+   datos. 12 casas en paralelo ≈ 6-8s por ciclo. Físicamente no se puede ir
+   más rápido sin saltarte casas.
+3. **Movimiento real del mercado**: las cuotas se mueven en 5-30s, no en 1s.
+   Hacer scraping cada segundo es desperdicio puro.
 
-### 7.2 Render
+**Lo que SÍ hacemos: 30s + push en vivo via WebSocket.** Cuando el backend
+detecta un cambio, lo pushea al frontend en milisegundos. El usuario ve el
+movimiento "en vivo" aunque el scraping sea cada 30s.
 
-1. https://render.com → New + → **Blueprint**
-2. Connect repository → seleccioná `betsafe`
-3. Render detecta `render.yaml` y propone crear el static site
-4. Pegá las env vars (las mismas que en `.env`)
-5. **Apply**
-
-Render corre `node build/inject-env.js` antes de servir — eso genera `assets/js/env.js` con tus keys reales.
-
-### 7.3 Custom domain (opcional)
-**Settings → Custom Domains** → seguí el wizard de DNS.
-
----
-
-## Seguridad post-deploy
-
-### ⚠️ Rotar las keys hardcoded
-En `assets/js/api.js` hay 4 keys hardcoded (las que ya estaban en el repo).
-Como están en el git history público, **rotalas ahora**:
-
-1. Groq → Console → Delete + Create new
-2. Gemini → AI Studio → Delete + Create new
-3. OpenRouter → Keys → Delete + Create new
-4. The Odds API → Dashboard → Regenerate
-
-Las nuevas las cargás en Render vars, no en el código.
-
-### Variables sensibles que NUNCA van al frontend
-La anon key de Supabase **sí puede** ir al frontend (es pública por diseño, RLS protege todo).
-La service_role key **NUNCA** la pongas en el frontend — solo en backend serverless si vas a hacer admin tasks.
-
----
-
-## Cómo funciona la arquitectura
+## Deploy a Render
 
 ```
-┌───────────────────────────────────────────────────────────┐
-│  Browser                                                  │
-│  ┌──────────────────────────────────────────────┐        │
-│  │  env.js → window.__BS_CONFIG                 │        │
-│  │  engine.js → BSEngine (Poisson, Elo, Kelly, │        │
-│  │              EV, surebet, Monte Carlo)       │        │
-│  │  api.js → BSApi (cache + fallback cascade)  │        │
-│  │  supabase-client.js → BSSupabase            │        │
-│  │  auth.js → BSAuth (Supabase si configured,   │        │
-│  │            local fallback si no)             │        │
-│  │  store.js → BSStore + BSStore.cloud          │        │
-│  │  data.js → loadEnrichedMatches (API+engine)  │        │
-│  └──────────────────────────────────────────────┘        │
-└────────────────┬──────────────────────────────────────────┘
-                 │
-        ┌────────┴────────┬─────────────┬──────────────┐
-        ▼                 ▼             ▼              ▼
-   The Odds API       Groq/Gemini    Supabase      football-data
-   (cuotas live)      (IA texto)     (DB + auth)   (fixtures)
+render.com → New + → Blueprint → conectar este repo → Apply
 ```
 
-### Niveles de degradación
-- **Sin Odds API key**: matches sintéticos enriquecidos con engine (Poisson + Elo).
-- **Sin LLM keys**: análisis offline template-based (sigue mostrando EV/Kelly del engine).
-- **Sin Supabase**: auth local (admin/admin, vip/vip), persistencia en localStorage.
+`render.yaml` define:
+- 1 Web Service Node 20 (plan **Standard** recomendado — el Free hiberna)
+- Build: `npm install && npx playwright install chromium --with-deps`
+- Start: `npm start`
+- Health check: `/api/health`
 
-La app **nunca crashea por una key faltante**.
+Después, en **Environment**, cargar las API keys de `.env.example` (las de
+IA + Supabase + Football-Data opcional).
 
----
+## Sobre la legalidad del scraping
 
-## Motor cuantitativo (`engine.js`)
+Las cuotas en casas legales argentinas son **ofertas públicas de contrato**
+expuestas sin autenticación. El acceso sin login + sin bypass de medidas de
+seguridad + con rate limiting respetuoso (30s/ciclo) cae bajo lectura de
+interfaz pública. No usamos las cuotas para "republicar competitivamente",
+sino como insumo estadístico para análisis IA — obra derivada protegida.
 
-Implementaciones reales, no mocks:
+Marco legal aplicado: Ley 25.326 (Habeas Data), LOTBA, IPLyC, principios de
+interoperabilidad y buena fe contractual. Disclaimer completo en
+`/terminos.html` y `/privacidad.html`.
 
-| Función | Modelo |
-|---|---|
-| `bivariateGrid(λH, λA)` | Poisson independiente para goles |
-| `deriveMarketsFromGrid()` | 1X2, BTTS, Over/Under, DC, DNB desde grilla |
-| `removeMarginShin(odds)` | Remoción de margen Shin (corrige sesgo favorito-longshot) |
-| `expectedValue(p, odd)` | EV real |
-| `kellyFraction(p, odd, mult)` | Kelly fractional con cap |
-| `detectSurebet(odds)` | Σ(1/odd) < 1 → ROI + stakes óptimos |
-| `findBestSurebet(booksOdds)` | Best-of cross-book |
-| `optimizeCombo(matches, n, risk)` | Branch-and-bound EV-maximizer con anti-correlación |
-| `monteCarloCombo(legs, stake, runs)` | N simulaciones, percentiles P05–P95 |
-| `whatIfCombo(legs, stake)` | Enumeración exacta 2^N escenarios |
-| `sharpe / sortino / maxDrawdown` | Métricas de riesgo |
-| `ELO.update(rH, rA, result)` | Rating dinámico |
+## Cómo se manejan datos faltantes
 
-Todo es **matemática pública** (Poisson, Elo, Kelly, Monte Carlo). Cualquier auditor cuantitativo puede revisar el código.
+> **Regla de oro**: si no tenemos el dato real, mostramos empty state honesto.
+> NUNCA datos sintéticos.
 
----
+| Situación                              | Qué ve el usuario                           |
+| -------------------------------------- | ------------------------------------------- |
+| Backend caído                          | "Conectando con el scraper…"                |
+| Primer ciclo aún corriendo             | "Esperando primer snapshot…"                |
+| Una casa devolvió error                | Esa casa no aparece en el comparador        |
+| Mercado todavía no abierto (WC futures)| "Pendiente apertura — se publicará pronto"  |
+| Tracker sin operaciones del usuario    | "Cargá tu primera apuesta" + import CSV     |
 
-## Troubleshooting
+## Frontend — archivos clave
 
-**`BSApi.STATUS.odds === 'no-key'`** → No detectó la key. Verificá `window.__BS_CONFIG.odds` en consola. Si está vacío, no se ejecutó `inject-env.js`. Render → Manual Deploy.
-
-**`BSSupabase.isConfigured() === false`** → Faltan URL o anon key. Mismo check de consola.
-
-**Auth no persiste entre tabs** → Verificá que el navegador permite localStorage en el dominio.
-
-**Surebets siempre 0** → Mercado real raras veces tiene Σ(1/odd) < 1. Lo normal es no encontrar ninguna en plan free (pocas casas). Plan paid de Odds API con más bookmakers sí encuentra.
-
-**Rate limit Odds API agotado** → Check `BSApi.rateLimit.odds`. El cache de 5 min en localStorage te reduce mucho el consumo.
-
----
+| Archivo                            | Responsabilidad                              |
+| ---------------------------------- | -------------------------------------------- |
+| `assets/js/live.js`                | Cliente REST + WebSocket hacia el backend    |
+| `assets/js/data.js`                | Catálogos estáticos + `liveEvents/awaitLive` |
+| `assets/js/api.js`                 | IA cascada + delega odds en BSLive           |
+| `assets/js/tabs-comparator.js`     | Comparador 12 casas — push en vivo           |
+| `assets/js/tabs-arbitrage.js`      | Surebets del backend                         |
+| `assets/js/tabs-smartmoney.js`     | Steam moves del backend                      |
+| `assets/js/tabs-tracker.js`        | Historial REAL del usuario (no fake)         |
 
 ## Próximos pasos sugeridos
 
-1. **Backtest histórico** — guardar `closing_odd` en `bet_history` te permite calcular CLV agregado vía `v_user_stats.avg_clv`.
-2. **Modelo ML serio** — entrenar XGBoost / LightGBM sobre tu histórico de bets (cuando tengas 500+ resueltas) en un worker Python en Render Background Worker.
-3. **Cron en Render** — Background Worker que rastrea cierre de mercado y guarda `closing_odd` automáticamente.
-4. **Edge functions Supabase** — para llamadas que necesiten service_role (admin de usuarios, settlement automático).
-5. **Webhooks Discord/Telegram** — alertas de surebets/smart-money desde un Background Worker, no desde el frontend.
-
----
-
-## Soporte
-
-Cualquier problema de integración: revisá la consola del browser (todos los errores se loggean con prefijo `[api]`, `[supabase]`, etc.).
+1. **Tests E2E** de cada scraper individualmente.
+2. **Cache Redis** entre instancias si escalás horizontalmente.
+3. **Supabase persistence** para tracker — actualmente vive en localStorage.
+4. **Push notifications FCM** cuando aparece una surebet ROI > umbral.

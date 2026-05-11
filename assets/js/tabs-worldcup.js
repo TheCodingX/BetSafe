@@ -143,16 +143,43 @@
     tick(); const ci = setInterval(tick, 1000);
     panel.__cleanup = () => clearInterval(ci);
 
-    // Favorites
-    panel.querySelector('#wcFav').innerHTML = BSData.WC_FAVORITES.map(f => {
-      const n = BSData.NATIONS.find(x => x.code === f.code);
-      return `<div class="row between"><div class="cluster">${BSIcons.flagSvg(f.code,{size:24})} <strong>${BSUI.esc(n?.name || f.code)}</strong></div><span class="badge badge-brand num">${f.odds.toFixed(2)}</span></div>`;
-    }).join('');
+    // Favoritos al ganador del Mundial: cuotas REALES del backend (futures).
+    // Buscamos eventos cuyo league sea wc26 / world-cup / mundial-2026 y
+    // tomamos la mejor cuota por selección. Si todavía no hay snapshot,
+    // mostramos placeholder con disclaimer.
+    function refreshFavorites() {
+      const wcEvents = BSData.liveEvents({})
+        .filter(e => /world.cup|mundial|wc26/i.test(e.leagueName || e.league || ''));
+      // Mapa: code → mejor cuota a campeón
+      const champOdds = {};
+      wcEvents.forEach(ev => {
+        const code = (BSData.NATIONS.find(n => new RegExp(n.name,'i').test(ev.home.name)) || {}).code;
+        if (code && ev.bestOdds?.h2h?.home) {
+          if (!champOdds[code] || ev.bestOdds.h2h.home > champOdds[code]) champOdds[code] = ev.bestOdds.h2h.home;
+        }
+      });
+      const ranked = Object.entries(champOdds).sort((a, b) => a[1] - b[1]).slice(0, 8);
+      const host = panel.querySelector('#wcFav');
+      if (!host) return;
+      if (!ranked.length) {
+        host.innerHTML = `<div class="empty" style="padding:18px"><strong>Mercado de futures todavía no disponible</strong><div class="muted tiny">El backend aún no recibió cuotas del mercado "Campeón Mundial 2026". Se sumarán al snapshot cuando las casas las publiquen.</div></div>`;
+        return;
+      }
+      host.innerHTML = ranked.map(([code, odd]) => {
+        const n = BSData.NATIONS.find(x => x.code === code);
+        return `<div class="row between"><div class="cluster">${BSIcons.flagSvg(code,{size:24})} <strong>${BSUI.esc(n?.name || code)}</strong></div><span class="badge badge-brand num">${odd.toFixed(2)}</span></div>`;
+      }).join('');
+    }
+    refreshFavorites();
+    const onLive = () => refreshFavorites();
+    window.addEventListener('bs:live-update', onLive);
+    window.addEventListener('bs:live-snapshot', onLive);
+    const prevCleanup = panel.__cleanup;
+    panel.__cleanup = () => { try { prevCleanup?.(); } catch{} window.removeEventListener('bs:live-update', onLive); window.removeEventListener('bs:live-snapshot', onLive); };
 
-    // Top scorers
-    panel.querySelector('#wcSco').innerHTML = BSData.TOP_SCORERS.map(s =>
-      `<div class="row between"><div class="cluster">${BSIcons.flagSvg(s.country,{size:18})}<div><strong>${BSUI.esc(s.name)}</strong><div class="muted tiny">${BSUI.esc(s.team)}</div></div></div><span class="badge badge-success num">${s.odds.toFixed(2)}</span></div>`
-    ).join('');
+    // Top goleadores del Mundial: pendiente publicación oficial FIFA.
+    // Por ahora mostramos disclaimer honesto.
+    panel.querySelector('#wcSco').innerHTML = `<div class="empty" style="padding:18px"><strong>Top goleadores — pendiente</strong><div class="muted tiny">El mercado "Botín de Oro Mundial 2026" se publica más cerca del torneo. Cuando las 12 casas lo abran, las cuotas aparecen acá.</div></div>`;
 
     // Nations by confederation
     let activeConf = BSData.CONFEDERATIONS[0].key;

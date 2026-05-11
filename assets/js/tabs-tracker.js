@@ -3,8 +3,27 @@
   'use strict';
 
   function render(panel) {
-    const hist = BSStore.get(BSStore.KEYS.history) || sampleHistory();
-    BSStore.set(BSStore.KEYS.history, hist);
+    // SOLO operaciones reales del usuario. Si no apostó nunca, mostramos
+    // empty state (no fabricamos historial fake).
+    const hist = BSStore.get(BSStore.KEYS.history) || [];
+    if (!hist.length) {
+      panel.innerHTML = `
+        <div class="card stack" style="padding:48px;text-align:center;align-items:center">
+          <h2 class="h3">Tu tracker está vacío</h2>
+          <p class="muted" style="max-width:520px">Cuando cargues tus primeras apuestas (manualmente desde el Builder o importando un CSV), acá vas a ver tu curva de banca, ROI, win rate, yield, racha actual y peor trade.</p>
+          <div class="cluster" style="margin-top:8px">
+            <button class="btn btn-primary" id="trGoBuilder">Cargar primera apuesta</button>
+            <label class="btn btn-outline" style="cursor:pointer">
+              <input type="file" id="trImportCsv" accept=".csv,text/csv" hidden>
+              Importar CSV
+            </label>
+          </div>
+          <span class="muted tiny" style="margin-top:14px">Formato CSV: fecha,deporte,evento,stake,cuota,resultado(W/L/P),profit</span>
+        </div>`;
+      panel.querySelector('#trGoBuilder')?.addEventListener('click', () => BSDash?.go?.('builder'));
+      panel.querySelector('#trImportCsv')?.addEventListener('change', (e) => importCsv(e.target.files?.[0], () => render(panel)));
+      return;
+    }
 
     const wins = hist.filter(h => h.result === 'W').length;
     const losses = hist.filter(h => h.result === 'L').length;
@@ -112,19 +131,47 @@
 
   function avg(a) { return a.length ? a.reduce((x,y)=>x+y,0) / a.length : 0; }
 
-  function sampleHistory() {
-    const rng = BSMath.lcg(2024);
-    const out = []; const now = Date.now();
-    const evs = ['Lakers vs Celtics','PSG vs Lyon','Boca vs River','Bayern vs Dortmund','Real Madrid vs Barcelona','Yankees vs Red Sox','UFC 305: Khamzat vs Du Plessis'];
-    for (let i = 0; i < 60; i++) {
-      const r = rng();
-      const result = r > 0.45 ? 'W' : (r > 0.4 ? 'P' : 'L');
-      const stake = Math.round((1000 + r * 4000) / 100) * 100;
-      const odd = +(1.5 + r * 2.0).toFixed(2);
-      const profit = result === 'W' ? Math.round(stake * (odd - 1)) : (result === 'L' ? -stake : 0);
-      out.push({ at: now - i * 86400000 / 4, sport: ['soccer','basketball','tennis','mma','baseball'][i%5], event: evs[i % evs.length], stake, odd, result, profit });
-    }
-    return out;
+  /** Importa historial real del usuario desde CSV. Soporta el formato exportado
+   *  por la propia app o cualquier CSV con headers compatibles. */
+  function importCsv(file, onDone) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = String(reader.result || '');
+      const lines = text.split(/\r?\n/).filter(Boolean);
+      if (lines.length < 2) return BSUI.toast({ title: 'CSV vacío', type: 'error' });
+      const headers = lines[0].split(',').map(s => s.trim().toLowerCase());
+      const idx = (name) => headers.findIndex(h => h.includes(name));
+      const iFecha = idx('fecha') >= 0 ? idx('fecha') : 0;
+      const iDep   = idx('deport') >= 0 ? idx('deport') : 1;
+      const iEv    = idx('evento') >= 0 ? idx('evento') : 2;
+      const iSt    = idx('stake')  >= 0 ? idx('stake')  : 3;
+      const iCu    = idx('cuota')  >= 0 ? idx('cuota')  : 4;
+      const iRes   = idx('result') >= 0 ? idx('result') : 5;
+      const iPr    = idx('profit') >= 0 ? idx('profit') : 6;
+      const out = [];
+      for (let i = 1; i < lines.length; i++) {
+        const cells = lines[i].match(/("([^"]|"")*"|[^,]+)/g)?.map(c => c.replace(/^"|"$/g,'').replace(/""/g,'"')) || [];
+        if (cells.length < 5) continue;
+        const at = Date.parse(cells[iFecha]) || Date.now();
+        const stake = Number(cells[iSt]) || 0;
+        const odd = Number(cells[iCu]) || 0;
+        const result = (cells[iRes] || '').toUpperCase().charAt(0) || 'P';
+        const profit = Number(cells[iPr]);
+        out.push({
+          at,
+          sport: cells[iDep] || 'soccer',
+          event: cells[iEv] || '',
+          stake, odd, result,
+          profit: Number.isFinite(profit) ? profit : (result === 'W' ? stake * (odd - 1) : result === 'L' ? -stake : 0)
+        });
+      }
+      const cur = BSStore.get(BSStore.KEYS.history) || [];
+      BSStore.set(BSStore.KEYS.history, out.concat(cur));
+      BSUI.toast({ title: `Importadas ${out.length} apuestas`, type: 'success' });
+      onDone?.();
+    };
+    reader.readAsText(file);
   }
 
     function doRegister() {

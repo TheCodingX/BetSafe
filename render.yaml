@@ -1,59 +1,54 @@
-# BetSafe — Render.com deployment config
+# BetSafe — Render.com deployment (backend scraper + frontend en un solo service)
 # ============================================================================
-# Sitio estático con build step que inyecta env vars en window.__BS_CONFIG
-# antes de servir los HTML.
+# El backend Node.js de /server sirve:
+#   - Frontend estático (HTML/CSS/JS) en la raíz `/`
+#   - API REST en /api/*
+#   - WebSocket push en /api/live
+#   - Scrapeo cada SCRAPE_INTERVAL_MS de las 12 casas argentinas legales
 #
-# Cómo usar:
-#   1) Pushea este repo a GitHub
-#   2) En render.com → New + → Blueprint → conectá el repo
-#   3) Render lee este YAML, crea el static site
-#   4) Settings → Environment → cargá las env vars (ver .env.example)
+# Cómo deployar:
+#   1) Pushear este repo a GitHub
+#   2) render.com → New + → Blueprint → conectar el repo
+#   3) Render lee este YAML y crea el Web Service
+#   4) Settings → Environment → cargar env vars de .env.example
 #   5) Deploy
 #
-# Render free tier: 100GB bandwidth/mes, sin sleep para static sites.
+# Plan Render recomendado: Standard ($25/mes) — el plan Free hibernará el
+# scraper cada 15min de inactividad y perderemos snapshots.
 # ============================================================================
 
 services:
   - type: web
     name: betsafe
-    runtime: static
-    buildCommand: node build/inject-env.js
-    staticPublishPath: .
+    runtime: node
+    plan: standard
+    region: oregon
+    branch: main
+    rootDir: server
+    buildCommand: 'npm install && npx playwright install chromium --with-deps && node ../build/inject-env.js'
+    startCommand: npm start
+    healthCheckPath: /api/health
     pullRequestPreviewsEnabled: true
-    headers:
-      - path: /*
-        name: X-Frame-Options
-        value: SAMEORIGIN
-      - path: /*
-        name: X-Content-Type-Options
-        value: nosniff
-      - path: /*
-        name: Referrer-Policy
-        value: strict-origin-when-cross-origin
-      - path: /*
-        name: Permissions-Policy
-        value: camera=(), microphone=(), geolocation=()
-      - path: /assets/css/*
-        name: Cache-Control
-        value: public, max-age=31536000, immutable
-      - path: /assets/img/*
-        name: Cache-Control
-        value: public, max-age=31536000, immutable
-      - path: /*.html
-        name: Cache-Control
-        value: public, max-age=300, must-revalidate
-    routes:
-      - type: rewrite
-        source: /api/*
-        destination: /api/:splat
-      - type: rewrite
-        source: /app/*
-        destination: /dashboard.html
-    # Env vars que se inyectan al build (definí los valores en Render dashboard,
-    # NO los hardcodees acá).
+    autoDeploy: true
     envVars:
-      - key: BS_ODDS_API_KEY
+      - key: NODE_VERSION
+        value: '20'
+      - key: PORT
+        value: '8787'
+      - key: SCRAPE_INTERVAL_MS
+        value: '30000'
+      - key: ARB_INTERVAL_MS
+        value: '5000'
+      - key: ENABLED_BOOKS
+        value: 'bplay,betano,betwarrior,bet365ar,codere,caliente,casinomagic,betsson,jugabet,24bet,playcity,megapuesta'
+      - key: CORS_ORIGIN
+        value: '*'
+      # Factors APIs (opcionales — sin keys los factores quedan "unavailable")
+      - key: OPENWEATHER_API_KEY
         sync: false
+      - key: RAPIDAPI_KEY
+        sync: false
+      # IA (cascada client-side) — se inyectan al frontend via build/inject-env.js
       - key: BS_GROQ_API_KEY
         sync: false
       - key: BS_GEMINI_API_KEY

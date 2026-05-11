@@ -44,7 +44,7 @@
         <h1 class="h1 hero-headline">Apostar ya no es <span class="strike-rotate">suerte</span>.<br>Es <span class="grad type-cycle" data-words="análisis,ciencia,método,disciplina">análisis</span>.</h1>
         <p class="lead">Mirás un partido, abrís 12 casas, te perdés en pestañas. <strong>BetSafe te muestra todo en una sola vista</strong>: dónde te pagan más, cómo ven los números cada partido, y cuánto te conviene apostar según tu banca. Sin gurúes, sin grupos de Telegram. Una herramienta limpia para pensar mejor antes de jugar.</p>
         <div class="row">
-          <a href="login.html" class="btn btn-primary btn-lg mag" id="heroCta">Empezar gratis<span class="arrow" style="margin-left:6px">→</span></a>
+          <a href="dashboard.html#overview" class="btn btn-primary btn-lg mag" id="heroCta">Empezar gratis<span class="arrow" style="margin-left:6px">→</span></a>
           <a href="#demo" class="btn btn-outline btn-lg">Ver comparador en vivo</a>
         </div>
         <div class="stat-strip mt-4">
@@ -59,107 +59,50 @@
         <div class="ticker-card stack">
           <div class="between">
             <div class="cluster">
-              <span class="dot dot-live dot-success"></span>
+              <span class="dot dot-live dot-success" id="heroLiveDot"></span>
               <strong>Comparador en vivo</strong>
             </div>
-            <span class="badge badge-brand">Demo</span>
+            <span class="badge badge-brand" id="heroLiveBadge">Conectando…</span>
           </div>
-          <div class="card card-tinted card-pad-sm cmp-demo">
+          <!-- Card que se rellena dinámicamente con el primer partido top
+               del snapshot del backend. Mientras tanto, skeleton. -->
+          <div class="card card-tinted card-pad-sm cmp-demo" id="heroLiveCard">
             <div class="row between" style="margin-bottom:10px">
               <div class="cluster">
-                <span class="team-logo" data-team="boca"></span>
-                <strong>Boca</strong>
-                <span class="dim">vs</span>
-                <strong>River</strong>
-                <span class="team-logo" data-team="river"></span>
-              </div>
-              <div class="cluster" style="gap:6px">
-                <span class="badge" style="background:var(--brand-50);color:var(--brand-700);border-color:transparent">Liga AR</span>
-                <span class="badge" style="background:rgba(212,160,23,0.12);color:var(--gold-700);border-color:rgba(212,160,23,0.35)">+9.1% Δ</span>
+                <span class="muted tiny">Esperando primer snapshot del backend…</span>
               </div>
             </div>
-
-            <!-- Comparador: top 3 casas por outcome del mismo mercado (1X2).
-                 La "rank" muestra el LOGO de la casa para que se entienda al
-                 toque que es una comparación entre casinos. -->
-            <div class="cmp3 mt-2">
+            <div class="cmp3 mt-2" style="opacity:.55">
               <div class="cmp3-col">
-                <div class="cmp3-col-head">
-                  <span class="label">Gana Boca</span>
-                  <span class="outcome">1</span>
-                </div>
-                <div class="cmp3-row is-best">
-                  <span class="rank rank-book" data-book="betano" aria-label="Betano"></span>
-                  <span class="book">Betano</span>
-                  <span class="price">2.10</span>
-                </div>
-                <div class="cmp3-row">
-                  <span class="rank rank-book" data-book="betwarrior" aria-label="BetWarrior"></span>
-                  <span class="book">BetWarrior</span>
-                  <span class="price">2.05</span>
-                </div>
-                <div class="cmp3-row">
-                  <span class="rank rank-book" data-book="bplay" aria-label="Bplay"></span>
-                  <span class="book">Bplay</span>
-                  <span class="price">2.00</span>
-                </div>
+                <div class="cmp3-col-head"><span class="label">Local</span><span class="outcome">1</span></div>
+                <div class="cmp3-row"><span class="book">—</span><span class="price">—</span></div>
+                <div class="cmp3-row"><span class="book">—</span><span class="price">—</span></div>
+                <div class="cmp3-row"><span class="book">—</span><span class="price">—</span></div>
               </div>
               <div class="cmp3-col">
-                <div class="cmp3-col-head">
-                  <span class="label">Empate</span>
-                  <span class="outcome">X</span>
-                </div>
-                <div class="cmp3-row is-best">
-                  <span class="rank rank-book" data-book="betano" aria-label="Betano"></span>
-                  <span class="book">Betano</span>
-                  <span class="price">3.40</span>
-                </div>
-                <div class="cmp3-row">
-                  <span class="rank rank-book" data-book="bet365" aria-label="Bet365"></span>
-                  <span class="book">Bet365</span>
-                  <span class="price">3.35</span>
-                </div>
-                <div class="cmp3-row">
-                  <span class="rank rank-book" data-book="codere" aria-label="Codere"></span>
-                  <span class="book">Codere</span>
-                  <span class="price">3.30</span>
-                </div>
+                <div class="cmp3-col-head"><span class="label">Empate</span><span class="outcome">X</span></div>
+                <div class="cmp3-row"><span class="book">—</span><span class="price">—</span></div>
+                <div class="cmp3-row"><span class="book">—</span><span class="price">—</span></div>
+                <div class="cmp3-row"><span class="book">—</span><span class="price">—</span></div>
               </div>
               <div class="cmp3-col">
-                <div class="cmp3-col-head">
-                  <span class="label">Gana River</span>
-                  <span class="outcome">2</span>
-                </div>
-                <div class="cmp3-row is-best">
-                  <span class="rank rank-book" data-book="bet365" aria-label="Bet365"></span>
-                  <span class="book">Bet365</span>
-                  <span class="price">2.60</span>
-                </div>
-                <div class="cmp3-row">
-                  <span class="rank rank-book" data-book="betano" aria-label="Betano"></span>
-                  <span class="book">Betano</span>
-                  <span class="price">2.55</span>
-                </div>
-                <div class="cmp3-row">
-                  <span class="rank rank-book" data-book="betwarrior" aria-label="BetWarrior"></span>
-                  <span class="book">BetWarrior</span>
-                  <span class="price">2.50</span>
-                </div>
+                <div class="cmp3-col-head"><span class="label">Visitante</span><span class="outcome">2</span></div>
+                <div class="cmp3-row"><span class="book">—</span><span class="price">—</span></div>
+                <div class="cmp3-row"><span class="book">—</span><span class="price">—</span></div>
+                <div class="cmp3-row"><span class="book">—</span><span class="price">—</span></div>
               </div>
             </div>
-
             <div class="cmp-meta-row">
-              <span class="cmp-meta-item"><span class="dim">Margen del libro:</span><strong class="text-success">2.1%</strong></span>
-              <span class="cmp-meta-item"><span class="dim">EV vs cierre:</span><strong class="text-success">+1.2%</strong></span>
-              <span class="cmp-meta-item"><span class="dim">Refresco:</span><strong>30 s</strong></span>
+              <span class="cmp-meta-item"><span class="dim">Backend:</span><strong id="heroBackendState">scraping…</strong></span>
+              <span class="cmp-meta-item"><span class="dim">Última actualización:</span><strong id="heroLastUpdate">—</strong></span>
             </div>
           </div>
-          <div class="card card-tinted card-pad-sm">
+          <div class="card card-tinted card-pad-sm" id="heroSurebetCard" style="display:none">
             <div class="between">
               <div class="cluster"><span class="dot" style="background:var(--gold-500)"></span><strong>Surebet detectada</strong></div>
-              <span class="badge badge-gold">VIP · 1.8% ROI</span>
+              <span class="badge badge-gold" id="heroSurebetBadge">—</span>
             </div>
-            <div class="dim tiny mt-2">Liga AR — Boca @ River · Bplay vs BetWarrior</div>
+            <div class="dim tiny mt-2" id="heroSurebetDesc">—</div>
           </div>
         </div>
       </div>
@@ -318,134 +261,111 @@
             <div class="wc-mega__cu"><strong id="wcEpicM">—</strong><span>Min</span></div>
             <div class="wc-mega__cu"><strong id="wcEpicS">—</strong><span>Seg</span></div>
           </div>
-          <div class="wc-mega__favorites" aria-label="Favoritos al título">
+          <div class="wc-mega__favorites" aria-label="Favoritos al título" id="wcLiveFavorites">
             <span class="wc-mega__fav-header">Favoritos al título · WC26</span>
-            <div class="wc-mega__fav-row">
-              <span class="wc-mega__fav-name">
-                <span class="wc-mega__fav-flag"><svg viewBox="0 0 3 2" xmlns="http://www.w3.org/2000/svg"><rect width="3" height=".5" fill="#c60b1e"/><rect y=".5" width="3" height="1" fill="#ffc400"/><rect y="1.5" width="3" height=".5" fill="#c60b1e"/></svg></span>
-                España
-              </span>
-              <span class="wc-mega__fav-odd">5.00</span>
+            <div class="wc-mega__fav-row" style="opacity:.6">
+              <span class="wc-mega__fav-name">Cuotas reales pendientes</span>
+              <span class="wc-mega__fav-odd">—</span>
             </div>
-            <div class="wc-mega__fav-row">
-              <span class="wc-mega__fav-name">
-                <span class="wc-mega__fav-flag"><svg viewBox="0 0 4 2.8" xmlns="http://www.w3.org/2000/svg"><rect width="4" height="2.8" fill="#009c3b"/><polygon points="2,.28 3.64,1.4 2,2.52 .36,1.4" fill="#fedf00"/><circle cx="2" cy="1.4" r=".66" fill="#002776"/></svg></span>
-                Brasil
-              </span>
-              <span class="wc-mega__fav-odd">5.50</span>
-            </div>
-            <div class="wc-mega__fav-row">
-              <span class="wc-mega__fav-name">
-                <span class="wc-mega__fav-flag"><svg viewBox="0 0 3 2" xmlns="http://www.w3.org/2000/svg"><rect width="1" height="2" fill="#002395"/><rect x="1" width="1" height="2" fill="#fff"/><rect x="2" width="1" height="2" fill="#ED2939"/></svg></span>
-                Francia
-              </span>
-              <span class="wc-mega__fav-odd">6.00</span>
-            </div>
-            <div class="wc-mega__fav-row">
-              <span class="wc-mega__fav-name">
-                <span class="wc-mega__fav-flag"><svg viewBox="0 0 3 2" xmlns="http://www.w3.org/2000/svg"><rect width="3" height="2" fill="#74ACDF"/><rect y=".667" width="3" height=".667" fill="#fff"/></svg></span>
-                Argentina
-              </span>
-              <span class="wc-mega__fav-odd">7.00</span>
-            </div>
-            <div class="wc-mega__fav-row">
-              <span class="wc-mega__fav-name">
-                <span class="wc-mega__fav-flag"><svg viewBox="0 0 3 2" xmlns="http://www.w3.org/2000/svg"><rect width="3" height=".667" fill="#000"/><rect y=".667" width="3" height=".667" fill="#DD0000"/><rect y="1.333" width="3" height=".667" fill="#FFCE00"/></svg></span>
-                Alemania
-              </span>
-              <span class="wc-mega__fav-odd">8.00</span>
-            </div>
+            <div class="muted tiny" style="padding:8px 4px 0">El mercado "Campeón Mundial 2026" se rehidrata acá apenas las casas argentinas lo publiquen.</div>
           </div>
+          <script>
+            (function () {
+              function render() {
+                if (!window.BSData) return;
+                const host = document.getElementById('wcLiveFavorites');
+                if (!host) return;
+                const evs = BSData.liveEvents({})
+                  .filter(e => /world.cup|mundial|wc26/i.test(e.leagueName || e.league || ''));
+                const champOdds = {};
+                evs.forEach(ev => {
+                  const code = (BSData.NATIONS.find(n => new RegExp(n.name, 'i').test(ev.home.name)) || {}).code;
+                  if (code && ev.bestOdds?.h2h?.home) {
+                    if (!champOdds[code] || ev.bestOdds.h2h.home > champOdds[code]) champOdds[code] = ev.bestOdds.h2h.home;
+                  }
+                });
+                const rows = Object.entries(champOdds).sort((a, b) => a[1] - b[1]).slice(0, 5);
+                if (!rows.length) return;
+                host.innerHTML = `<span class="wc-mega__fav-header">Favoritos al título · WC26 · cuotas reales</span>` +
+                  rows.map(([code, odd]) => {
+                    const n = BSData.NATIONS.find(x => x.code === code) || {};
+                    return `<div class="wc-mega__fav-row"><span class="wc-mega__fav-name">${BSUI.esc(n.name || code)}</span><span class="wc-mega__fav-odd">${odd.toFixed(2)}</span></div>`;
+                  }).join('');
+              }
+              window.addEventListener('bs:live-snapshot', render);
+              window.addEventListener('bs:live-update', render);
+            })();
+          </script>
         </div>
 
       </div>
     </div>
 
-    <!-- Comparador exclusivo WC26 -->
+    <!-- Comparador WC26 — se llena con partidos reales del backend cuando
+         las casas argentinas publiquen mercado del torneo (sorteo: 5 dic 2025). -->
     <div class="wc-mega__comparator">
       <div class="wc-mega__cmp-head">
         <div>
           <p class="wc-mega__cmp-title">Comparador de cuotas — Partidos del Mundial</p>
-          <p class="wc-mega__cmp-sub">Top 3 casas argentinas por resultado · Datos demo · The Odds API en producción</p>
+          <p class="wc-mega__cmp-sub">Top 3 casas argentinas por resultado · Push en vivo del backend de scraping</p>
         </div>
         <span class="wc-mega__cmp-badge">
           <svg width="6" height="6" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="3.5" fill="currentColor"/></svg>
           Exclusivo WC26
         </span>
       </div>
-      <div class="wc-mega__cmp-grid">
-
-        <div class="wc-mega__cmp-card">
-          <div class="wc-mega__cmp-match">
-            <div class="wc-mega__cmp-teams">
-              <span class="wc-mega__cmp-flag"><svg viewBox="0 0 3 2" xmlns="http://www.w3.org/2000/svg"><rect width="3" height="2" fill="#74ACDF"/><rect y=".667" width="3" height=".667" fill="#fff"/></svg></span>
-              Argentina
-              <span class="wc-mega__cmp-vs">vs</span>
-              <span class="wc-mega__cmp-flag"><svg viewBox="0 0 3 2" xmlns="http://www.w3.org/2000/svg"><rect width="3" height=".5" fill="#c60b1e"/><rect y=".5" width="3" height="1" fill="#ffc400"/><rect y="1.5" width="3" height=".5" fill="#c60b1e"/></svg></span>
-              España
-            </div>
-            <span class="wc-mega__cmp-stage">Grupo E</span>
-          </div>
-          <div class="wc-mega__cmp-outcomes">
-            <div class="wc-mega__cmp-col">
-              <div class="wc-mega__cmp-col-label">Argentina <span class="wc-mega__cmp-col-code">1</span></div>
-              <div class="wc-mega__cmp-row is-top"><span class="wc-mega__cmp-book">Betano</span><span class="wc-mega__cmp-price">3.80</span></div>
-              <div class="wc-mega__cmp-row"><span class="wc-mega__cmp-book">Bet365</span><span class="wc-mega__cmp-price">3.70</span></div>
-              <div class="wc-mega__cmp-row"><span class="wc-mega__cmp-book">Bplay</span><span class="wc-mega__cmp-price">3.65</span></div>
-            </div>
-            <div class="wc-mega__cmp-col">
-              <div class="wc-mega__cmp-col-label">Empate <span class="wc-mega__cmp-col-code">X</span></div>
-              <div class="wc-mega__cmp-row is-top"><span class="wc-mega__cmp-book">Codere</span><span class="wc-mega__cmp-price">3.60</span></div>
-              <div class="wc-mega__cmp-row"><span class="wc-mega__cmp-book">Betano</span><span class="wc-mega__cmp-price">3.50</span></div>
-              <div class="wc-mega__cmp-row"><span class="wc-mega__cmp-book">Caliente</span><span class="wc-mega__cmp-price">3.40</span></div>
-            </div>
-            <div class="wc-mega__cmp-col">
-              <div class="wc-mega__cmp-col-label">España <span class="wc-mega__cmp-col-code">2</span></div>
-              <div class="wc-mega__cmp-row is-top"><span class="wc-mega__cmp-book">Bet365</span><span class="wc-mega__cmp-price">2.10</span></div>
-              <div class="wc-mega__cmp-row"><span class="wc-mega__cmp-book">Betano</span><span class="wc-mega__cmp-price">2.05</span></div>
-              <div class="wc-mega__cmp-row"><span class="wc-mega__cmp-book">BetWarrior</span><span class="wc-mega__cmp-price">2.00</span></div>
-            </div>
-          </div>
+      <div id="wcLiveComparator" class="wc-mega__cmp-grid">
+        <div class="empty" style="grid-column:1/-1;padding:32px;text-align:center;border:1px dashed var(--border);border-radius:12px">
+          <strong>Mercados del Mundial 2026 — pendiente apertura</strong>
+          <p class="muted tiny" style="max-width:560px;margin:8px auto 0">El sorteo de grupos se hizo el 5 diciembre 2025. A medida que las 12 casas legales argentinas publiquen los mercados de cada partido, las cuotas reales aparecen acá automáticamente vía nuestro motor de scraping.</p>
         </div>
-
-        <div class="wc-mega__cmp-card">
-          <div class="wc-mega__cmp-match">
-            <div class="wc-mega__cmp-teams">
-              <span class="wc-mega__cmp-flag"><svg viewBox="0 0 4 2.8" xmlns="http://www.w3.org/2000/svg"><rect width="4" height="2.8" fill="#009c3b"/><polygon points="2,.28 3.64,1.4 2,2.52 .36,1.4" fill="#fedf00"/><circle cx="2" cy="1.4" r=".66" fill="#002776"/></svg></span>
-              Brasil
-              <span class="wc-mega__cmp-vs">vs</span>
-              <span class="wc-mega__cmp-flag"><svg viewBox="0 0 3 2" xmlns="http://www.w3.org/2000/svg"><rect width="1" height="2" fill="#002395"/><rect x="1" width="1" height="2" fill="#fff"/><rect x="2" width="1" height="2" fill="#ED2939"/></svg></span>
-              Francia
-            </div>
-            <span class="wc-mega__cmp-stage">Grupo B</span>
-          </div>
-          <div class="wc-mega__cmp-outcomes">
-            <div class="wc-mega__cmp-col">
-              <div class="wc-mega__cmp-col-label">Brasil <span class="wc-mega__cmp-col-code">1</span></div>
-              <div class="wc-mega__cmp-row is-top"><span class="wc-mega__cmp-book">Betano</span><span class="wc-mega__cmp-price">2.50</span></div>
-              <div class="wc-mega__cmp-row"><span class="wc-mega__cmp-book">Bplay</span><span class="wc-mega__cmp-price">2.45</span></div>
-              <div class="wc-mega__cmp-row"><span class="wc-mega__cmp-book">BetWarrior</span><span class="wc-mega__cmp-price">2.40</span></div>
-            </div>
-            <div class="wc-mega__cmp-col">
-              <div class="wc-mega__cmp-col-label">Empate <span class="wc-mega__cmp-col-code">X</span></div>
-              <div class="wc-mega__cmp-row is-top"><span class="wc-mega__cmp-book">Bet365</span><span class="wc-mega__cmp-price">3.30</span></div>
-              <div class="wc-mega__cmp-row"><span class="wc-mega__cmp-book">Codere</span><span class="wc-mega__cmp-price">3.25</span></div>
-              <div class="wc-mega__cmp-row"><span class="wc-mega__cmp-book">Betano</span><span class="wc-mega__cmp-price">3.20</span></div>
-            </div>
-            <div class="wc-mega__cmp-col">
-              <div class="wc-mega__cmp-col-label">Francia <span class="wc-mega__cmp-col-code">2</span></div>
-              <div class="wc-mega__cmp-row is-top"><span class="wc-mega__cmp-book">BetWarrior</span><span class="wc-mega__cmp-price">2.90</span></div>
-              <div class="wc-mega__cmp-row"><span class="wc-mega__cmp-book">Betano</span><span class="wc-mega__cmp-price">2.85</span></div>
-              <div class="wc-mega__cmp-row"><span class="wc-mega__cmp-book">Caliente</span><span class="wc-mega__cmp-price">2.80</span></div>
-            </div>
-          </div>
-        </div>
-
       </div>
       <div style="margin-top:16px;text-align:right">
         <a href="dashboard.html#worldcup" class="wc-mega__more-link">Ver todas las cuotas WC26 →</a>
       </div>
     </div>
+    <script>
+      // Rehidrata el comparador del Mundial con datos reales cuando estén
+      (function () {
+        function render() {
+          if (!window.BSData) return;
+          const host = document.getElementById('wcLiveComparator');
+          if (!host) return;
+          const matches = BSData.liveEvents({})
+            .filter(m => /world.cup|mundial|wc26/i.test(m.leagueName || m.league || ''))
+            .filter(m => m.markets?.h2h && Object.keys(m.markets.h2h).length >= 2)
+            .slice(0, 2);
+          if (!matches.length) return;  // mantener empty state honesto
+          const bookName = (k) => BSData.ALL_BOOKS.find(b => b.key === k)?.name || k;
+          const top3 = (books, side) => Object.entries(books)
+            .map(([k, v]) => ({ book: k, price: v[side] || 0 }))
+            .filter(x => x.price > 1).sort((a, b) => b.price - a.price).slice(0, 3);
+          host.innerHTML = matches.map(m => {
+            const tH = top3(m.markets.h2h, 'home');
+            const tD = top3(m.markets.h2h, 'draw');
+            const tA = top3(m.markets.h2h, 'away');
+            const col = (label, code, list) => `
+              <div class="wc-mega__cmp-col">
+                <div class="wc-mega__cmp-col-label">${BSUI.esc(label)} <span class="wc-mega__cmp-col-code">${code}</span></div>
+                ${list.map((it, i) => `<div class="wc-mega__cmp-row${i===0?' is-top':''}"><span class="wc-mega__cmp-book">${BSUI.esc(bookName(it.book))}</span><span class="wc-mega__cmp-price">${it.price.toFixed(2)}</span></div>`).join('')}
+              </div>`;
+            return `<div class="wc-mega__cmp-card">
+              <div class="wc-mega__cmp-match">
+                <div class="wc-mega__cmp-teams">${BSUI.esc(m.home.name)} <span class="wc-mega__cmp-vs">vs</span> ${BSUI.esc(m.away.name)}</div>
+                <span class="wc-mega__cmp-stage">${BSUI.esc(m.leagueName || 'WC26')}</span>
+              </div>
+              <div class="wc-mega__cmp-outcomes">
+                ${col(m.home.name, '1', tH)}
+                ${tD.length ? col('Empate', 'X', tD) : ''}
+                ${col(m.away.name, '2', tA)}
+              </div>
+            </div>`;
+          }).join('');
+        }
+        window.addEventListener('bs:live-snapshot', render);
+        window.addEventListener('bs:live-update', render);
+      })();
+    </script>
   </section>
 
   <!-- VALUE PROPS / FEATURES GRID -->
@@ -700,7 +620,7 @@
           <li>Tracker para llevar tu banca y resultados</li>
           <li>Mundial 2026 hub completo</li>
         </ul>
-        <a href="login.html" class="btn btn-outline btn-block btn-lg">Empezar gratis</a>
+        <a href="dashboard.html#overview" class="btn btn-outline btn-block btn-lg">Empezar gratis</a>
       </div>
 
       <div class="card price-card popular">
@@ -738,7 +658,7 @@
       <h2 class="h2">Listo para operar con datos.</h2>
       <p class="lead mt-2">Sumate al panel cuantitativo argentino. +18, juego responsable, sin promesas vacías.</p>
       <div class="row" style="justify-content:center;margin-top:18px">
-        <a href="login.html" class="btn btn-primary btn-lg mag">Empezar gratis</a>
+        <a href="dashboard.html#overview" class="btn btn-primary btn-lg mag">Empezar gratis</a>
         <a href="pricing.html" class="btn btn-outline btn-lg">Ver planes</a>
       </div>
     </div>
@@ -749,6 +669,7 @@
 <div data-shell-footer></div>
 
 <script src="assets/js/env.js"></script>
+<script src="assets/js/live.js"></script>
 <script src="assets/js/data.js"></script>
 <script src="assets/js/logos.js"></script>
 <script src="assets/js/icons.js"></script>
@@ -814,25 +735,116 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Live ticker (demo) — REAL team crests via CDN
+  // Hero comparador: rehidrata con el primer match del snapshot real
+  function renderHeroLive() {
+    const card = document.getElementById('heroLiveCard');
+    const badge = document.getElementById('heroLiveBadge');
+    const dot = document.getElementById('heroLiveDot');
+    const lastUpd = document.getElementById('heroLastUpdate');
+    const stateEl = document.getElementById('heroBackendState');
+    const sbCard = document.getElementById('heroSurebetCard');
+    if (!card || !window.BSData) return;
+    const matches = BSData.liveEvents({})
+      .filter(m => m.markets?.h2h && Object.keys(m.markets.h2h).length >= 2)
+      .slice(0, 1);
+    if (lastUpd) lastUpd.textContent = BSData.liveFreshness();
+    if (badge) badge.textContent = matches.length ? 'En vivo' : 'Conectando…';
+    if (stateEl) {
+      const books = BSData.liveBookStatus ? BSData.liveBookStatus() : {};
+      const ok = Object.values(books).filter(b => b.ok).length;
+      const total = Object.keys(books).length || 12;
+      stateEl.textContent = `${ok}/${total} casas`;
+    }
+    if (!matches.length) return;
+    const m = matches[0];
+    const top3 = (side) => Object.entries(m.markets.h2h)
+      .map(([k, v]) => ({ book: k, price: v[side] || 0 }))
+      .filter(x => x.price > 1)
+      .sort((a, b) => b.price - a.price)
+      .slice(0, 3);
+    const bookName = (k) => (BSData.ALL_BOOKS.find(b => b.key === k)?.name || k);
+    const renderCol = (label, code, list) => `
+      <div class="cmp3-col">
+        <div class="cmp3-col-head"><span class="label">${BSUI.esc(label)}</span><span class="outcome">${code}</span></div>
+        ${list.length ? list.map((it, i) => `
+          <div class="cmp3-row${i===0?' is-best':''}">
+            <span class="rank rank-book" data-book="${it.book}" aria-label="${BSUI.esc(bookName(it.book))}"></span>
+            <span class="book">${BSUI.esc(bookName(it.book))}</span>
+            <span class="price">${it.price.toFixed(2)}</span>
+          </div>`).join('') : '<div class="cmp3-row"><span class="book">—</span><span class="price">—</span></div>'}
+      </div>`;
+    const hHome = top3('home'), hDraw = top3('draw'), hAway = top3('away');
+    const homeName = m.home.name, awayName = m.away.name;
+    card.innerHTML = `
+      <div class="row between" style="margin-bottom:10px">
+        <div class="cluster">
+          ${window.BSLogos?.teamCrest(m.home.id, { size: 22 }) || BSIcons.teamLogo(m.home, { size: 22 })}
+          <strong>${BSUI.esc(homeName)}</strong>
+          <span class="dim">vs</span>
+          <strong>${BSUI.esc(awayName)}</strong>
+          ${window.BSLogos?.teamCrest(m.away.id, { size: 22 }) || BSIcons.teamLogo(m.away, { size: 22 })}
+        </div>
+        <span class="badge badge-brand">${BSUI.esc(m.leagueName || 'Live')}</span>
+      </div>
+      <div class="cmp3 mt-2">
+        ${renderCol(`Gana ${homeName}`, '1', hHome)}
+        ${hDraw.length ? renderCol('Empate', 'X', hDraw) : ''}
+        ${renderCol(`Gana ${awayName}`, '2', hAway)}
+      </div>
+      <div class="cmp-meta-row">
+        <span class="cmp-meta-item"><span class="dim">Casas comparadas:</span><strong>${Object.keys(m.markets.h2h).length}</strong></span>
+        <span class="cmp-meta-item"><span class="dim">Margen libro:</span><strong>${m.overround ? ((m.overround - 1) * 100).toFixed(2) + '%' : '—'}</strong></span>
+        <span class="cmp-meta-item"><span class="dim">Última actualización:</span><strong>${BSData.liveFreshness()}</strong></span>
+      </div>`;
+    // Rellenar logos
+    card.querySelectorAll('.rank-book[data-book]').forEach(el => {
+      if (window.BSLogos?.bookLogo) el.innerHTML = BSLogos.bookLogo(el.dataset.book, { size: 26 });
+    });
+    // Surebet del backend (si hay)
+    const sbs = BSData.liveSurebets ? BSData.liveSurebets() : [];
+    if (sbs.length && sbCard) {
+      sbCard.style.display = '';
+      sbCard.querySelector('#heroSurebetBadge').textContent = `VIP · ${sbs[0].roi.toFixed(2)}% ROI`;
+      sbCard.querySelector('#heroSurebetDesc').textContent = `${sbs[0].event} · ${(sbs[0].books||[]).join(' vs ')}`;
+    } else if (sbCard) {
+      sbCard.style.display = 'none';
+    }
+  }
+  renderHeroLive();
+  window.addEventListener('bs:live-snapshot', renderHeroLive);
+  window.addEventListener('bs:live-update', renderHeroLive);
+  window.addEventListener('bs:live-surebet', renderHeroLive);
+
+  // Live ticker — cuotas REALES del backend de scraping. Se rehidrata en
+  // cuanto BSLive recibe el primer snapshot (y luego en cada update).
   const ticker = document.getElementById('liveTicker');
-  if (ticker) {
-    const matches = BSData.makeMatches().slice(0, 14);
+  function renderLiveTicker() {
+    if (!ticker || !window.BSData) return;
+    const matches = BSData.liveEvents({})
+      .filter(m => m.bestOdds?.h2h?.home)
+      .slice(0, 14);
+    if (!matches.length) {
+      ticker.innerHTML = `<span class="tk muted">Esperando primer ciclo del backend de scraping…</span>`;
+      return;
+    }
     const items = matches.map(m => {
-      const best = Math.min(...Object.values(m.markets.h2h).map(b => b.home).filter(Boolean));
       const home = window.BSLogos?.teamCrest(m.home.id, { size: 22 }) || BSIcons.teamLogo(m.home, { size: 22 });
       const away = window.BSLogos?.teamCrest(m.away.id, { size: 22 }) || BSIcons.teamLogo(m.away, { size: 22 });
+      const best = m.bestOdds.h2h.home;
       return `<span class="tk">
         ${home}
-        <strong>${m.home.name}</strong>
+        <strong>${BSUI.esc(m.home.name)}</strong>
         <span class="dim">vs</span>
-        <strong>${m.away.name}</strong>
+        <strong>${BSUI.esc(m.away.name)}</strong>
         ${away}
         <span class="num text-brand">${best.toFixed(2)}</span>
       </span>`;
     }).join('');
     ticker.innerHTML = items + items;
   }
+  renderLiveTicker();
+  window.addEventListener('bs:live-snapshot', renderLiveTicker);
+  window.addEventListener('bs:live-update', renderLiveTicker);
 
   // Bookmark marquee — SOLO casas argentinas legales con LOGO REAL (CDN)
   const bm = document.getElementById('bookmarks');
@@ -882,62 +894,81 @@ document.addEventListener('DOMContentLoaded', () => {
 function buildDemoComparator() {
   const host = document.getElementById('demoComparator');
   if (!host) return;
-  const matches = BSData.makeMatches().slice(0, 4);
-  host.innerHTML = `
-    <div class="card stack">
-      <div class="row between">
-        <strong>Liga Profesional Argentina · Premier League · La Liga (demo)</strong>
-        <span class="muted tiny">Refresca cada 30 s en producción</span>
+  function render() {
+    const matches = BSData.liveEvents({})
+      .filter(m => m.markets?.h2h && Object.keys(m.markets.h2h).length >= 2)
+      .slice(0, 4);
+    if (!matches.length) {
+      host.innerHTML = `<div class="card stack" style="padding:40px;text-align:center"><strong>Comparador en vivo</strong><p class="muted">Esperando el primer ciclo del backend de scraping de las 12 casas argentinas legales. Cuando llegue el snapshot, las cuotas reales aparecen acá.</p><span class="muted tiny">Estado: ${BSData.liveFreshness()}</span></div>`;
+      return;
+    }
+    host.innerHTML = `
+      <div class="card stack">
+        <div class="row between">
+          <strong>Cuotas en vivo · 12 casas argentinas (LOTBA / IPLyC)</strong>
+          <span class="muted tiny">Push en vivo via WebSocket · última actualización ${BSData.liveFreshness()}</span>
+        </div>
+        <div class="table-wrap">
+          <table class="table">
+            <thead>
+              <tr><th>Partido</th><th>1</th><th>X</th><th>2</th><th>Mejor cuota</th><th>Margen</th></tr>
+            </thead>
+            <tbody>
+              ${matches.map(m => {
+                const books = Object.entries(m.markets.h2h);
+                const homeBest = books.reduce((a, [k, b]) => b.home > a.v ? { v: b.home, book: k } : a, { v: 0, book: '' });
+                const drawBest = books.reduce((a, [k, b]) => (b.draw || 0) > a.v ? { v: b.draw, book: k } : a, { v: 0, book: '' });
+                const awayBest = books.reduce((a, [k, b]) => b.away > a.v ? { v: b.away, book: k } : a, { v: 0, book: '' });
+                const homeVals = books.map(b => b[1].home).filter(Boolean);
+                const margin = BSMath.overround([homeBest.v || 99, drawBest.v || 99, awayBest.v || 99]) * 100;
+                const bookOf = k => BSData.ALL_BOOKS.find(b => b.key === k);
+                const deltaPct = homeVals.length > 1 ? ((homeBest.v / Math.min(...homeVals)) * 100 - 100) : 0;
+                return `<tr>
+                  <td>
+                    <div class="cluster">
+                      ${BSIcons.teamLogo(m.home, { size: 24 })}
+                      <strong>${BSUI.esc(m.home.name)}</strong>
+                      <span class="dim">vs</span>
+                      <strong>${BSUI.esc(m.away.name)}</strong>
+                      ${BSIcons.teamLogo(m.away, { size: 24 })}
+                    </div>
+                  </td>
+                  <td>
+                    <span class="odd best num">${homeBest.v ? homeBest.v.toFixed(2) : '—'}</span>
+                    <div class="tiny dim">${BSUI.esc(bookOf(homeBest.book)?.name || '')}</div>
+                  </td>
+                  <td>${drawBest.v ? `
+                    <span class="odd num">${drawBest.v.toFixed(2)}</span>
+                    <div class="tiny dim">${BSUI.esc(bookOf(drawBest.book)?.name || '')}</div>
+                  ` : '<span class="dim">—</span>'}</td>
+                  <td>
+                    <span class="odd num">${awayBest.v ? awayBest.v.toFixed(2) : '—'}</span>
+                    <div class="tiny dim">${BSUI.esc(bookOf(awayBest.book)?.name || '')}</div>
+                  </td>
+                  <td>${deltaPct > 0 ? `<span class="badge badge-success">+${deltaPct.toFixed(1)}%</span>` : '<span class="dim">—</span>'}</td>
+                  <td class="num">${margin.toFixed(1)}%</td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
       </div>
-      <div class="table-wrap">
-        <table class="table">
-          <thead>
-            <tr><th>Partido</th><th>1</th><th>X</th><th>2</th><th>Mejor cuota</th><th>Margen</th></tr>
-          </thead>
-          <tbody>
-            ${matches.map(m => {
-              const books = Object.entries(m.markets.h2h);
-              const homeBest = books.reduce((a, [k, b]) => b.home > a.v ? { v: b.home, book: k } : a, { v: 0, book: '' });
-              const drawBest = books.reduce((a, [k, b]) => (b.draw || 0) > a.v ? { v: b.draw, book: k } : a, { v: 0, book: '' });
-              const awayBest = books.reduce((a, [k, b]) => b.away > a.v ? { v: b.away, book: k } : a, { v: 0, book: '' });
-              const margin = BSMath.overround([homeBest.v, drawBest.v || 99, awayBest.v]) * 100;
-              const bookOf = k => BSData.ALL_BOOKS.find(b => b.key === k);
-              return `<tr>
-                <td>
-                  <div class="cluster">
-                    ${BSIcons.teamLogo(m.home, { size: 24 })}
-                    <strong>${BSUI.esc(m.home.name)}</strong>
-                    <span class="dim">vs</span>
-                    <strong>${BSUI.esc(m.away.name)}</strong>
-                    ${BSIcons.teamLogo(m.away, { size: 24 })}
-                  </div>
-                </td>
-                <td>
-                  <span class="odd best num">${homeBest.v.toFixed(2)}</span>
-                  <div class="tiny dim">${BSUI.esc(bookOf(homeBest.book)?.name || '')}</div>
-                </td>
-                <td>${drawBest.v ? `
-                  <span class="odd num">${drawBest.v.toFixed(2)}</span>
-                  <div class="tiny dim">${BSUI.esc(bookOf(drawBest.book)?.name || '')}</div>
-                ` : '<span class="dim">—</span>'}</td>
-                <td>
-                  <span class="odd num">${awayBest.v.toFixed(2)}</span>
-                  <div class="tiny dim">${BSUI.esc(bookOf(awayBest.book)?.name || '')}</div>
-                </td>
-                <td><span class="badge badge-success">+${(homeBest.v / Math.min(...books.map(b => b[1].home)) * 100 - 100).toFixed(1)}%</span></td>
-                <td class="num">${margin.toFixed(1)}%</td>
-              </tr>`;
-            }).join('')}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  `;
+    `;
+  }
+  render();
+  window.addEventListener('bs:live-snapshot', render);
+  window.addEventListener('bs:live-update', render);
 }
 
 function buildBuilderDemo() {
-  const matches = BSData.makeMatches().slice(0, 5);
+  // El builder demo del landing arma combinadas con partidos REALES en vivo.
+  // Si todavía no hay snapshot, el botón Add muestra mensaje honesto.
   let legs = [];
+  function liveMatches() {
+    return BSData.liveEvents({})
+      .filter(m => m.markets?.h2h && Object.keys(m.markets.h2h).length)
+      .slice(0, 5);
+  }
   function render() {
     const ls = document.getElementById('bdLegs');
     if (!ls) return;
@@ -948,7 +979,7 @@ function buildBuilderDemo() {
           <button class="btn-ghost btn-icon btn-sm" data-rm="${i}">×</button>
         </span>
       </div>
-    `).join('') : `<div class="empty" style="padding:18px">Tocá <strong>Agregar leg</strong> para empezar</div>`;
+    `).join('') : `<div class="empty" style="padding:18px">Tocá <strong>Agregar leg</strong> para sumar un partido real del día</div>`;
     const stake = Number(document.getElementById('bdStake').value || 0);
     const total = legs.reduce((a, b) => a * b.odd, 1);
     document.getElementById('bdOdd').textContent = legs.length ? total.toFixed(2) : '—';
@@ -957,8 +988,15 @@ function buildBuilderDemo() {
   }
   document.getElementById('bdAdd')?.addEventListener('click', () => {
     if (legs.length >= 5) { BSUI.toast({ title: 'Demo limita a 5 legs', type: 'info' }); return; }
+    const matches = liveMatches();
+    if (!matches.length) {
+      BSUI.toast({ title: 'Sin partidos en vivo todavía', message: 'El backend está recibiendo cuotas; intentá en unos segundos.', type: 'info' });
+      return;
+    }
     const m = matches[legs.length % matches.length];
-    const odd = Object.values(m.markets.h2h)[0].home;
+    const firstBook = Object.values(m.markets.h2h)[0];
+    const odd = firstBook?.home;
+    if (!odd) return;
     legs.push({ team: m.home.name, market: 'Gana', odd });
     render();
   });
@@ -969,21 +1007,25 @@ function buildBuilderDemo() {
 function buildVipSurebets() {
   const host = document.getElementById('vipSurebets');
   if (!host) return;
-  const samples = [
-    { event: 'Boca vs River',                books: 'Bplay / Betano',       roi: 2.06 },
-    { event: 'Racing vs Independiente',      books: 'BetWarrior / Codere',  roi: 1.84 },
-    { event: 'San Lorenzo vs Vélez',         books: 'Caliente / JugaBet',   roi: 1.21 },
-    { event: 'Estudiantes vs Gimnasia LP',   books: 'PlayCity / MegaPuesta',roi: 0.92 }
-  ];
-  host.innerHTML = samples.map(s => `
-    <div class="row between">
-      <div>
-        <strong>${BSUI.esc(s.event)}</strong>
-        <div class="muted tiny">${BSUI.esc(s.books)}</div>
+  function render() {
+    const sb = BSData.liveSurebets ? BSData.liveSurebets().slice(0, 4) : [];
+    if (!sb.length) {
+      host.innerHTML = `<div class="empty" style="padding:14px"><strong>Esperando surebets en vivo</strong><div class="muted tiny">El motor cruza las 12 casas en cada ciclo de scraping. Cuando aparece una oportunidad real con ROI &gt; 0, aparece acá automáticamente.</div></div>`;
+      return;
+    }
+    host.innerHTML = sb.map(s => `
+      <div class="row between">
+        <div>
+          <strong>${BSUI.esc(s.event)}</strong>
+          <div class="muted tiny">${(s.books || []).map(BSUI.esc).join(' / ')}</div>
+        </div>
+        <span class="badge badge-success num">+${s.roi.toFixed(2)}%</span>
       </div>
-      <span class="badge badge-success num">+${s.roi.toFixed(2)}%</span>
-    </div>
-  `).join('');
+    `).join('');
+  }
+  render();
+  window.addEventListener('bs:live-surebet', render);
+  window.addEventListener('bs:live-snapshot', render);
 }
 
 function buildFaq() {
@@ -995,7 +1037,7 @@ function buildFaq() {
     { q: '¿La IA es real o es un truco?', a: 'Real. Cada pick pasa por nuestro motor de análisis táctico, con cascada interna de fallback automático. Sin que tengas que configurar nada, el sistema siempre usa la mejor variante disponible y se recupera solo si una capa falla. Respuesta en vivo en menos de 2 segundos.' },
     { q: '¿Cómo funciona el arbitraje?', a: 'El motor escanea cada 30 segundos las 25 casas, detecta cuándo la suma 1/cuota_outcome del partido es < 1 (oportunidad de surebet), calcula stakes óptimos por casa, aplica slippage protection (margen 1.5% default) y te avisa con audio y toast. Histórico de las últimas 500 detecciones, ROI promedio, mejor ROI.' },
     { q: '¿Qué es Kelly fraccional y por qué importa?', a: 'Kelly es la fórmula matemáticamente óptima para maximizar el crecimiento logarítmico de tu banca dado un edge real. Full Kelly es agresivo; usar ¼ o ½ Kelly reduce drawdown 70% sin sacrificar mucho retorno esperado. BetSafe lo calcula automáticamente y te muestra el stake recomendado por pick.' },
-    { q: '¿Cómo me protege del tilt?', a: 'Detectamos automáticamente cuando llevás 4+ pérdidas seguidas y subiste el stake +50% en las últimas 2 horas. Te aparece un mensaje contextual de juego responsable con link directo a juegaresponsable.com.ar y un botón de "pausar 24h" que bloquea el dashboard.' },
+    { q: '¿Cómo me protege del tilt?', a: 'Detectamos automáticamente cuando llevás 4+ pérdidas seguidas y subiste el stake +50% en las últimas 2 horas. Te aparece un mensaje contextual de juego responsable con link directo a juegoresponsable.com.ar y un botón de "pausar 24h" que bloquea el dashboard.' },
     { q: '¿Puedo cancelar VIP cuando quiera?', a: 'Sí. Sin permanencia, sin letra chica. Cancelás desde Settings y conservás acceso hasta el final del ciclo facturado. Tu histórico queda intacto y exportable a CSV/JSON.' },
     { q: '¿Dónde vive mi información?', a: 'En tu navegador (localStorage cifrado por origen). Cero tracking publicitario, cero Google Analytics. Cuando habilitemos backend opcional será Supabase con cifrado en tránsito (TLS 1.3) y reposo (AES-256). Podés exportar todos tus datos en cualquier momento.' },
     { q: '¿Cuánta plata necesito para empezar?', a: 'BetSafe es gratis para empezar. Para que el motor de banca tenga utilidad real recomendamos una banca mínima de ARS 50.000 — con eso podés operar Kelly fraccional ¼ con stakes de 0.5-2% y ver curva en 60-90 días. No hay mínimo de la app.' },

@@ -44,4 +44,4 @@ Conectadas client-side (luego mover a backend Render/Supabase):
 ## Compliance
 
 - LOTBA / IPLyC, verificación +18, juego responsable, Ley 25.326.
-- 0800-222-1133 (SEDRONAR), juegaresponsable.com.ar.
+- 0800-222-1133 (SEDRONAR), juegoresponsable.com.ar.

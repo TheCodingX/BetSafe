@@ -2,9 +2,22 @@
 (function () {
   'use strict';
 
-  function render(panel) {
+  async function render(panel) {
     const slip = BSStore.get(BSStore.KEYS.slip) || { legs: [], stake: 1000 };
-    const matches = BSData.makeMatches();
+
+    // Mostrar skeleton mientras llega el snapshot del backend
+    panel.innerHTML = `<div class="card stack" style="min-height:240px"><div class="row between"><strong>Cargando partidos en vivo…</strong><span class="muted tiny" id="bdrSt">conectando con el scraper</span></div><div class="empty">Recibiendo datos de las 12 casas argentinas legales.</div></div>`;
+
+    // Esperar a que el backend nos entregue eventos reales
+    let matches = await BSData.awaitLive({ timeoutMs: 12000 });
+
+    if (!matches.length) {
+      panel.innerHTML = renderEmpty(BSLive?.state?.error);
+      // Re-render cuando llegue el snapshot
+      const onSnap = () => { if (BSData.liveReady()) { window.removeEventListener('bs:live-snapshot', onSnap); render(panel); } };
+      window.addEventListener('bs:live-snapshot', onSnap, { once: true });
+      return;
+    }
 
     panel.innerHTML = `
       <div class="row between mb-3">
@@ -213,6 +226,25 @@
 
     renderMatches();
     renderSlip();
+
+    // Re-render cuando lleguen updates en vivo (cuotas movieron)
+    const onUpdate = () => {
+      const fresh = BSData.liveEvents({});
+      // Mantener referencias en matches sin perder estado de UI
+      matches.length = 0; Array.prototype.push.apply(matches, fresh);
+      renderMatches(); renderSlip();
+    };
+    window.addEventListener('bs:live-update', onUpdate);
+    panel.__cleanup = () => window.removeEventListener('bs:live-update', onUpdate);
+  }
+
+  function renderEmpty(err) {
+    return `<div class="card stack" style="min-height:280px;align-items:center;text-align:center;padding:40px">
+      <strong>Aún no hay datos en vivo</strong>
+      <p class="muted">El backend está scrapeando las 12 casas argentinas. Cuando llegue el primer snapshot, los partidos aparecen acá automáticamente.</p>
+      ${err ? `<small class="muted tiny">Detalle técnico: ${BSUI.esc(err)}</small>` : ''}
+      <span class="muted tiny">Último estado: ${BSData.liveFreshness()}</span>
+    </div>`;
   }
 
     function doRegister() {

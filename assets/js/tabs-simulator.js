@@ -23,11 +23,16 @@
   }
   function save(s) { BSStore.set(STORE_KEY, s); }
 
-  // Build the same 5×3=15 combinadas as AI Picks Standard
+  // Build the same 5×3=15 combinadas as AI Picks Standard.
+  // Usa cuotas REALES del backend de scraping. Si no hay datos en vivo,
+  // devuelve [] y la UI muestra empty state.
   function buildPicks() {
-    const matches = BSData.makeMatches().slice(0, 5);
+    const live = BSData.liveEvents({}).filter(m => m.markets && m.markets.h2h && Object.keys(m.markets.h2h).length);
+    const matches = live.slice(0, 5);
+    if (!matches.length) return [];
     return matches.map(m => {
       const o = m.markets.h2h.bplay || Object.values(m.markets.h2h)[0];
+      if (!o || (!o.home && !o.away)) return null;
       return {
         match: m,
         variants: [
@@ -42,13 +47,24 @@
             p:   0.65 }
         ]
       };
-    });
+    }).filter(Boolean);
   }
 
-  function render(panel) {
+  async function render(panel) {
+    // Esperar al primer snapshot del backend
+    if (!BSData.liveReady()) {
+      panel.innerHTML = `<div class="card stack" style="min-height:240px;padding:40px;text-align:center"><strong>Cargando partidos del día…</strong><p class="muted tiny">El backend está scrapeando las 12 casas legales argentinas.</p></div>`;
+      await BSData.awaitLive({ timeoutMs: 12000 });
+    }
     const state = load();
     const isVip = BSAuth.isVip();
     const picks = buildPicks();
+    if (!picks.length) {
+      panel.innerHTML = `<div class="card stack" style="min-height:240px;padding:40px;text-align:center"><strong>Sin partidos en vivo todavía</strong><p class="muted">Cuando el backend complete el primer ciclo de scraping, el simulador se habilita con cuotas reales.</p><span class="muted tiny">${BSData.liveFreshness()}</span></div>`;
+      const onSnap = () => { if (BSData.liveReady()) { window.removeEventListener('bs:live-snapshot', onSnap); render(panel); } };
+      window.addEventListener('bs:live-snapshot', onSnap, { once: true });
+      return;
+    }
     const grandTotal = state.history.reduce((a, h) => a + (h.profit || 0), 0);
     const trades = state.wins + state.losses;
     const winRate = trades ? (state.wins / trades) * 100 : 0;

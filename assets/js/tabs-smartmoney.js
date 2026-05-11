@@ -1,25 +1,40 @@
-/* BetSafe — Smart Money Alerts (VIP) */
+/* BetSafe — Smart Money Alerts (VIP)
+ * ============================================================================
+ * Detección de steam moves (movimientos >5%) generados por el backend al
+ * comparar snapshots consecutivos de las 12 casas argentinas legales.
+ *
+ * NO se generan signals fake. Si el backend todavía no detectó movimientos,
+ * la UI muestra "esperando…".
+ *
+ * Alerts del usuario: viven en localStorage y disparan cuando un steam move
+ * matchea las condiciones (sport / market / deltaPct).
+ * ============================================================================
+ */
 (function () {
   'use strict';
 
   function render(panel) {
     if (!BSAuth.isVip()) {
-      panel.innerHTML = `<div class="card card-vip card-pad-lg stack"><span class="badge-vip">VIP</span><h2 class="h3">Smart Money Alerts<a class="help-q" tabindex="0" data-tip="Smart Money es el dinero profesional/sharp que mueve las cuotas. Detectamos cuando una cuota se mueve 5%+ en menos de una hora — eso suele indicar que apostadores grandes (sharps) tomaron posición. Te avisamos en tiempo real para que sigas el flujo del dinero serio."></a></h2><p class="muted">Detección de movimientos sharp >5% por hora.</p><a href="pricing.html" class="btn btn-gold">Ver planes</a></div>`;
+      panel.innerHTML = `<div class="card card-vip card-pad-lg stack"><span class="badge-vip">VIP</span><h2 class="h3">Smart Money Alerts<a class="help-q" tabindex="0" data-tip="Smart Money es el dinero profesional/sharp que mueve las cuotas. Detectamos cuando una cuota se mueve 5%+ entre dos ciclos de scraping — eso suele indicar que apostadores grandes (sharps) tomaron posición. Te avisamos en tiempo real para que sigas el flujo del dinero serio."></a></h2><p class="muted">Detección de movimientos sharp >5% por ciclo.</p><a href="pricing.html" class="btn btn-gold">Ver planes</a></div>`;
       return;
     }
-    const alerts = BSStore.get(BSStore.KEYS.vipAlerts) || demoAlerts();
+    const alerts = BSStore.get(BSStore.KEYS.vipAlerts) || [];
+
     panel.innerHTML = `
       <div class="row between mb-3">
         <div>
-          <h2 class="h3">Smart Money Alerts<a class="help-q" tabindex="0" data-tip="Smart Money = dinero profesional/sharp. Detectamos cuando una cuota se mueve 5%+ en menos de una hora (steam move) — señal de que sharps tomaron posición. También Reverse Line Movement (RLM): si la cuota se mueve contra el % público de apuestas, es sharp money."></a></h2>
-          <p class="muted">Flujo del dinero sharp en tiempo real · steam moves · RLM · Public/Sharp split.</p>
+          <h2 class="h3">Smart Money Alerts<a class="help-q" tabindex="0" data-tip="Smart Money = dinero profesional/sharp. Detectamos cuando una cuota se mueve 5%+ entre dos ciclos de scraping (steam move) — señal de que sharps tomaron posición."></a></h2>
+          <p class="muted">Flujo real de movimientos sharp · cruce de 12 casas argentinas · push en vivo via WebSocket.</p>
         </div>
         <button class="btn btn-primary mag" id="newAlert">+ Crear alerta</button>
       </div>
 
       <div class="grid grid-3 gap-4">
         <div class="card stack" style="grid-column: span 2">
-          <strong>Stream en vivo</strong>
+          <div class="row between">
+            <strong>Stream en vivo</strong>
+            <span class="muted tiny" id="smFresh">${BSData.liveFreshness()}</span>
+          </div>
           <div id="smStream" class="stack-sm" style="max-height:520px;overflow-y:auto"></div>
         </div>
         <div class="card stack">
@@ -30,8 +45,16 @@
     `;
 
     function renderStream() {
-      const items = demoStream();
-      panel.querySelector('#smStream').innerHTML = items.map(it => `
+      const items = BSData.liveSteam();
+      const host = panel.querySelector('#smStream');
+      if (!host) return;
+      if (!items.length) {
+        host.innerHTML = `<div class="empty" style="padding:30px;text-align:center"><strong>Sin movimientos sharp detectados</strong><p class="muted tiny">El backend compara cada ciclo de scraping con el anterior. Cuando una cuota se mueve ≥5% (steam move), aparece acá automáticamente.</p></div>`;
+        return;
+      }
+      host.innerHTML = items.slice(0, 30).map(it => {
+        const dir = it.deltaPct >= 0 ? '↗' : '↘';
+        return `
         <div class="card card-tinted card-pad-sm">
           <div class="row between">
             <div>
@@ -39,12 +62,15 @@
                 <span class="badge ${it.sharp ? 'badge-warning' : 'badge-info'}">${it.sharp?'SHARP':'PUBLIC'}</span>
                 <strong>${BSUI.esc(it.event)}</strong>
               </div>
-              <div class="muted tiny">${BSUI.esc(it.market)} · cuota ${it.from} → ${it.to} (${it.delta>0?'+':''}${it.delta}%)</div>
+              <div class="muted tiny">${BSUI.esc(it.market || 'h2h')} · ${BSUI.esc(it.side || '')} · ${it.from?.toFixed?.(2) || it.from} → ${it.to?.toFixed?.(2) || it.to} (${it.deltaPct>=0?'+':''}${it.deltaPct}%)</div>
             </div>
-            <span class="num ${it.delta>=0?'text-success':'text-danger'}">${it.delta>=0?'↗':'↘'} ${Math.abs(it.delta)}%</span>
+            <span class="num ${it.deltaPct>=0?'text-success':'text-danger'}">${dir} ${Math.abs(it.deltaPct)}%</span>
           </div>
-        </div>`).join('') || '<div class="empty">Sin movimientos</div>';
+        </div>`;
+      }).join('');
+      panel.querySelector('#smFresh').textContent = BSData.liveFreshness();
     }
+
     function renderList() {
       panel.querySelector('#smList').innerHTML = alerts.map((a, i) => `
         <div class="card card-tinted card-pad-sm">
@@ -93,37 +119,33 @@
       });
     });
 
+    // Steam moves push del backend
+    const onSteam = (ev) => {
+      // Disparar alertas configuradas que matcheen
+      alerts.forEach(a => {
+        if (!a.on) return;
+        const sm = ev.detail || {};
+        if (a.cond.toLowerCase().includes('sharp') && Math.abs(sm.deltaPct) >= 5) {
+          a.fires = (a.fires || 0) + 1;
+        }
+      });
+      BSStore.set(BSStore.KEYS.vipAlerts, alerts);
+      renderStream(); renderList();
+    };
+
     renderStream(); renderList();
+    window.addEventListener('bs:live-steam', onSteam);
+    window.addEventListener('bs:live-snapshot', renderStream);
+    // Tick suave por si BSLive cambia frescura
     const interval = setInterval(renderStream, 8000);
-    panel.__cleanup = () => clearInterval(interval);
+    panel.__cleanup = () => {
+      clearInterval(interval);
+      window.removeEventListener('bs:live-steam', onSteam);
+      window.removeEventListener('bs:live-snapshot', renderStream);
+    };
   }
 
-  function demoAlerts() {
-    return [
-      { name: 'NBA · Movimientos sharp', cond: 'Movimiento sharp >5%', sport: 'basketball', on: true, fires: 14, at: Date.now() },
-      { name: 'EPL · RLM', cond: 'Reverse Line Movement', sport: 'soccer', on: true, fires: 7, at: Date.now() },
-      { name: 'UFC · Value >3%', cond: 'Value > 3%', sport: 'mma', on: false, fires: 2, at: Date.now() }
-    ];
-  }
-  function demoStream() {
-    const seed = Math.floor(Date.now() / 8000);
-    const rng = BSMath.lcg(seed);
-    const evs = ['Lakers vs Celtics','PSG vs Lyon','Boca vs River','Bayern vs Dortmund','Yankees vs Red Sox','Real Madrid vs Barcelona'];
-    return Array.from({ length: 8 }, (_, i) => {
-      const r = rng();
-      const delta = +((r * 12 - 4).toFixed(1));
-      return {
-        event: evs[i % evs.length],
-        market: ['1X2', 'Over 2.5', 'Spread', 'BTTS'][i % 4],
-        from: (1.85 + r * 0.5).toFixed(2),
-        to: (1.85 + r * 0.5 + delta / 100).toFixed(2),
-        delta,
-        sharp: Math.abs(delta) > 4
-      };
-    });
-  }
-
-    function doRegister() {
+  function doRegister() {
     if (typeof window.BSDash !== 'undefined') BSDash.register('smartmoney', render);
     else document.addEventListener('DOMContentLoaded', () => BSDash.register('smartmoney', render));
   }

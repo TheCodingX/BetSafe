@@ -97,7 +97,7 @@
               <a href="about.html">Quiénes somos</a>
               <a href="bonos.html">Bonos por casino</a>
               <a href="responsable.html">Juego Responsable</a>
-              <a href="https://www.juegaresponsable.com.ar" target="_blank" rel="noopener">juegaresponsable.com.ar</a>
+              <a href="https://www.juegoresponsable.com.ar" target="_blank" rel="noopener noreferrer">juegoresponsable.com.ar</a>
             </div>
             <div>
               <h5>Legal</h5>

@@ -230,7 +230,7 @@ admin/admin · 42. Theme toggle · 43. Atajos teclado · 44. Favoritos · 45. Re
 4. **De BetLabs**: custom SQL queries + backtest visual → ✅ `tools.html` MoatsPro tab.
 5. **De Action Network**: mobile-first elegante → ✅ bottom nav + drawer + safe-area.
 6. **Diferenciador AR**: compliance LOTBA, tax 5 jurisdicciones, ES-AR nativo, onboarding 7-pasos,
-   cookie banner granular, edad +18, link juegaresponsable.com.ar → **único en su segmento**.
+   cookie banner granular, edad +18, link juegoresponsable.com.ar → **único en su segmento**.
 
 ---
 
@@ -327,7 +327,7 @@ admin/admin · 42. Theme toggle · 43. Atajos teclado · 44. Favoritos · 45. Re
 
 ## 6. Compliance argentina
 
-✅ Banner juego responsable persistente con link `juegaresponsable.com.ar`.
+✅ Banner juego responsable persistente con link `juegoresponsable.com.ar`.
 ✅ Sellos LOTBA / IPLyC / Lotería de la Ciudad en footer.
 ✅ Verificación +18 al primer ingreso (modal modal/cookie consent, redirect informativo si "no").
 ✅ Cookie banner granular (Aceptar todas / Rechazar / Personalizar). Respeta DNT.

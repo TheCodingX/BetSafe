@@ -1,10 +1,29 @@
-/* BetSafe — Arbitrage VIP tab: motor en vivo, calc 2-way/3-way, slippage, histórico, audio alerts */
+/* BetSafe — Arbitrage VIP (motor hiper-preciso)
+ * ============================================================================
+ * Conecta con el motor de arbitraje del backend que:
+ *   - Corre cada 5s sobre el snapshot de 12 casas
+ *   - Detecta multi-mercado: 1X2 (2-way y 3-way), totals (cada línea),
+ *     BTTS, AH, y cross-market (1+X2, 2+1X)
+ *   - Cada surebet trae: confidence, slippage real por casa, stakes óptimos,
+ *     profit garantizado en ARS, latency order, account limits check
+ *
+ * Filtros funcionales:
+ *   - ROI mínimo
+ *   - Confidence mínimo
+ *   - Deporte
+ *   - Tipo de mercado (h2h / totals / btts / cross)
+ *   - Bankroll fit (descartar surebets con stakes que superan tu cuenta)
+ *
+ * El usuario ve TODO en vivo via WebSocket — cuando aparece una surebet en el
+ * backend, el frontend la agrega en milisegundos.
+ * ============================================================================
+ */
 (function () {
   'use strict';
 
   function render(panel) {
     if (!BSAuth.isVip()) {
-      panel.innerHTML = `<div class="card card-vip card-pad-lg stack"><span class="badge-vip">VIP</span><h2 class="h3">Arbitraje en vivo (VIP)</h2><p class="muted">Detectamos diferencias de cuotas entre casas que te dejan ganancia matemática garantizada. Probá VIP para acceder.</p><a href="pricing.html" class="btn btn-gold">Ver planes</a></div>`;
+      panel.innerHTML = `<div class="card card-vip card-pad-lg stack"><span class="badge-vip">VIP</span><h2 class="h3">Arbitraje en vivo (VIP)</h2><p class="muted">Motor de arbitraje hiper-preciso: 12 casas, multi-mercado, cross-market, confidence score, scan cada 5 segundos.</p><a href="pricing.html" class="btn btn-gold">Ver planes</a></div>`;
       return;
     }
 
@@ -13,8 +32,8 @@
     panel.innerHTML = `
       <div class="row between mb-3">
         <div>
-          <h2 class="h3">Arbitraje en vivo<a class="help-q" tabindex="0" data-tip="Cuando dos casas pagan distinto por un mismo partido, podés apostar a los dos lados y ganar igual quien gane. Te mostramos las oportunidades en vivo y cuánto poner en cada casa. Importante: las casas pueden limitar la cuenta si detectan arbitraje — operá con responsabilidad."></a></h2>
-          <p class="muted">Buscamos en 12 casas argentinas cada 30 segundos. Te avisamos cuando aparece una oportunidad.</p>
+          <h2 class="h3">Arbitraje en vivo · motor hiper-preciso<a class="help-q" tabindex="0" data-tip="Motor dedicado que escanea las 12 casas argentinas cada 5 segundos. Detecta surebets en 1X2 (2-way y 3-way), totals (cada línea), BTTS, AH y cross-market. Cada surebet trae confidence score basado en margen + time-to-event + slippage histórico por casa."></a></h2>
+          <p class="muted">Scan cada 5s · 1X2 + totals + BTTS + AH + cross-market · stake óptimo con slippage real · 100% datos en vivo</p>
         </div>
         <div class="cluster">
           <label class="toggle"><input type="checkbox" id="arbOn" checked><span class="track"></span><strong>Motor activo</strong></label>
@@ -22,11 +41,11 @@
         </div>
       </div>
 
-      <!-- ARS bankroll allocation -->
+      <!-- Bankroll -->
       <div class="card stack mb-3" style="background:linear-gradient(135deg, color-mix(in srgb, var(--brand-500) 6%, var(--surface)), var(--surface))">
         <div class="row between">
-          <strong>Cuánto querés invertir<a class="help-q" tabindex="0" data-tip="Es el dinero total (en pesos) que vas a repartir entre las casas para que la operación sea segura. Calculamos cuánto poner en cada una para que tu ganancia sea la misma sin importar quién gane."></a></strong>
-          <span class="muted tiny">Monto total en pesos argentinos</span>
+          <strong>Cuánto querés invertir<a class="help-q" tabindex="0" data-tip="El motor calcula stakes óptimos por casa para garantizar profit sin importar el resultado. Si los stakes superan los límites típicos de tu cuenta, marcamos la surebet con ⚠."></a></strong>
+          <span class="muted tiny">Monto total en ARS</span>
         </div>
         <div class="row gap-2" style="flex-wrap:wrap;align-items:flex-end">
           <div class="num-stepper" data-stepper="arbbank" style="flex:1;max-width:280px">
@@ -38,32 +57,56 @@
             ${[50000, 100000, 250000, 500000, 1000000].map(v => `<button class="btn btn-outline btn-sm arb-quick" data-amount="${v}">${BSUI.money(v)}</button>`).join('')}
           </div>
         </div>
-        <div class="card card-tinted" style="background:var(--warning-bg);color:#92400e;font-size:.82rem">
-          <strong>⚠ Importante:</strong> Las casas pueden detectar el arbitraje y limitar tu cuenta. No es ilegal, pero pueden bajarte los límites. Consejo: evitá montos redondos y rotá entre casas. <a href="responsable.html" class="text-brand">Más info</a>
+      </div>
+
+      <!-- Filtros REALES -->
+      <div class="card stack mb-3">
+        <div class="row between"><strong>Filtros profesionales</strong><span class="muted tiny" id="arbFilterCount">—</span></div>
+        <div class="row gap-2" style="flex-wrap:wrap;align-items:center">
+          <label class="field" style="margin:0;min-width:160px">
+            <span class="field-label">ROI mín %</span>
+            <input class="input input-sm" id="arbMinRoi" type="number" step="0.1" min="0" value="0.5">
+          </label>
+          <label class="field" style="margin:0;min-width:160px">
+            <span class="field-label">Confidence mín %</span>
+            <input class="input input-sm" id="arbMinConf" type="number" step="5" min="0" max="100" value="50">
+          </label>
+          <label class="field" style="margin:0;min-width:160px">
+            <span class="field-label">Deporte</span>
+            <select class="select input-sm" id="arbSport"><option value="">Todos</option>${BSData.SPORTS.map(s=>`<option value="${s.key}">${s.name}</option>`).join('')}</select>
+          </label>
+          <label class="field" style="margin:0;min-width:160px">
+            <span class="field-label">Mercado</span>
+            <select class="select input-sm" id="arbMarket">
+              <option value="all">Todos</option>
+              <option value="h2h">1X2 (h2h-2way, h2h-3way)</option>
+              <option value="totals">Totales (over/under)</option>
+              <option value="btts">BTTS sí/no</option>
+              <option value="ah">Hándicap asiático</option>
+              <option value="cross">Cross-market (1+X2, 2+1X)</option>
+            </select>
+          </label>
+          <label class="cluster" style="cursor:pointer;margin:0">
+            <input type="checkbox" id="arbBankrollFit" checked>
+            <span class="tiny">Solo si entra en mi cuenta</span>
+            <a class="help-q" tabindex="0" data-tip="Descarta surebets donde los stakes calculados superan los límites históricos típicos de la cuenta en alguna de las casas."></a>
+          </label>
         </div>
       </div>
 
+      <!-- KPIs motor -->
       <div class="grid grid-4 mb-4">
-        <div class="kpi"><div class="kpi-label">Detectadas hoy</div><div class="kpi-value" id="arbToday">0</div></div>
-        <div class="kpi"><div class="kpi-label">ROI promedio</div><div class="kpi-value" id="arbAvgRoi">—</div></div>
-        <div class="kpi"><div class="kpi-label">Mejor ROI</div><div class="kpi-value" id="arbBestRoi">—</div></div>
-        <div class="kpi"><div class="kpi-label">Total histórico</div><div class="kpi-value" id="arbTotal">${hist.length}</div></div>
+        <div class="kpi"><div class="kpi-label">Activas</div><div class="kpi-value" id="arbActive">0</div></div>
+        <div class="kpi"><div class="kpi-label">Mejor ROI net</div><div class="kpi-value" id="arbBestRoi">—</div></div>
+        <div class="kpi"><div class="kpi-label">Avg confidence</div><div class="kpi-value" id="arbAvgConf">—</div></div>
+        <div class="kpi"><div class="kpi-label">Ciclos backend</div><div class="kpi-value" id="arbCycles">0</div></div>
       </div>
 
       <div class="grid" style="grid-template-columns: 1.6fr 1fr; gap:16px">
         <div class="card stack">
           <div class="row between">
             <strong>Surebets en vivo</strong>
-            <div class="cluster">
-              <label class="field" style="margin:0">
-                <span class="field-label">Profit mín. (ARS)</span>
-                <input class="input input-sm" id="arbMinProfit" type="number" value="5000" step="500" style="width:90px">
-              </label>
-              <label class="field" style="margin:0">
-                <span class="field-label">Slippage</span>
-                <input class="input input-sm" id="arbSlippage" type="number" value="1.5" step="0.1" style="width:80px">
-              </label>
-            </div>
+            <span class="muted tiny" id="arbLastUpd">—</span>
           </div>
           <div id="arbList" class="stack-sm" style="min-height:240px"></div>
         </div>
@@ -88,7 +131,7 @@
           </div>
         </div>
         <div class="table-wrap"><table class="table">
-          <thead><tr><th>Hora</th><th>Evento</th><th>Books</th><th>ROI</th><th></th></tr></thead>
+          <thead><tr><th>Hora</th><th>Evento</th><th>Mercado</th><th>Books</th><th>ROI</th><th>Conf</th><th></th></tr></thead>
           <tbody id="arbHist"></tbody>
         </table></div>
       </div>
@@ -99,7 +142,6 @@
       </div>
     `;
 
-    // Calculator subview
     const calcSeg = panel.querySelector('#arbCalcSeg');
     calcSeg.addEventListener('click', e => {
       const b = e.target.closest('button'); if (!b) return;
@@ -132,12 +174,8 @@
           const a = +host.querySelector('#ac_a').value, b = +host.querySelector('#ac_b').value, t = +host.querySelector('#ac_t').value;
           const sb = BSMath.surebet([a, b]); const st = BSMath.surebetStakes([a, b], t);
           host.querySelector('#acOut').innerHTML = sb.isSure
-            ? `<div class="card card-tinted mt-3 stack-sm"><strong class="text-success">Surebet ✓ ROI ${sb.roi.toFixed(2)}%</strong><div class="row between"><span>Stake A</span><span class="num">${BSUI.money(st.stakes[0])}</span></div><div class="row between"><span>Stake B</span><span class="num">${BSUI.money(st.stakes[1])}</span></div><div class="row between"><span>Profit</span><strong class="text-success num">${BSUI.money(st.profit)}</strong></div><button class="btn btn-outline btn-sm" id="copyStakes">Copiar stakes</button></div>`
+            ? `<div class="card card-tinted mt-3 stack-sm"><strong class="text-success">Surebet ✓ ROI ${sb.roi.toFixed(2)}%</strong><div class="row between"><span>Stake A</span><span class="num">${BSUI.money(st.stakes[0])}</span></div><div class="row between"><span>Stake B</span><span class="num">${BSUI.money(st.stakes[1])}</span></div><div class="row between"><span>Profit</span><strong class="text-success num">${BSUI.money(st.profit)}</strong></div></div>`
             : `<div class="muted tiny mt-3">No es surebet (margen ${(BSMath.overround([a,b])*100).toFixed(2)}%).</div>`;
-          host.querySelector('#copyStakes')?.addEventListener('click', () => {
-            navigator.clipboard.writeText(`A: ${st.stakes[0].toFixed(2)} @${a}\nB: ${st.stakes[1].toFixed(2)} @${b}`);
-            BSUI.toast({ title: 'Stakes copiados', type: 'success' });
-          });
         } else if (w === '3') {
           const a = +host.querySelector('#ac_a').value, b = +host.querySelector('#ac_b').value, c = +host.querySelector('#ac_c').value, t = +host.querySelector('#ac_t').value;
           const sb = BSMath.surebet([a, b, c]); const st = BSMath.surebetStakes([a, b, c], t);
@@ -159,10 +197,9 @@
     }
     renderCalc('2');
 
-    // Live engine simulation (deterministic)
-    let logLines = [];
-    let detectedToday = 0, sumRoi = 0, bestRoi = 0;
+    // ── Estado y bindings ──────────────────────────────────────────────
     let running = true;
+    let logLines = [];
     const cons = panel.querySelector('#arbConsole');
     function log(msg) {
       const ts = new Date().toLocaleTimeString('es-AR');
@@ -170,125 +207,195 @@
       cons.textContent = logLines.slice(-20).join('\n');
       cons.scrollTop = cons.scrollHeight;
     }
-    async function tick() {
+
+    function getFilters() {
+      return {
+        minRoi:        Number(panel.querySelector('#arbMinRoi').value) || 0,
+        minConfidence: (Number(panel.querySelector('#arbMinConf').value) || 0) / 100,
+        sport:         panel.querySelector('#arbSport').value || '',
+        market:        panel.querySelector('#arbMarket').value || 'all',
+        bankrollFit:   panel.querySelector('#arbBankrollFit').checked,
+        bankroll:      Number(String(panel.querySelector('#arbBankroll').value).replace(/[^\d]/g, '')) || 100000
+      };
+    }
+
+    function matchesFilters(sb, f) {
+      if (sb.sport && f.sport && sb.sport !== f.sport) return false;
+      if (f.market !== 'all') {
+        if (f.market === 'h2h' && !sb.market.startsWith('h2h')) return false;
+        if (f.market === 'totals' && !sb.market.startsWith('totals')) return false;
+        if (f.market === 'btts' && sb.market !== 'btts') return false;
+        if (f.market === 'ah' && !sb.market.startsWith('ah')) return false;
+        if (f.market === 'cross' && !sb.market.startsWith('cross')) return false;
+      }
+      if (f.bankrollFit && sb.bankrollFit === false) return false;
+      return true;
+    }
+
+    async function refresh() {
       if (!running) return;
-      const slip = panel.querySelector('#arbSlippage').value;
-      log('Escaneando 5 deportes · 25 casas · slippage ' + slip + '%');
-
-      // 1) Detección REAL via BSApi.getSurebets (usa BSEngine.findBestSurebet
-      //    sobre múltiples casas de The Odds API). Si no hay API o no encuentra,
-      //    cae al motor sobre matches sintéticos enriquecidos.
-      const slippage = (Number(slip) || 1.5) / 100;
-      const newOnes = [];
+      const f = getFilters();
       try {
-        let detected = [];
-        if (BSApi && BSApi.getSurebets) {
-          detected = await BSApi.getSurebets('soccer_epl').catch(() => []);
-        }
-        // Fallback: corre el motor sobre matches enriquecidos sintéticos
-        if (!detected.length && BSEngine && BSData.loadEnrichedMatches) {
-          const matches = await BSData.loadEnrichedMatches();
-          matches.forEach(m => {
-            if (!m.markets || !m.markets.h2h) return;
-            const books = Object.entries(m.markets.h2h);
-            if (books.length < 2) return;
-            const outcomes = books[0][1].draw != null ? ['home', 'draw', 'away'] : ['home', 'away'];
-            const booksOdds = books.map(([book, prices]) => ({
-              book, odds: outcomes.map(o => prices[o]).filter(Boolean)
-            })).filter(b => b.odds.length === outcomes.length);
-            const sb = BSEngine.findBestSurebet(booksOdds);
-            if (sb) detected.push({ match: m, market: 'h2h', outcomes, ...sb });
-          });
-          detected.sort((a, b) => b.roi - a.roi);
-        }
-
-        // Aplicar slippage: descontamos del ROI para reflejar lo que va a quedar
-        // después del movimiento de cuota entre detección y ejecución.
-        detected.forEach(sb => {
-          const adjRoi = sb.roi - slippage;
-          if (adjRoi <= 0.001) return;            // muy ajustado, descartar
-          const ev = sb.match
-            ? `${sb.match.home?.name || ''} vs ${sb.match.away?.name || ''}`.trim()
-            : 'Mercado';
-          const books = (sb.books || []).filter(Boolean);
-          const roiPct = +(adjRoi * 100).toFixed(2);
-          const item = {
-            id: 'sb' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
-            at: Date.now(),
-            event: ev || 'Surebet detectada',
-            books: books.length ? books.join(' / ') : 'Multi-casa',
-            roi: roiPct,
-            // Datos crudos para que el comparador y el calc puedan abrirlo
-            outcomes: sb.outcomes,
-            odds: sb.odds,
-            stakes: sb.stakes,
-            sport: sb.match?.sport
-          };
-          newOnes.push(item);
-          detectedToday++;
-          sumRoi += roiPct;
-          bestRoi = Math.max(bestRoi, roiPct);
-          log(`SUREBET ${item.event} · ROI ${roiPct}% · ${item.books}`);
-          if (panel.querySelector('#arbAudio').checked) beep();
+        const r = await BSLive.getArbitrageSnapshot({
+          minRoi: f.minRoi,
+          sport: f.sport,
+          minConfidence: f.minConfidence
         });
-      } catch (e) {
-        log(`[error] ${e?.message || e}`);
-      }
+        const all = (r.surebets || []).filter(sb => matchesFilters(sb, f));
+        renderSurebets(all, f);
 
-      if (newOnes.length) {
-        const merged = newOnes.concat(hist).slice(0, 500);
-        BSStore.set(BSStore.KEYS.arbHistory, merged);
-        renderList(newOnes);
-      } else {
-        log('Sin nuevas surebets este ciclo (margen del libro > 0)');
+        // KPIs
+        panel.querySelector('#arbActive').textContent = all.length;
+        if (all.length) {
+          panel.querySelector('#arbBestRoi').textContent = (Math.max(...all.map(s => s.netRoi || 0)) * 100).toFixed(2) + '%';
+          panel.querySelector('#arbAvgConf').textContent = ((all.reduce((s, x) => s + (x.confidence||0), 0) / all.length) * 100).toFixed(0) + '%';
+        } else {
+          panel.querySelector('#arbBestRoi').textContent = '—';
+          panel.querySelector('#arbAvgConf').textContent = '—';
+        }
+        panel.querySelector('#arbCycles').textContent = r.meta?.cycles || 0;
+        panel.querySelector('#arbLastUpd').textContent = `Backend ciclo cada ${(r.meta?.interval||5000)/1000}s · ${all.length}/${(r.surebets||[]).length} pasaron filtros`;
+        panel.querySelector('#arbFilterCount').textContent = `${all.length} surebets vigentes`;
+      } catch (e) {
+        log(`[error] ${e?.message}`);
       }
-      panel.querySelector('#arbToday').textContent = detectedToday;
-      panel.querySelector('#arbAvgRoi').textContent = detectedToday ? (sumRoi/detectedToday).toFixed(2)+'%' : '—';
-      panel.querySelector('#arbBestRoi').textContent = bestRoi ? bestRoi.toFixed(2)+'%' : '—';
-      panel.querySelector('#arbTotal').textContent = (BSStore.get(BSStore.KEYS.arbHistory)||[]).length;
+    }
+
+    function renderSurebets(list, f) {
+      const host = panel.querySelector('#arbList');
+      if (!list.length) {
+        host.innerHTML = `<div class="empty" style="padding:30px;text-align:center"><strong>Sin surebets vigentes</strong><p class="muted tiny">El motor escanea cada 5s. Las surebets aparecen acá apenas se detectan y se cierran cuando una casa mueve la cuota.</p></div>`;
+        return;
+      }
+      host.innerHTML = list.slice(0, 10).map(sb => surebetCard(sb, f)).join('');
+
+      // Bindings click
+      host.querySelectorAll('[data-copy-sb]').forEach(b => b.addEventListener('click', () => {
+        const sb = list.find(s => s.key === b.dataset.copySb);
+        if (sb) copyPlaybook(sb, f);
+      }));
+    }
+
+    function surebetCard(sb, f) {
+      const conf = sb.confidence || 0;
+      const confCls = conf > 0.7 ? 'success' : conf > 0.4 ? 'warning' : 'danger';
+      const profitARS = Math.round((f.bankroll * (sb.netRoi || 0)) / 10) * 10;
+      const minutesToEvent = sb.timeToEvent != null ? Math.floor(sb.timeToEvent / 60000) : null;
+      const minLabel = minutesToEvent != null ? (minutesToEvent < 60 ? `${minutesToEvent}m` : minutesToEvent < 24*60 ? `${Math.floor(minutesToEvent/60)}h` : `${Math.floor(minutesToEvent/1440)}d`) : '—';
+
+      const bookName = (k) => BSData.ALL_BOOKS.find(b => b.key === k)?.name || k;
+      const stakesByLeg = sb.latencyOrder || sb.books.map((b, i) => ({ book: b, outcome: sb.outcomes[i], odd: sb.odds[i], stake: sb.stakes?.[i] || 0 }));
+
+      const marketLabel = ({
+        'h2h-3way':  '1X2 — 3-way',
+        'h2h-2way':  '1X2 — 2-way',
+        'btts':      'BTTS sí/no',
+        'cross-1+X2':'Cross-market 1 + X2',
+        'cross-2+1X':'Cross-market 2 + 1X'
+      })[sb.market] || (sb.market.startsWith('totals-') ? `Over/Under ${sb.market.replace('totals-', '')}`
+                                                       : sb.market.startsWith('ah-') ? `Hándicap ${sb.market.replace('ah-', '')}` : sb.market);
+
+      const warnFit = sb.bankrollFit === false;
+
+      return `
+        <div class="card card-tinted card-pad-sm arb-card">
+          <div class="row between">
+            <div>
+              <div class="cluster">
+                <strong>${BSUI.esc(sb.event)}</strong>
+                <span class="badge badge-${confCls} tiny">Conf ${(conf*100).toFixed(0)}%</span>
+                ${warnFit ? '<span class="badge badge-warning tiny">⚠ stake &gt; límite cuenta</span>' : ''}
+              </div>
+              <div class="muted tiny">${BSUI.esc(marketLabel)} · kickoff en ${minLabel}</div>
+            </div>
+            <div class="text-right">
+              <strong class="badge badge-success num">+${(sb.netRoi*100).toFixed(2)}% net</strong>
+              <div class="muted tiny">(bruto +${(sb.grossRoi*100).toFixed(2)}% · slip ${(sb.slippage*100).toFixed(2)}%)</div>
+            </div>
+          </div>
+          <div class="arb-legs">
+            ${stakesByLeg.map(leg => {
+              const logo = window.BSLogos ? BSLogos.bookLogo(leg.book, { size: 14 }) : '';
+              return `<div class="arb-leg">
+                <div class="cluster" style="gap:6px">${logo}<strong class="tiny">${BSUI.esc(bookName(leg.book))}</strong></div>
+                <div class="muted tiny">${BSUI.esc(leg.outcome)}</div>
+                <div><span class="num">${leg.odd.toFixed(2)}</span></div>
+                <div><strong class="num text-brand">${BSUI.money(leg.stake)}</strong></div>
+              </div>`;
+            }).join('')}
+          </div>
+          <div class="row between" style="border-top:1px solid var(--border);padding-top:6px;margin-top:4px">
+            <div class="muted tiny">Profit garantizado @ ${BSUI.money(f.bankroll)}</div>
+            <strong class="num text-success">+${BSUI.money(profitARS)}</strong>
+          </div>
+          <div class="row between" style="margin-top:4px">
+            <button class="btn btn-ghost btn-sm" data-copy-sb="${sb.key}">📋 Copiar playbook</button>
+            <span class="muted tiny">Empezar por: ${BSUI.esc(bookName(stakesByLeg[0]?.book))}</span>
+          </div>
+        </div>
+      `;
+    }
+
+    function copyPlaybook(sb, f) {
+      const bookName = (k) => BSData.ALL_BOOKS.find(b => b.key === k)?.name || k;
+      const lines = [
+        `SUREBET — ${sb.event} (${sb.market})`,
+        `ROI neto: ${(sb.netRoi*100).toFixed(2)}% · Confidence: ${(sb.confidence*100).toFixed(0)}%`,
+        `Bankroll: ${BSUI.money(f.bankroll)} → Profit garantizado: ${BSUI.money(Math.round(f.bankroll * sb.netRoi / 10) * 10)}`,
+        `Orden de ejecución (por latencia descendente):`,
+        ...(sb.latencyOrder || []).map((leg, i) => `  ${i+1}. ${bookName(leg.book)} · ${leg.outcome} @ ${leg.odd.toFixed(2)} · stake ${BSUI.money(leg.stake)}`),
+        'NB: ejecutá rápido — las cuotas se cierran en segundos.'
+      ];
+      navigator.clipboard.writeText(lines.join('\n'));
+      BSUI.toast({ title: 'Playbook copiado', message: 'Pegalo donde lo necesites para ejecutar.', type: 'success' });
+      // Guardar en histórico
+      const hist = BSStore.get(BSStore.KEYS.arbHistory) || [];
+      const histItem = {
+        id: 'sb' + Date.now(),
+        at: Date.now(),
+        event: sb.event,
+        market: sb.market,
+        books: sb.books.map(bookName).join(' / '),
+        roi: +(sb.netRoi * 100).toFixed(2),
+        conf: sb.confidence
+      };
+      const merged = [histItem, ...hist].slice(0, 500);
+      BSStore.set(BSStore.KEYS.arbHistory, merged);
       renderHist();
     }
 
-    function renderList(items) {
-      const min = +panel.querySelector('#arbMinProfit').value;
-      const bank = Math.max(0, Number(String(panel.querySelector('#arbBankroll')?.value || '100000').replace(/[^\d]/g, '')) || 100000);
-      const all = (BSStore.get(BSStore.KEYS.arbHistory) || []).slice(0, 6);
-      panel.querySelector('#arbList').innerHTML = all.length ? all.map(s => {
-        const profit = bank * (s.roi / 100);
-        const stakeA = bank * 0.5 * (1 + (Math.abs(Math.floor(s.roi*100))%50)/100);
-        const stakeB = bank - stakeA;
-        return `
-        <div class="card card-tinted card-pad-sm">
-          <div class="row between">
-            <div>
-              <strong>${BSUI.esc(s.event)}</strong>
-              <div class="muted tiny">${BSUI.esc(s.books)} · ${new Date(s.at).toLocaleTimeString('es-AR')}</div>
-            </div>
-            <span class="badge badge-success num">+${s.roi}%</span>
-          </div>
-          <div class="row between" style="margin-top:6px;font-size:.78rem">
-            <span class="muted tiny">Stake casa A</span><span class="num">${BSUI.money(Math.round(stakeA/10)*10)}</span>
-          </div>
-          <div class="row between" style="font-size:.78rem">
-            <span class="muted tiny">Stake casa B</span><span class="num">${BSUI.money(Math.round(stakeB/10)*10)}</span>
-          </div>
-          <div class="row between" style="border-top:1px solid var(--border);padding-top:6px;margin-top:4px">
-            <strong class="tiny">Profit garantizado</strong>
-            <strong class="num text-success">+${BSUI.money(Math.round(profit/10)*10)}</strong>
-          </div>
-        </div>`;
-      }).join('') : '<div class="empty">Esperando surebets…</div>';
-    }
     function renderHist() {
       const list = (BSStore.get(BSStore.KEYS.arbHistory) || []).slice(0, 30);
       panel.querySelector('#arbHist').innerHTML = list.map(s => `
-        <tr><td class="mono tiny">${new Date(s.at).toLocaleTimeString('es-AR')}</td><td>${BSUI.esc(s.event)}</td><td>${BSUI.esc(s.books)}</td><td class="num text-success">+${s.roi}%</td><td><button class="btn-ghost btn-icon btn-sm" data-copy='${JSON.stringify(s)}'>${BSIcons.svg('copy',{size:14})}</button></td></tr>
+        <tr><td class="mono tiny">${new Date(s.at).toLocaleTimeString('es-AR')}</td><td>${BSUI.esc(s.event)}</td><td class="tiny">${BSUI.esc(s.market || '—')}</td><td>${BSUI.esc(s.books)}</td><td class="num text-success">+${s.roi}%</td><td class="num">${s.conf ? (s.conf*100).toFixed(0)+'%' : '—'}</td><td></td></tr>
       `).join('');
-      panel.querySelectorAll('[data-copy]').forEach(b => b.addEventListener('click', () => {
-        navigator.clipboard.writeText(b.dataset.copy);
-        BSUI.toast({ title: 'Surebet copiada', type: 'success' });
-      }));
     }
+
+    // ── Push en vivo via WebSocket ─────────────────────────────────────
+    const onSurebet = (e) => {
+      log(`SUREBET ${e.detail?.event || ''} · ${e.detail?.market || ''} · +${((e.detail?.netRoi||0)*100).toFixed(2)}% · conf ${((e.detail?.confidence||0)*100).toFixed(0)}%`);
+      if (panel.querySelector('#arbAudio').checked) beep();
+      refresh();
+    };
+    const onClosed = (e) => {
+      const ids = e.detail || [];
+      if (ids.length) log(`Cerradas ${ids.length} surebet(s) (cuota movió)`);
+      refresh();
+    };
+    const onCycle = (e) => {
+      // Re-render KPIs cada ciclo del motor
+      panel.querySelector('#arbCycles').textContent = e.detail?.n || 0;
+    };
+    window.addEventListener('bs:live-surebet', onSurebet);
+    window.addEventListener('bs:live-surebets-closed', onClosed);
+    window.addEventListener('bs:live-arb-cycle', onCycle);
+
+    panel.querySelector('#arbOn').addEventListener('change', e => { running = e.target.checked; });
+    ['#arbMinRoi', '#arbMinConf', '#arbSport', '#arbMarket', '#arbBankrollFit'].forEach(sel => {
+      panel.querySelector(sel)?.addEventListener('input', refresh);
+      panel.querySelector(sel)?.addEventListener('change', refresh);
+    });
+
     function beep() {
       try {
         const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -299,10 +406,9 @@
       } catch {}
     }
 
-    panel.querySelector('#arbOn').addEventListener('change', e => running = e.target.checked);
     panel.querySelector('#arbExport').addEventListener('click', () => {
       const list = BSStore.get(BSStore.KEYS.arbHistory) || [];
-      const rows = [['hora','evento','books','roi'].join(',')].concat(list.map(s => [new Date(s.at).toISOString(), s.event, s.books, s.roi].join(',')));
+      const rows = [['hora','evento','mercado','books','roi','conf'].join(',')].concat(list.map(s => [new Date(s.at).toISOString(), s.event, s.market || '', s.books, s.roi, s.conf || ''].join(',')));
       const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
       const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'betsafe-surebets.csv'; a.click();
     });
@@ -311,8 +417,7 @@
       renderHist(); BSUI.toast({ title: 'Histórico limpio', type: 'info' });
     });
 
-    log('Motor de arbitraje iniciado.');
-    // Bankroll stepper for surebet stake distribution
+    // Bankroll stepper
     const bankEl = panel.querySelector('#arbBankroll');
     panel.querySelectorAll('[data-stepper="arbbank"] .num-stepper-btn').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -320,26 +425,30 @@
         const cur = Number(String(bankEl.value).replace(/[^\d]/g, '')) || 0;
         const step = cur >= 1000000 ? 100000 : cur >= 100000 ? 10000 : 5000;
         bankEl.value = String(Math.max(0, cur + sign * step));
-        renderList([]);
+        refresh();
       });
     });
     bankEl.addEventListener('input', () => {
       bankEl.value = String(bankEl.value).replace(/[^\d]/g, '');
-      renderList([]);
+      refresh();
     });
     panel.querySelectorAll('.arb-quick').forEach(b => b.addEventListener('click', () => {
       bankEl.value = String(b.dataset.amount);
-      renderList([]);
+      refresh();
     }));
 
-    renderList([]);
+    log('Conectado al motor de arbitraje del backend · escaneando cada 5s · 12 casas legales AR');
+    refresh();
     renderHist();
-    tick();
-    const interval = setInterval(tick, 12000);
-    panel.__cleanup = () => clearInterval(interval);
+
+    panel.__cleanup = () => {
+      window.removeEventListener('bs:live-surebet', onSurebet);
+      window.removeEventListener('bs:live-surebets-closed', onClosed);
+      window.removeEventListener('bs:live-arb-cycle', onCycle);
+    };
   }
 
-    function doRegister() {
+  function doRegister() {
     if (typeof window.BSDash !== 'undefined') BSDash.register('arbitrage', render);
     else document.addEventListener('DOMContentLoaded', () => BSDash.register('arbitrage', render));
   }

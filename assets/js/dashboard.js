@@ -2,17 +2,18 @@
 (function (global) {
   'use strict';
 
-  // Primary (always visible, large): las 5 funciones más usadas.
+  // Primary (always visible, large): orden definido por UX — Inicio primero
+  // porque es el punto de entrada natural de un usuario nuevo.
   const TABS_PRIMARY = [
-    { id: 'ai',          label: 'AI Picks',     icon: 'bolt', vipOnly: false, desc: 'Picks listos por IA' },
+    { id: 'overview',    label: 'Inicio',       icon: 'home', vipOnly: false, desc: 'Bienvenida y accesos' },
     { id: 'aigenerator', label: 'Generador IA', icon: 'bolt', vipOnly: true,  desc: 'Combinadas óptimas auto' },
+    { id: 'ai',          label: 'AI Picks',     icon: 'bolt', vipOnly: false, desc: 'Picks listos por IA' },
     { id: 'builder',     label: 'Builder',      icon: 'list', vipOnly: false, desc: 'Armá tu combinada' },
     { id: 'arbitrage',   label: 'Arbitraje',    icon: 'arb',  vipOnly: true,  desc: 'Ganancia sin riesgo' },
     { id: 'worldcup',    label: 'Mundial 2026', icon: 'cup',  vipOnly: false, desc: 'Todo el Mundial en un lugar' }
   ];
   // Advanced (collapsible): herramientas secundarias.
   const TABS_ADVANCED = [
-    { id: 'overview',    label: 'Inicio',       icon: 'home',     vipOnly: false, desc: 'Bienvenida y accesos' },
     { id: 'simulator',   label: 'Simulador',    icon: 'play',     vipOnly: false, desc: 'Probá sin arriesgar' },
     { id: 'comparator',  label: 'Comparador',   icon: 'trend',    vipOnly: false, desc: 'La casa que mejor paga' },
     { id: 'calc',        label: 'Calc Hub',     icon: 'calc',     vipOnly: false, desc: 'Calculadoras esenciales' },
@@ -112,7 +113,7 @@
     const fromHash = (location.hash || '').replace('#', '');
     const valid = TABS.find(t => t.id === fromHash);
     if (valid && (!valid.vipOnly || BSAuth.isVip())) go(fromHash);
-    else go('ai');
+    else go('overview');   // Inicio por defecto
   }
 
   function go(id) {

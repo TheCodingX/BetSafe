@@ -2,8 +2,16 @@
 (function () {
   'use strict';
 
-  function render(panel) {
-    const matches = BSData.makeMatches();
+  async function render(panel) {
+    // Mostrar skeleton, luego cargar eventos en vivo del backend
+    panel.innerHTML = `<div class="card stack" style="min-height:280px"><div class="row between"><strong>Cargando cuotas en vivo…</strong><span class="muted tiny">conectando con el scraper</span></div><div class="empty">Recibiendo cuotas de las 12 casas argentinas legales.</div></div>`;
+    let matches = await BSData.awaitLive({ timeoutMs: 12000 });
+    if (!matches.length) {
+      panel.innerHTML = `<div class="card stack" style="min-height:280px;text-align:center;padding:40px"><strong>Sin cuotas todavía</strong><p class="muted">El primer ciclo del backend tarda unos segundos. Cuando termine, las cuotas reales aparecen acá.</p><span class="muted tiny">${BSData.liveFreshness()}</span></div>`;
+      const onSnap = () => { if (BSData.liveReady()) { window.removeEventListener('bs:live-snapshot', onSnap); render(panel); } };
+      window.addEventListener('bs:live-snapshot', onSnap, { once: true });
+      return;
+    }
     panel.innerHTML = `
       <div class="row between mb-3">
         <div>
@@ -76,7 +84,10 @@
     let activeSport = 'all', activeLeague = 'all', riskBand = 50;
 
     function refresh() {
+      // Re-cargar siempre desde BSLive para que cada refresh use lo más fresco
+      matches = BSData.liveEvents({});
       const list = matches.filter(m =>
+        m.markets && m.markets.h2h && Object.keys(m.markets.h2h).length > 0 &&
         (activeSport === 'all' || m.sport === activeSport) &&
         (activeLeague === 'all' || m.league === activeLeague)
       );
@@ -212,13 +223,26 @@
 
     refresh();
 
-    // Auto-refresh every 30s
+    // Auto-refresh: cada vez que el backend pushea, actualizamos al toque
+    const onLive = () => refresh();
+    window.addEventListener('bs:live-update', onLive);
+    window.addEventListener('bs:live-snapshot', onLive);
+
+    // Tick visual para el timer
     let timer = 30, tickerEl = panel.querySelector('#cTimer');
     const interval = setInterval(() => {
-      timer--; if (timer <= 0) { timer = 30; refresh(); }
-      tickerEl.textContent = `Próximo refresh en ${timer} s`;
+      timer--;
+      if (timer <= 0) timer = 30;
+      const ms = BSLive?.timeSinceUpdate?.();
+      tickerEl.textContent = ms != null
+        ? `Última actualización ${BSData.liveFreshness()} · conectado`
+        : `Próximo refresh en ${timer} s`;
     }, 1000);
-    panel.__cleanup = () => clearInterval(interval);
+    panel.__cleanup = () => {
+      clearInterval(interval);
+      window.removeEventListener('bs:live-update', onLive);
+      window.removeEventListener('bs:live-snapshot', onLive);
+    };
   }
 
     function doRegister() {

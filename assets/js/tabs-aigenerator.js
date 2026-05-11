@@ -12,7 +12,7 @@
 (function () {
   'use strict';
 
-  function render(panel) {
+  async function render(panel) {
     if (!BSAuth.isVip()) {
       panel.innerHTML = `
         <div class="card card-vip card-pad-lg stack reveal" style="text-align:center">
@@ -31,7 +31,12 @@
       return;
     }
 
-    const matches = BSData.makeMatches();
+    // Esperar al primer snapshot del backend si todavía no lo tenemos
+    if (!BSData.liveReady()) {
+      panel.innerHTML = `<div class="card stack" style="min-height:240px;padding:40px;text-align:center"><strong>Cargando partidos en vivo…</strong><p class="muted tiny">Recibiendo cuotas reales de las 12 casas argentinas legales.</p><span class="muted tiny">${BSData.liveFreshness()}</span></div>`;
+      await BSData.awaitLive({ timeoutMs: 12000 });
+    }
+    const matches = BSData.liveEvents({});
     const SPORTS = (BSData.SPORTS || []).slice(0, 8);
     const LEAGUES = BSData.LEAGUES || [];
     const COVER = BSData.BOOK_MARKET_COVERAGE || {};
@@ -43,41 +48,183 @@
         <div class="agx-hero__main">
           <span class="badge-vip agx-hero__chip">VIP · Generador IA</span>
           <h2 class="agx-hero__title">Combinadas óptimas del día, armadas por la IA</h2>
-          <p class="agx-hero__sub">Elegí deporte, ligas, riesgo y la IA arma las mejores combinadas — con la casa argentina que mejor paga cada una.</p>
+          <p class="agx-hero__sub">Elegí tus casas, los mercados, el nivel de riesgo y la IA arma las combinadas — con la casa argentina que mejor paga cada una.</p>
         </div>
         <div class="agx-hero__steps" aria-hidden="true">
-          <span class="agx-step is-active" data-step="1"><span class="agx-step__n">1</span><span class="agx-step__t">Deporte</span></span>
-          <span class="agx-step" data-step="2"><span class="agx-step__n">2</span><span class="agx-step__t">Ligas</span></span>
+          <span class="agx-step is-active" data-step="1"><span class="agx-step__n">1</span><span class="agx-step__t">Casinos</span></span>
+          <span class="agx-step" data-step="2"><span class="agx-step__n">2</span><span class="agx-step__t">Mercados</span></span>
           <span class="agx-step" data-step="3"><span class="agx-step__n">3</span><span class="agx-step__t">Riesgo</span></span>
           <span class="agx-step" data-step="4"><span class="agx-step__n">4</span><span class="agx-step__t">Generar</span></span>
         </div>
       </header>
 
-      <!-- Step 1 — Deporte -->
-      <section class="agx-card reveal" data-step="1">
+      <!-- Step 1 — CASINOS (PRIMERO, todos desmarcados por defecto) -->
+      <section class="agx-card reveal agx-card--books" data-step="1">
         <header class="agx-card__head">
           <span class="agx-card__n">1</span>
-          <h3 class="agx-card__title">Deporte</h3>
+          <h3 class="agx-card__title">¿En qué casas apostás?</h3>
+          <span class="agx-card__hint">Marcá solo las casas donde tenés cuenta</span>
+          <span class="agx-card__badge" id="agBooksCount">0 seleccionadas</span>
         </header>
-        <div class="cluster agx-chip-row" id="agSportChips">
-          <button class="league-chip active" data-sport="all">${BSIcons.svg('soccer',{size:14})}<span>Todos</span></button>
-          ${SPORTS.map(s => `<button class="league-chip" data-sport="${s.key}">${BSIcons.svg(s.icon||'soccer',{size:14})}<span>${BSUI.esc(s.name)}</span></button>`).join('')}
+        <p class="muted tiny" style="margin:0 0 12px">La IA analiza cuotas <strong>solo de las casas que marques</strong> y te dice cuál paga más por tu combinada exacta. Si no marcás ninguna, te avisamos para no generar resultados inútiles.</p>
+        <div class="agx-books-grid" id="agBooksFilter">
+          ${(BSData.BOOKS_AR || []).map(b => `
+            <label class="agx-book-card" data-book-key="${b.key}">
+              <input type="checkbox" data-book="${b.key}" hidden>
+              <span class="agx-book-logo">${window.BSLogos ? BSLogos.bookLogo(b.key, { size: 36 }) : ''}</span>
+              <span class="agx-book-name">${BSUI.esc(b.name)}</span>
+              <span class="agx-book-license tiny muted">${b.license}</span>
+              <span class="agx-book-tick" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l5 5 9-11"/></svg>
+              </span>
+            </label>`).join('')}
+        </div>
+        <div class="row gap-2 mt-2" style="flex-wrap:wrap">
+          <button type="button" class="btn btn-ghost btn-sm" id="agBooksAll">Seleccionar todas</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="agBooksNone">Limpiar selección</button>
         </div>
       </section>
 
-      <!-- Step 2 — Ligas -->
+      <!-- Step 2 — MERCADOS / Opciones de apuesta (todas marcadas por defecto) -->
       <section class="agx-card reveal" data-step="2">
         <header class="agx-card__head">
           <span class="agx-card__n">2</span>
-          <h3 class="agx-card__title">Ligas <span class="agx-card__hint">(elegí una o varias)</span></h3>
-          <span class="agx-card__badge" id="agLeagueCount">Todas</span>
+          <h3 class="agx-card__title">¿Qué tener en cuenta para las apuestas?</h3>
+          <span class="agx-card__hint">Destildá solo las opciones que NO querés usar</span>
         </header>
-        <div class="cluster agx-chip-row" id="agLeagueChips">
-          <button class="league-chip active" data-lg="all"><span>Todas</span></button>
-          ${LEAGUES.slice(0, 14).map(l => {
-            const logo = window.BSLogos?.leagueLogo ? BSLogos.leagueLogo(l.key, { size: 14 }) : '';
-            return `<button class="league-chip" data-lg="${l.key}">${logo}<span>${BSUI.esc(l.name)}</span></button>`;
-          }).join('')}
+        <div class="ag-advanced-grid">
+          <fieldset class="ag-mkt-set ag-mkt-set--full">
+            <legend class="field-label">Mercados a considerar</legend>
+            ${[
+              {
+                title:'Resultado',
+                items:[
+                  ['h2h','Resultado (1X2)'],
+                  ['dc','Doble oportunidad'],
+                  ['dnb','Empate anula (DNB)'],
+                  ['ht','Resultado al descanso'],
+                  ['htft','Descanso / Final']
+                ]
+              },
+              {
+                title:'Hándicap',
+                items:[
+                  ['ah','Hándicap asiático'],
+                  ['eh','Hándicap europeo']
+                ]
+              },
+              {
+                title:'Goles',
+                items:[
+                  ['totals','Más / Menos goles'],
+                  ['totals_home','Goles del local'],
+                  ['totals_away','Goles del visitante'],
+                  ['totals_ht','Goles al descanso'],
+                  ['btts','Ambos equipos marcan'],
+                  ['btts_result','Ambos marcan + resultado'],
+                  ['exact_score','Marcador exacto']
+                ]
+              },
+              {
+                title:'Goleadores',
+                items:[
+                  ['scorer_any','Goleador en cualquier momento'],
+                  ['scorer_first','Primer goleador'],
+                  ['scorer_last','Último goleador'],
+                  ['scorer_2plus','Jugador con 2+ goles'],
+                  ['scorer_hat','Hat-trick (3+ goles)']
+                ]
+              },
+              {
+                title:'Tarjetas',
+                items:[
+                  ['cards','Total de tarjetas'],
+                  ['cards_home','Tarjetas del local'],
+                  ['cards_away','Tarjetas del visitante'],
+                  ['card_player','Tarjeta a jugador específico'],
+                  ['first_card','Primera tarjeta (equipo)'],
+                  ['red_card','Roja en el partido (sí/no)']
+                ]
+              },
+              {
+                title:'Córners',
+                items:[
+                  ['corners','Total de córners'],
+                  ['corners_home','Córners del local'],
+                  ['corners_away','Córners del visitante'],
+                  ['corners_handicap','Hándicap de córners'],
+                  ['first_corner','Primer córner']
+                ]
+              },
+              {
+                title:'Tiros / disparos',
+                items:[
+                  ['shots','Tiros totales'],
+                  ['shots_on_target','Tiros al arco'],
+                  ['shots_player','Tiros de un jugador']
+                ]
+              },
+              {
+                title:'Stats de jugador',
+                items:[
+                  ['player_stats','Estadísticas de jugador (general)'],
+                  ['player_assists','Asistencias'],
+                  ['player_passes','Pases completados'],
+                  ['player_tackles','Entradas / quites']
+                ]
+              }
+            ].map(group => `
+              <div class="ag-mkt-group">
+                <span class="ag-mkt-group-title">${group.title}</span>
+                <div class="ag-mkt-chips">
+                  ${group.items.map(([k, lbl]) => `
+                    <label class="ag-mkt-chip is-on">
+                      <input type="checkbox" data-mkt="${k}" checked hidden>
+                      <span>${BSUI.esc(lbl)}</span>
+                    </label>`).join('')}
+                </div>
+              </div>`).join('')}
+          </fieldset>
+
+          <div class="ag-toggle-grid">
+            <label class="ag-toggle">
+              <input type="checkbox" id="agUseInjuries" checked>
+              <span>Filtrar por lesiones reportadas</span>
+            </label>
+            <label class="ag-toggle">
+              <input type="checkbox" id="agUseWeather" checked>
+              <span>Considerar clima (impacto en O/U y córners)</span>
+            </label>
+            <label class="ag-toggle">
+              <input type="checkbox" id="agUseSmart" checked>
+              <span>Priorizar partidos con movimiento sharp</span>
+            </label>
+            <label class="ag-toggle">
+              <input type="checkbox" id="agAvoidCorr" checked>
+              <span>Evitar legs correlacionadas (mismo evento)</span>
+            </label>
+          </div>
+
+          <div class="row gap-2" style="flex-wrap:wrap;align-items:flex-end">
+            <label class="field" style="margin:0;min-width:170px">
+              <span class="field-label">Deporte</span>
+              <div class="cluster agx-chip-row" id="agSportChips" style="margin-top:6px">
+                <button type="button" class="league-chip active" data-sport="all">${BSIcons.svg('soccer',{size:14})}<span>Todos</span></button>
+                ${SPORTS.map(s => `<button type="button" class="league-chip" data-sport="${s.key}">${BSIcons.svg(s.icon||'soccer',{size:14})}<span>${BSUI.esc(s.name)}</span></button>`).join('')}
+              </div>
+            </label>
+          </div>
+
+          <div>
+            <span class="field-label" style="display:block;margin-bottom:6px">Ligas (opcional — vacío = todas las del deporte elegido)</span>
+            <div class="cluster agx-chip-row" id="agLeagueChips">
+              <button type="button" class="league-chip active" data-lg="all"><span>Todas</span></button>
+              ${LEAGUES.slice(0, 14).map(l => {
+                const logo = window.BSLogos?.leagueLogo ? BSLogos.leagueLogo(l.key, { size: 14 }) : '';
+                return `<button type="button" class="league-chip" data-lg="${l.key}">${logo}<span>${BSUI.esc(l.name)}</span></button>`;
+              }).join('')}
+            </div>
+          </div>
         </div>
       </section>
 
@@ -117,11 +264,11 @@
         </div>
       </section>
 
-      <!-- Step 4 — Configuración -->
+      <!-- Step 4 — Configuración + Generar -->
       <section class="agx-card reveal" data-step="4">
         <header class="agx-card__head">
           <span class="agx-card__n">4</span>
-          <h3 class="agx-card__title">Configuración</h3>
+          <h3 class="agx-card__title">Configurá y generá</h3>
         </header>
         <div class="agx-config">
           <div class="agx-config__item">
@@ -149,153 +296,10 @@
               <button type="button" class="num-stepper-btn" data-step="+" aria-label="+"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
             </div>
           </div>
-        </div>
-      </section>
-
-      <!-- Step 5 — Filtros avanzados (siempre visible) -->
-      <section class="agx-card reveal" data-step="5">
-        <header class="agx-card__head">
-          <span class="agx-card__n">5</span>
-          <h3 class="agx-card__title">Filtros avanzados</h3>
-        </header>
-        <div class="ag-advanced-grid">
-          <label class="field">
-            <span class="field-label">EV mínimo (%)</span>
-            <select class="select" id="agMinEv">
-              <option value="0">0% (cualquiera)</option>
-              <option value="2">≥ 2%</option>
-              <option value="5" selected>≥ 5% (recomendado)</option>
-              <option value="8">≥ 8% (estricto)</option>
-              <option value="12">≥ 12% (sólo gemas)</option>
-            </select>
-          </label>
-          <label class="field">
-            <span class="field-label">Ventana temporal</span>
-            <select class="select" id="agTimeWindow">
-              <option value="6">Próximas 6 h</option>
-              <option value="12">Próximas 12 h</option>
-              <option value="24" selected>Próximas 24 h</option>
-              <option value="48">Próximas 48 h</option>
-              <option value="168">Esta semana</option>
-            </select>
-          </label>
-          <label class="field">
-            <span class="field-label">Kelly fraction</span>
-            <select class="select" id="agKelly">
-              <option value="1">Full Kelly</option>
-              <option value="0.5" selected>½ Kelly (recomendado)</option>
-              <option value="0.25">¼ Kelly (conservador)</option>
-              <option value="0">Sin Kelly (stake plano)</option>
-            </select>
-          </label>
-
-          <!-- MERCADOS DISPONIBLES — agrupados por categoría -->
-          <fieldset class="ag-mkt-set ag-mkt-set--full">
-            <legend class="field-label">Mercados a considerar</legend>
-            ${[
-              {
-                title:'Resultado',
-                items:[
-                  ['h2h','Resultado (1X2)', true],
-                  ['dc','Doble oportunidad', true],
-                  ['dnb','Empate anula (DNB)', false],
-                  ['ht','Resultado al descanso', false],
-                  ['htft','Descanso / Final', false]
-                ]
-              },
-              {
-                title:'Hándicap',
-                items:[
-                  ['ah','Hándicap asiático', true],
-                  ['eh','Hándicap europeo', false]
-                ]
-              },
-              {
-                title:'Goles',
-                items:[
-                  ['totals','Más / Menos goles', true],
-                  ['totals_home','Goles del local', false],
-                  ['totals_away','Goles del visitante', false],
-                  ['totals_ht','Goles al descanso', false],
-                  ['btts','Ambos equipos marcan', true],
-                  ['btts_result','Ambos marcan + resultado', false],
-                  ['exact_score','Marcador exacto', false]
-                ]
-              },
-              {
-                title:'Goleadores',
-                items:[
-                  ['scorer_any','Goleador en cualquier momento', false],
-                  ['scorer_first','Primer goleador', false],
-                  ['scorer_last','Último goleador', false],
-                  ['scorer_2plus','Jugador con 2+ goles', false],
-                  ['scorer_hat','Hat-trick (3+ goles)', false]
-                ]
-              },
-              {
-                title:'Tarjetas',
-                items:[
-                  ['cards','Total de tarjetas', false],
-                  ['cards_home','Tarjetas del local', false],
-                  ['cards_away','Tarjetas del visitante', false],
-                  ['card_player','Tarjeta a jugador específico', false],
-                  ['first_card','Primera tarjeta (equipo)', false],
-                  ['red_card','Roja en el partido (sí/no)', false]
-                ]
-              },
-              {
-                title:'Córners',
-                items:[
-                  ['corners','Total de córners', false],
-                  ['corners_home','Córners del local', false],
-                  ['corners_away','Córners del visitante', false],
-                  ['corners_handicap','Hándicap de córners', false],
-                  ['first_corner','Primer córner', false]
-                ]
-              }
-            ].map(group => `
-              <div class="ag-mkt-group">
-                <span class="ag-mkt-group-title">${group.title}</span>
-                <div class="ag-mkt-chips">
-                  ${group.items.map(([k, lbl, def]) => `
-                    <label class="ag-mkt-chip ${def?'is-on':''}">
-                      <input type="checkbox" data-mkt="${k}" ${def?'checked':''} hidden>
-                      <span>${BSUI.esc(lbl)}</span>
-                    </label>`).join('')}
-                </div>
-              </div>`).join('')}
-          </fieldset>
-
-          <fieldset class="ag-mkt-set ag-mkt-set--full">
-            <legend class="field-label">Casas argentinas a priorizar</legend>
-            <div class="ag-mkt-chips" id="agBooksFilter">
-              ${(BSData.BOOKS_AR || []).map(b => `
-                <label class="ag-mkt-chip is-on ag-mkt-chip--book">
-                  <input type="checkbox" data-book="${b.key}" checked hidden>
-                  <span class="ag-mkt-chip-logo">${window.BSLogos ? BSLogos.bookLogo(b.key, { size: 16 }) : ''}</span>
-                  <span>${BSUI.esc(b.name)}</span>
-                </label>`).join('')}
-            </div>
-          </fieldset>
-
-          <div class="ag-toggle-grid">
-            <label class="ag-toggle">
-              <input type="checkbox" id="agUseInjuries" checked>
-              <span>Filtrar por lesiones reportadas</span>
-            </label>
-            <label class="ag-toggle">
-              <input type="checkbox" id="agUseWeather" checked>
-              <span>Considerar clima (impacto en O/U y córners)</span>
-            </label>
-            <label class="ag-toggle">
-              <input type="checkbox" id="agUseSmart" checked>
-              <span>Priorizar partidos con movimiento sharp</span>
-            </label>
-            <label class="ag-toggle">
-              <input type="checkbox" id="agAvoidCorr" checked>
-              <span>Evitar legs correlacionadas (mismo evento)</span>
-            </label>
-          </div>
+          <!-- hidden — mantienen IDs para no romper handlers existentes -->
+          <input type="hidden" id="agMinEv" value="5">
+          <input type="hidden" id="agTimeWindow" value="24">
+          <input type="hidden" id="agKelly" value="0.5">
         </div>
       </section>
 
@@ -369,6 +373,52 @@
       }
       while (out.length < 3) out.push(pool[out.length] || ar[out.length]);
       return out;
+    }
+
+    /** Para una combinada armada, calcula la cuota TOTAL en cada casa que el
+     *  usuario marcó (multiplicando las cuotas de cada leg en ESA casa).
+     *  Si una casa no ofrece alguno de los mercados, contamos solo las que cubre
+     *  y reportamos coveredLegs separado para que el usuario vea la cobertura.
+     *  Devuelve ranking ordenado por cuota total descendente. */
+    function bestBookForCombo(legs, selectedBookKeys, marketLabels, cov) {
+      if (!Array.isArray(legs) || !legs.length || !Array.isArray(selectedBookKeys) || !selectedBookKeys.length) return [];
+      const books = (BSData.BOOKS_AR || []).filter(b => selectedBookKeys.includes(b.key));
+      const ranked = books.map(book => {
+        let totalOdd = 1;
+        let coveredLegs = 0;
+        for (const l of legs) {
+          // El backend nos da `eventId`. Buscamos el evento live y la cuota en esa casa.
+          const ev = BSData.liveEvents({}).find(e => e.id === l.match?.id || e.id === l.eventId);
+          if (!ev) {
+            // Si no encontramos el evento, asumimos la cuota base del backend (l.odd)
+            totalOdd *= l.odd || 1;
+            coveredLegs++;
+            continue;
+          }
+          const mkt = (ev.markets || {})[l.market];
+          const entry = mkt && mkt[book.key];
+          let priceInBook = null;
+          if (entry) {
+            const o = l.line || l.outcome;
+            if (l.market === 'h2h')        priceInBook = entry[o] || entry.home || entry.away;
+            else if (l.market === 'dc')    priceInBook = entry[o] || entry.home_or_draw || entry.draw_or_away || entry.home_or_away;
+            else if (l.market === 'btts')  priceInBook = entry[o] || entry.yes || entry.no;
+            else if (l.market === 'totals') {
+              // entry está indexado por línea
+              const lineNum = parseFloat(String(o).replace(/[^\d.]/g, '')) || null;
+              const byLine = lineNum && entry[lineNum];
+              if (byLine) priceInBook = /under|menos/i.test(o) ? byLine.under : byLine.over;
+            } else if (l.market === 'ah')  priceInBook = entry.home_minus || entry.away_plus;
+          }
+          if (priceInBook && priceInBook > 1) {
+            totalOdd *= priceInBook;
+            coveredLegs++;
+          }
+        }
+        return { book, totalOdd, coveredLegs };
+      }).filter(r => r.coveredLegs > 0);
+      ranked.sort((a, b) => (b.coveredLegs - a.coveredLegs) || (b.totalOdd - a.totalOdd));
+      return ranked;
     }
     function bookChip(b, payout) {
       if (!b) return '';
@@ -499,8 +549,49 @@
       panel.querySelector('#agCount').value = '3';
       panel.querySelector('#agStake').value = '10000';
       panel.querySelector('#agOutput').innerHTML = '';
+      // Limpiar selección de casas (desmarcadas por defecto)
+      panel.querySelectorAll('#agBooksFilter input[type=checkbox]').forEach(cb => { cb.checked = false; });
+      panel.querySelectorAll('#agBooksFilter .agx-book-card').forEach(c => c.classList.remove('is-on'));
+      updateBooksCount();
       updateStatus();
     });
+
+    // ─────── Casinos: handlers + contador ───────
+    function selectedBooks() {
+      return [...panel.querySelectorAll('#agBooksFilter input[type=checkbox]:checked')].map(cb => cb.dataset.book);
+    }
+    function updateBooksCount() {
+      const n = selectedBooks().length;
+      const el = panel.querySelector('#agBooksCount');
+      if (el) {
+        el.textContent = n === 0 ? '0 seleccionadas' : `${n} seleccionada${n>1?'s':''}`;
+        el.classList.toggle('is-empty', n === 0);
+      }
+      const btn = panel.querySelector('#agGenerate');
+      if (btn) btn.classList.toggle('is-disabled', n === 0);
+    }
+    panel.querySelector('#agBooksFilter').addEventListener('click', e => {
+      const card = e.target.closest('.agx-book-card');
+      if (!card) return;
+      const cb = card.querySelector('input[type=checkbox]');
+      // Si el click cayó en el input dejamos que el browser lo maneje
+      if (e.target !== cb) {
+        cb.checked = !cb.checked;
+      }
+      card.classList.toggle('is-on', cb.checked);
+      updateBooksCount();
+    });
+    panel.querySelector('#agBooksAll')?.addEventListener('click', () => {
+      panel.querySelectorAll('#agBooksFilter input[type=checkbox]').forEach(cb => { cb.checked = true; });
+      panel.querySelectorAll('#agBooksFilter .agx-book-card').forEach(c => c.classList.add('is-on'));
+      updateBooksCount();
+    });
+    panel.querySelector('#agBooksNone')?.addEventListener('click', () => {
+      panel.querySelectorAll('#agBooksFilter input[type=checkbox]').forEach(cb => { cb.checked = false; });
+      panel.querySelectorAll('#agBooksFilter .agx-book-card').forEach(c => c.classList.remove('is-on'));
+      updateBooksCount();
+    });
+    updateBooksCount();
 
     // ─────── Engine animation: pasos secuenciales ───────
     function runEngineAnimation() {
@@ -537,69 +628,99 @@
       });
     }
 
-    // ─────── Generate (usa BSEngine para optimización real) ───────
+    // ─────── Generate: usa el AI Pipeline del backend (factors + LLM + quant)
     panel.querySelector('#agGenerate').addEventListener('click', async () => {
-      const n = Number(panel.querySelector('#agLegs').value);
-      const count = Math.max(1, Math.min(50, Number(panel.querySelector('#agCount').value || 1)));
-      const stake = Math.max(100, Number(panel.querySelector('#agStake').value || 10000));
-      const minEv = (Number(panel.querySelector('#agMinEv')?.value) || 5) / 100 - 0.10; // tolerancia
-
-      // 1) Cargamos matches REALES (API + engine pipeline) — async
-      let pool;
-      try {
-        const live = await BSData.loadEnrichedMatches();
-        pool = live.filter(m => activeSport === 'all' || m.sport === activeSport)
-                   .filter(m => activeLeagues.has('all') || activeLeagues.has(m.league));
-      } catch (e) {
-        console.warn('[aig] loadEnrichedMatches failed, falling back:', e?.message);
-        pool = applyFilters();
-      }
-
-      if (pool.length < n) {
-        BSUI.toast({ title: 'Pocos partidos', message: `Necesitamos al menos ${n} partidos. Sumá más ligas.`, type: 'warning' });
+      // Validar que el usuario haya marcado al menos 1 casino
+      const books = selectedBooks();
+      if (!books.length) {
+        BSUI.toast({
+          title: 'Marcá al menos 1 casino',
+          message: 'La IA analiza cuotas solo de las casas donde tenés cuenta. Marcá las casinos en el paso 1.',
+          type: 'warning'
+        });
+        // Llevar visualmente al usuario al paso 1
+        panel.querySelector('.agx-card--books')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        panel.querySelector('.agx-card--books')?.classList.add('agx-card--pulse');
+        setTimeout(() => panel.querySelector('.agx-card--books')?.classList.remove('agx-card--pulse'), 1200);
         return;
       }
 
-      // 2) Engine "thinking" animation (visual)
-      await runEngineAnimation();
+      const n = Number(panel.querySelector('#agLegs').value);
+      const count = Math.max(1, Math.min(50, Number(panel.querySelector('#agCount').value || 1)));
+      const stake = Math.max(100, Number(panel.querySelector('#agStake').value || 10000));
 
-      // 3) Mercados habilitados desde los chips de filtros avanzados
-      const marketsAvailable = new Set();
+      // Animación visual
+      runEngineAnimation();
+
+      // Mercados desde los chips
+      const marketsSet = new Set();
       panel.querySelectorAll('.ag-mkt-chip input[type=checkbox][data-mkt]').forEach(cb => {
-        if (cb.checked) marketsAvailable.add(cb.dataset.mkt);
+        if (cb.checked) marketsSet.add(cb.dataset.mkt);
       });
-      // Default si el usuario desmarcó todo
-      if (marketsAvailable.size === 0) {
-        ['h2h', 'dc', 'totals', 'btts', 'ah'].forEach(k => marketsAvailable.add(k));
+      const markets = marketsSet.size ? [...marketsSet] : ['h2h', 'dc', 'totals', 'btts', 'ah'];
+
+      // Filtros funcionales — directos del UI a los flags del backend
+      const useInjuries = panel.querySelector('#agUseInjuries')?.checked;
+      const useWeather  = panel.querySelector('#agUseWeather')?.checked;
+      const useSharp    = panel.querySelector('#agUseSmart')?.checked;
+      const avoidCorr   = panel.querySelector('#agAvoidCorr')?.checked;
+
+      // Leagues seleccionadas
+      const leagues = activeLeagues.has('all') ? [] : [...activeLeagues];
+
+      // POST al backend: pipeline completa con factors + LLM + quant + correlation
+      let payload = {
+        sport: activeSport,
+        leagues,
+        risk: activeRisk,
+        legs: n,
+        count,
+        markets,
+        books,                       // SOLO las casas que marcó el usuario
+        minSharp: useSharp ? 0.3 : 0,
+        skipInjured: useInjuries,
+        skipBadWeather: useWeather,
+        skipCorrelated: avoidCorr
+      };
+      panel.querySelector('#agStatusLine').textContent = 'Pipeline backend: factors → modelos → IA → optimización';
+      let resp;
+      try {
+        resp = await BSLive.generate(payload);
+      } catch (e) {
+        panel.querySelector('#agStatusLine').textContent = 'Error: ' + (e?.message || 'backend no responde');
+        BSUI.toast({ title: 'Error generando combinadas', message: e?.message, type: 'error' });
+        return;
+      }
+      const backendCombos = resp.combos || [];
+      panel.querySelector('#agStatusLine').textContent = `${backendCombos.length} combinadas · ${resp.meta?.passing}/${resp.meta?.analyzed} partidos pasaron los filtros`;
+
+      if (!backendCombos.length) {
+        panel.querySelector('#agOutput').innerHTML = `<div class="card stack" style="padding:32px;text-align:center"><strong>Sin combinadas que pasen los filtros</strong><p class="muted">Probá:</p><ul class="muted tiny" style="text-align:left;max-width:480px;margin:0 auto"><li>Bajar legs (más partidos califican)</li><li>Sumar más ligas / mercados</li><li>Destildar "lesiones / clima" si están limitando demasiado</li></ul></div>`;
+        return;
       }
 
-      // 4) Optimización real con branch-and-bound del engine
-      let combos = [];
-      if (global.BSEngine && global.BSEngine.generateCombos) {
-        const engineCombos = BSEngine.generateCombos(pool, n, activeRisk, count, marketsAvailable, { minEv });
-        combos = engineCombos.map(c => ({
-          legs: c.legs.map(l => ({ ...l, line: l.outcome })),
-          total: c.totalOdd,
-          prob: c.totalP,
-          marketsUsed: [...new Set(c.legs.map(l => l.market))],
-          ev: c.ev
-        }));
-      }
-
-      // 5) Fallback si el engine no encontró suficientes (matches muy filtrados)
-      if (combos.length < count) {
-        const fill = count - combos.length;
-        for (let i = 0; i < fill; i++) {
-          const start = (i * Math.max(1, n - 1)) % Math.max(1, pool.length - n + 1);
-          const sub = pool.slice(start, start + n);
-          if (sub.length < n) break;
-          const legs = sub.map((m, j) => buildLeg(m, i + j, activeRisk));
-          const total = legs.reduce((a, b) => a * b.odd, 1);
-          const prob  = legs.reduce((a, b) => a * b.p, 1);
-          const marketsUsed = [...new Set(legs.map(l => l.market))];
-          combos.push({ legs, total, prob, marketsUsed, ev: total * prob - 1 });
-        }
-      }
+      // Adaptar la respuesta al shape que usaba la UI original
+      const combos = backendCombos.map(c => ({
+        legs: c.legs.map(l => ({
+          match: { home: { id: l.home?.toLowerCase?.().replace(/[^a-z]/g,''), name: l.home }, away: { id: l.away?.toLowerCase?.().replace(/[^a-z]/g,''), name: l.away }, id: l.eventId },
+          market: l.market,
+          label: l.label,
+          odd: l.odd,
+          p: l.confidence,
+          line: l.outcome,
+          ev: l.ev,
+          confidence: l.confidence,
+          rationale: l.rationale,
+          factors: l.factors,
+          book: l.book
+        })),
+        total: c.totalOdd,
+        prob: c.legs.reduce((a, b) => a * (b.confidence || 0.5), 1),
+        marketsUsed: [...new Set(c.legs.map(l => l.market))],
+        ev: c.sumEv / 100,
+        avgConfidence: c.avgConfidence,
+        correlation: c.correlation
+      }));
 
       const out = panel.querySelector('#agOutput');
       out.innerHTML = `
@@ -672,46 +793,71 @@
                 </div>`;
               })()}
 
-              <!-- AI explanation: 1-line tactical summary -->
+              <!-- AI explanation: factores reales del backend -->
               <div class="ag-ai-explain">
-                <span class="ag-ai-tag">🧠 Análisis IA</span>
-                <p class="ag-ai-text">${(() => {
-                  const factors = [];
-                  if (c.marketsUsed.includes('btts')) factors.push('partidos con ofensiva esperada (xG combinado &gt; 2.6)');
-                  if (c.marketsUsed.includes('totals')) factors.push('línea de goles favorable según promedio últimos 10 partidos');
-                  if (c.marketsUsed.includes('dc')) factors.push('locales fuertes con bajo riesgo de derrota');
-                  if (c.marketsUsed.includes('ah')) factors.push('hándicap asiático con value sobre cierre');
-                  if (c.marketsUsed.includes('corners')) factors.push('estilo de juego con alta presión de córneres');
-                  if (c.marketsUsed.includes('cards')) factors.push('árbitros con tendencia a tarjetear');
-                  if (factors.length === 0) factors.push('consenso entre las distintas señales del motor');
-                  return `Esta combinada explota ${factors.slice(0, 2).join(' y ')}. EV positivo ${c.ev>=0?'confirmado':'borderline'} contra el cierre del mercado. ${conf>=70?'Alta confianza.':conf>=55?'Confianza media — controlá tu stake.':'Riesgo elevado — para apostadores experimentados.'}`;
-                })()}</p>
+                <span class="ag-ai-tag">🧠 Análisis IA + factores</span>
+                ${c.legs[0]?.rationale ? `<p class="ag-ai-text">${BSUI.esc(c.legs[0].rationale)}</p>` : ''}
+                ${(() => {
+                  // Agregar todos los factores únicos de las legs
+                  const allFactors = c.legs.flatMap(l => l.factors || []);
+                  const unique = [];
+                  const seen = new Set();
+                  for (const f of allFactors) {
+                    const k = f.kind + ':' + f.note;
+                    if (!seen.has(k)) { seen.add(k); unique.push(f); }
+                    if (unique.length >= 4) break;
+                  }
+                  if (!unique.length) return '';
+                  return `<ul class="ag-ai-factors-list">${unique.map(f => `<li><span class="ag-ai-factor-ic">${f.kind==='injury'?'🏥':f.kind==='weather'?'🌦':f.kind==='sharp'?'💰':f.kind==='history'?'📊':'•'}</span>${BSUI.esc(f.note)}</li>`).join('')}</ul>`;
+                })()}
+                <div class="ag-ai-confidence">
+                  Confianza promedio: <strong>${(c.avgConfidence * 100).toFixed(0)}%</strong>
+                  ${c.correlation?.warnings?.length ? `<span class="badge badge-warning tiny" style="margin-left:6px">⚠ correlación detectada (${c.correlation.maxCorrelation.toFixed(2)})</span>` : '<span class="badge badge-success tiny" style="margin-left:6px">✓ legs no correlacionadas</span>'}
+                </div>
               </div>
 
-              <!-- BEST-PAYER único — la casa AR que más paga + soporta TODOS los mercados usados -->
+              <!-- BEST-PAYER: cálculo REAL comparando la combinada exacta en cada casa SELECCIONADA -->
               ${(() => {
-                const winner = top3[0];
-                if (!winner) return '';
-                const runnerUp = top3[1];
-                const winPay = stake * c.total;
-                const upPay  = runnerUp ? stake * c.total * 0.995 : 0;
+                const ranked = bestBookForCombo(c.legs, books, M, COVER);
+                if (!ranked.length) return '';
+                const winner = ranked[0];
+                const runnerUp = ranked[1];
+                const winPay = stake * winner.totalOdd;
+                const upPay  = runnerUp ? stake * runnerUp.totalOdd : 0;
                 const delta  = runnerUp ? ((winPay / upPay - 1) * 100) : 0;
-                const winnerLogo = window.BSLogos ? BSLogos.bookLogo(winner.key, { size: 44 }) : '';
+                const winnerLogo = window.BSLogos ? BSLogos.bookLogo(winner.book.key, { size: 56 }) : '';
                 return `
-                <div class="ag-best-pay" data-key="${winner.key}" title="${BSUI.esc(winner.name)} es la casa AR que MÁS paga esta combinada">
-                  <span class="ag-best-tag">CASA QUE MÁS PAGA</span>
+                <div class="ag-best-pay ag-best-pay--prominent" data-key="${winner.book.key}">
+                  <span class="ag-best-tag">MEJOR PAGA EN</span>
                   <div class="ag-best-row">
                     <div class="ag-best-logo" aria-hidden="true">${winnerLogo}</div>
                     <div class="ag-best-info">
-                      <strong class="ag-best-name">${BSUI.esc(winner.name)}</strong>
-                      <span class="ag-best-sub">Soporta ${c.marketsUsed.map(k => `<strong>${M[k]||k}</strong>`).join(' · ')}</span>
+                      <strong class="ag-best-name">${BSUI.esc(winner.book.name)}</strong>
+                      <span class="ag-best-sub">${winner.book.license} · cubre los ${winner.coveredLegs}/${c.legs.length} mercados de tu combinada</span>
+                      <div class="ag-best-odd-strip">
+                        <span class="tiny muted">Cuota total en ${BSUI.esc(winner.book.name)}:</span>
+                        <strong class="ag-best-total-odd">${winner.totalOdd.toFixed(2)}</strong>
+                      </div>
                     </div>
                     <div class="ag-best-pay-wrap">
-                      <span class="ag-best-pay-label">Tu ganancia</span>
+                      <span class="ag-best-pay-label">Si gana, cobrás</span>
                       <strong class="ag-best-pay-amt">${BSUI.money(winPay)}</strong>
-                      ${runnerUp && delta > 0.1 ? `<span class="ag-best-pay-delta">+${delta.toFixed(1)}% vs ${BSUI.esc(runnerUp.name)}</span>` : ''}
+                      ${runnerUp && delta > 0.1 ? `<span class="ag-best-pay-delta">+${delta.toFixed(1)}% vs ${BSUI.esc(runnerUp.book.name)} (${BSUI.money(upPay)})</span>` : ''}
                     </div>
                   </div>
+                  ${ranked.length > 1 ? `<details class="ag-best-runners">
+                    <summary class="tiny muted">Ver comparación entre tus ${ranked.length} casas seleccionadas</summary>
+                    <div class="ag-best-runners-list">
+                      ${ranked.map((r, idx) => `
+                        <div class="ag-best-runner ${idx===0?'is-winner':''}">
+                          <span class="ag-best-runner-rank">${idx+1}°</span>
+                          <span class="cluster tiny">${window.BSLogos ? BSLogos.bookLogo(r.book.key, { size: 18 }) : ''}<strong>${BSUI.esc(r.book.name)}</strong></span>
+                          <span class="muted tiny">${r.coveredLegs}/${c.legs.length} legs</span>
+                          <strong class="num tiny">${r.totalOdd.toFixed(2)}</strong>
+                          <strong class="num text-success tiny">${BSUI.money(stake * r.totalOdd)}</strong>
+                        </div>`).join('')}
+                    </div>
+                  </details>` : ''}
                 </div>`;
               })()}
 

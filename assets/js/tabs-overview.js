@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  function render(panel) {
+  async function render(panel) {
     const session = BSAuth.current();
     const name = (session?.name || 'apostador').split(' ')[0];
     const isVip = BSAuth.isVip();
@@ -47,8 +47,20 @@
       const d = Math.floor(h / 24);
       return `en ${d}d`;
     }
-    const nextEv = BSData.makeMatches().sort((a, b) => a.start - b.start).slice(0, 6);
-    panel.querySelector('#ovUpNext').innerHTML = nextEv.map((m, i) => {
+    // Live events del backend de scraping (no mock).
+    const renderNext = (events) => {
+      const host = panel.querySelector('#ovUpNext');
+      if (!host) return;
+      if (!events.length) {
+        host.innerHTML = `<div class="empty" style="padding:40px;text-align:center">
+          <strong>Esperando el primer ciclo de scraping…</strong>
+          <p class="muted tiny">El backend está consultando las 12 casas argentinas legales. Cuando se complete el primer ciclo, los próximos partidos aparecen acá.</p>
+          <span class="muted tiny">Estado: ${BSData.liveFreshness()}</span>
+        </div>`;
+        return;
+      }
+      const nextEv = events.slice().sort((a, b) => (a.start || 0) - (b.start || 0)).slice(0, 6);
+      host.innerHTML = nextEv.map((m, i) => {
       const homeCrest = window.BSLogos?.teamCrest ? BSLogos.teamCrest(m.home.id, { size: 28 }) : BSIcons.teamLogo(m.home, { size: 28 });
       const awayCrest = window.BSLogos?.teamCrest ? BSLogos.teamCrest(m.away.id, { size: 28 }) : BSIcons.teamLogo(m.away, { size: 28 });
       const leagueLogo = window.BSLogos?.leagueLogo ? BSLogos.leagueLogo(m.league, { size: 14 }) : '';
@@ -79,9 +91,21 @@
           </div>
         </button>`;
     }).join('');
-    panel.querySelectorAll('.ov-event-row').forEach(row => {
-      row.addEventListener('click', () => { if (window.BSDash?.go) BSDash.go('builder'); });
-    });
+      host.querySelectorAll('.ov-event-row').forEach(row => {
+        row.addEventListener('click', () => { if (window.BSDash?.go) BSDash.go('builder'); });
+      });
+    };
+    // Render inicial + suscripción a updates en vivo
+    renderNext(BSData.liveEvents({}));
+    const onUpdate = () => renderNext(BSData.liveEvents({}));
+    window.addEventListener('bs:live-snapshot', onUpdate);
+    window.addEventListener('bs:live-update', onUpdate);
+    panel.__cleanup = () => {
+      window.removeEventListener('bs:live-snapshot', onUpdate);
+      window.removeEventListener('bs:live-update', onUpdate);
+    };
+    // Esperar primer snapshot si todavía no tenemos data
+    if (!BSData.liveReady()) await BSData.awaitLive({ timeoutMs: 10000 });
 
     // ---- Accesos rápidos ----
     const QUICK = [

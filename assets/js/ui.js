@@ -394,7 +394,7 @@
       <h3 class="h3 mb-2">Verificación de edad</h3>
       <p class="muted mb-4">BetSafe es una herramienta de análisis para mayores de 18 años. Confirmá tu edad para continuar.</p>
       <div class="card card-tinted mb-4" style="font-size:.85rem">
-        <strong>Juego responsable.</strong> Si necesitás ayuda, llamá al <strong>0800-444-4000</strong> (SEDRONAR) o visitá <a href="https://www.juegaresponsable.com.ar" target="_blank" rel="noopener" class="text-brand">juegaresponsable.com.ar</a>.
+        <strong>Juego responsable.</strong> Si necesitás ayuda, llamá al <strong>0800-444-4000</strong> (SEDRONAR) o visitá <a href="https://www.juegoresponsable.com.ar" target="_blank" rel="noopener" class="text-brand">juegoresponsable.com.ar</a>.
       </div>
       <div class="row gap-3">
         <button class="btn btn-primary btn-block" data-age="yes">Tengo +18 años</button>
@@ -406,7 +406,7 @@
       close();
     });
     modal.querySelector('[data-age="no"]').addEventListener('click', () => {
-      window.location.href = 'https://www.juegaresponsable.com.ar';
+      window.location.href = 'https://www.juegoresponsable.com.ar';
     });
   }
 
