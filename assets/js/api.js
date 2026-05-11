@@ -171,15 +171,16 @@
     }
   }
 
-  /** Soportados por The Odds API en plan free: h2h, spreads, totals, outrights.
-   *  Mercados extra (btts, draw_no_bet, alternate spreads) requieren plan paid. */
-  const ODDS_MARKETS_FREE = ['h2h', 'spreads', 'totals'];
+  /** The Odds API: cada `region × market` cuesta 1 crédito.
+   *  Free tier (500 créditos/mes) suele rebotar 401 si pedís combos caros.
+   *  Default conservador: solo h2h + 1 region. Override desde opts. */
+  const ODDS_MARKETS_FREE = ['h2h'];
   const ODDS_MARKETS_PAID = ['h2h', 'spreads', 'totals', 'btts', 'draw_no_bet',
                               'alternate_spreads', 'alternate_totals'];
 
   async function getOddsMulti(sportKey = 'soccer_epl', opts = {}) {
     const key = cfg('odds');
-    const region  = opts.region || 'us,eu,uk';
+    const region  = opts.region || 'eu';
     const markets = (opts.markets || ODDS_MARKETS_FREE).join(',');
     if (!key) {
       STATUS.odds = 'no-key';
