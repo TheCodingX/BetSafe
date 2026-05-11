@@ -100,6 +100,17 @@ app.get('/api/health', (req, res) => {
 });
 
 app.get('/api/books', (req, res) => res.json(orchestrator.bookStatus()));
+app.get('/api/sources', (req, res) => res.json(orchestrator.sourceStatus()));
+app.get('/api/quota', (req, res) => res.json(orchestrator.quota()));
+
+// Cross-validation: discrepancias entre fuentes (admin/debug)
+// El parámetro level filtra: 'critical' (>=5%) o 'warning' (2-5%).
+app.get('/api/discrepancies', (req, res) => {
+  res.json(orchestrator.discrepancies({
+    level: req.query.level,
+    limit: Number(req.query.limit) || 100
+  }));
+});
 
 app.get('/api/odds', (req, res) => {
   const sport = String(req.query.sport || 'all');

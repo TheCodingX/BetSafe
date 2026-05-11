@@ -1,68 +1,45 @@
-/* BetSafe — Orquestador de scraping
+/* BetSafe — Orquestador agnóstico a la fuente
  * ============================================================================
- * Responsable de:
- *   - Disparar los scrapers de cada casa cada SCRAPE_INTERVAL_MS.
- *   - Mantener el snapshot actual de eventos (mergeando por eventKey).
- *   - Detectar surebets cruzando las cuotas de las casas.
- *   - Detectar steam moves comparando snapshot anterior y actual.
- *   - Emitir eventos para que el server los broadcastee por WebSocket.
+ * Reescrito para usar adapter pattern. Antes corría 12 scrapers directos;
+ * ahora corre N "sources" donde cada source implementa SourceBase.fetch().
  *
- * Snapshot interno por evento:
- *   {
- *     id: <md5 estable>,
- *     home: { id, name }, away: { id, name },
- *     league: 'lpf' | 'epl' | ...,
- *     leagueName: 'Liga Profesional Argentina',
- *     sport: 'soccer' | ...,
- *     start: <ms>,
- *     markets: {
- *       h2h: { bplay: { home, draw, away }, betano: {...}, ... },
- *       totals: { bplay: { 2.5: { over, under } }, ... },
- *       btts: { bplay: { yes, no }, ... }
- *     },
- *     bestOdds: { h2h: { home, draw, away }, ... },
- *     lastUpdate: <ms>,
- *     sources: ['bplay','betano',...]
- *   }
+ * Sources estándar:
+ *   - OddsApiSource          (priority 1, primaria)
+ *   - 12 × ScraperSource     (priority 2-4, según si cubre casa única)
+ *
+ * Cuando dos sources aportan al mismo (event, book, market, outcome),
+ * dispara cross-validation y loguea discrepancias.
+ *
+ * Output igual al anterior: events Map con markets organizados por book.
  * ============================================================================
  */
 'use strict';
 
 const { EventEmitter } = require('events');
 const crypto = require('crypto');
-const { log, eventKey, normalizeTeam, isFinite2, sleep } = require('./index');
+const { log, eventKey, normalizeTeam, isFinite2 } = require('./index');
 const pLimit = require('p-limit').default;
 
-const SCRAPERS = {
-  bplay:        require('../scrapers/bplay'),
-  betano:       require('../scrapers/betano'),
-  betwarrior:   require('../scrapers/betwarrior'),
-  bet365ar:     require('../scrapers/bet365ar'),
-  codere:       require('../scrapers/codere'),
-  caliente:     require('../scrapers/caliente'),
-  casinomagic:  require('../scrapers/casinomagic'),
-  betsson:      require('../scrapers/betsson'),
-  jugabet:      require('../scrapers/jugabet'),
-  '24bet':      require('../scrapers/24bet'),
-  playcity:     require('../scrapers/playcity'),
-  megapuesta:   require('../scrapers/megapuesta')
-};
-
-const SPORTS = ['soccer', 'basketball', 'tennis', 'amfootball', 'baseball', 'hockey', 'mma', 'tableTennis', 'volleyball'];
+const { OddsApiSource } = require('../sources/oddsapi');
+const { createAllScraperSources } = require('../sources/scrapers');
+const { findDiscrepancies, DiscrepancyLog, recordContributor } = require('../engines/cross-validation');
 
 // Estado interno
 const state = {
-  events: new Map(),         // eventKey → event
-  prev: new Map(),           // eventKey → event (snapshot anterior, para diff)
-  surebets: [],              // últimas 200
-  steam: [],                 // últimos 200 steam moves
-  bookStatus: {},            // bookKey → { ok, lastOk, lastError, msEvents, lastDurMs }
+  events: new Map(),
+  prev: new Map(),
+  surebets: [],
+  steam: [],
+  sourceStatus: {},
   cycles: 0,
   lastCycleMs: 0,
   startedAt: Date.now(),
   running: false,
   timer: null,
-  cfg: null
+  cfg: null,
+  sources: [],
+  discrepancyLog: new DiscrepancyLog(500),
+  oddsApiQuota: { remaining: null, used: null }
 };
 
 const bus = new EventEmitter();
@@ -73,8 +50,12 @@ function makeEventId(home, away, start) {
   return crypto.createHash('md5').update(k).digest('hex').slice(0, 16);
 }
 
-// ── Merge de un evento que viene del scraper en el snapshot ────────────────
-function mergeEvent(bookKey, ev) {
+/* contributorMap por evento — clave: eventKey, valor: Map<bookMarketOutcome, contributors[]>
+ * Se llena durante el ciclo y se usa al final para detectar discrepancias. */
+const cycleContributors = new Map();
+
+// ── Merge de un evento (de cualquier fuente) ──────────────────────────────
+function mergeEventFromSource(sourceName, ev) {
   if (!ev?.home?.name || !ev?.away?.name) return;
   const key = eventKey(ev.home.name, ev.away.name, ev.start);
   let existing = state.events.get(key);
@@ -94,25 +75,82 @@ function mergeEvent(bookKey, ev) {
     };
     state.events.set(key, existing);
   }
-  // Tomar mejor info disponible
   if (ev.league && !existing.league) existing.league = ev.league;
   if (ev.leagueName && !existing.leagueName) existing.leagueName = ev.leagueName;
   if (ev.start && !existing.start) existing.start = ev.start;
 
-  // Mercados
-  const m = ev.markets || {};
-  if (m.h2h && (m.h2h.home || m.h2h.away)) {
-    existing.markets.h2h[bookKey] = sanitizeH2h(m.h2h);
-  }
-  if (m.totals) existing.markets.totals[bookKey] = sanitizeTotals(m.totals);
-  if (m.btts) existing.markets.btts[bookKey] = sanitizeBtts(m.btts);
-  if (m.dc) existing.markets.dc[bookKey] = sanitizeDc(m.dc);
-  if (m.ah) existing.markets.ah[bookKey] = m.ah;
+  // contributor map para cross-validation
+  if (!cycleContributors.has(key)) cycleContributors.set(key, new Map());
+  const contrib = cycleContributors.get(key);
 
-  if (!existing.sources.includes(bookKey)) existing.sources.push(bookKey);
+  const m = ev.markets || {};
+  // Cada market viene en formato { bookKey: { ... } }
+  for (const [marketName, marketByBook] of Object.entries(m)) {
+    if (!marketByBook || typeof marketByBook !== 'object') continue;
+    for (const [bookKey, marketData] of Object.entries(marketByBook)) {
+      if (!marketData) continue;
+
+      // Si ya hay una entrada para este book/market en el evento existing,
+      // y la fuente actual NO es la misma que la registró antes → comparar
+      const previousValue = existing.markets[marketName]?.[bookKey];
+      if (previousValue) {
+        // Ya hay valor de otra fuente. Registramos para cross-validation
+        // (incluso si los nuevos valores son iguales o mejores).
+        registerContributors(contrib, sourceName, marketName, bookKey, marketData);
+        // Mergeamos: si el nuevo tiene más outcomes los agregamos, pero no
+        // pisamos los anteriores cuando coinciden (preservamos al más viejo
+        // para no introducir lag artificial en la UI).
+        existing.markets[marketName][bookKey] = mergeMarketData(previousValue, marketData);
+      } else {
+        // Primera fuente que aporta este book/market
+        existing.markets[marketName][bookKey] = sanitizeMarket(marketName, marketData);
+        registerContributors(contrib, sourceName, marketName, bookKey, marketData);
+      }
+    }
+  }
+
+  if (!existing.sources.includes(sourceName)) existing.sources.push(sourceName);
   existing.lastUpdate = Date.now();
 }
 
+function registerContributors(contribMap, sourceName, marketName, bookKey, marketData) {
+  if (!marketData) return;
+  if (marketName === 'h2h') {
+    ['home', 'draw', 'away'].forEach(o => recordContributor(contribMap, sourceName, marketName, bookKey, o, marketData[o]));
+  } else if (marketName === 'btts') {
+    ['yes', 'no'].forEach(o => recordContributor(contribMap, sourceName, marketName, bookKey, o, marketData[o]));
+  } else if (marketName === 'totals') {
+    for (const [line, sides] of Object.entries(marketData)) {
+      if (!sides || typeof sides !== 'object') continue;
+      recordContributor(contribMap, sourceName, marketName, bookKey, 'over', sides.over, line);
+      recordContributor(contribMap, sourceName, marketName, bookKey, 'under', sides.under, line);
+    }
+  } else if (marketName === 'dc') {
+    ['home_or_draw', 'draw_or_away', 'home_or_away'].forEach(o => recordContributor(contribMap, sourceName, marketName, bookKey, o, marketData[o]));
+  }
+}
+
+function mergeMarketData(a, b) {
+  // Combina dos market data preservando el primero por entrada
+  if (!b) return a;
+  if (!a) return b;
+  const out = { ...a };
+  for (const [k, v] of Object.entries(b)) {
+    if (out[k] == null && v != null) out[k] = v;
+    else if (typeof v === 'object' && typeof out[k] === 'object') {
+      out[k] = { ...v, ...out[k] };
+    }
+  }
+  return out;
+}
+
+function sanitizeMarket(marketName, data) {
+  if (marketName === 'h2h') return sanitizeH2h(data);
+  if (marketName === 'btts') return sanitizeBtts(data);
+  if (marketName === 'totals') return sanitizeTotals(data);
+  if (marketName === 'dc') return sanitizeDc(data);
+  return data;
+}
 function sanitizeH2h(o) {
   const out = {};
   if (isFinite2(o.home)) out.home = round2(o.home);
@@ -139,8 +177,8 @@ function sanitizeTotals(o) {
     const numLine = Number(line);
     if (!Number.isFinite(numLine)) continue;
     const s = {};
-    if (isFinite2(sides.over)) s.over = round2(sides.over);
-    if (isFinite2(sides.under)) s.under = round2(sides.under);
+    if (sides && isFinite2(sides.over)) s.over = round2(sides.over);
+    if (sides && isFinite2(sides.under)) s.under = round2(sides.under);
     if (s.over || s.under) {
       s.line = numLine;
       out[numLine] = s;
@@ -151,13 +189,13 @@ function sanitizeTotals(o) {
 function round2(n) { return Math.round(n * 100) / 100; }
 
 // ── Compute "best odds" cross-book ─────────────────────────────────────────
-function computeBest(events) {
-  events.forEach(ev => {
+function computeBest(eventsIterable) {
+  for (const ev of eventsIterable) {
     const bestH = bestSide(ev.markets.h2h, 'home');
     const bestA = bestSide(ev.markets.h2h, 'away');
     const bestD = bestSide(ev.markets.h2h, 'draw');
     const bestYes = bestSide(ev.markets.btts, 'yes');
-    const bestNo  = bestSide(ev.markets.btts, 'no');
+    const bestNo = bestSide(ev.markets.btts, 'no');
     const totals = {};
     const linesUnion = new Set();
     Object.values(ev.markets.totals).forEach(byLine => Object.keys(byLine).forEach(l => linesUnion.add(Number(l))));
@@ -183,12 +221,11 @@ function computeBest(events) {
       } : null,
       totals: Object.keys(totals).length ? totals : null
     };
-    // Margen overround del 1X2 best line
     if (ev.bestOdds?.h2h) {
       const odds = [ev.bestOdds.h2h.home, ev.bestOdds.h2h.draw, ev.bestOdds.h2h.away].filter(Boolean);
       ev.overround = odds.reduce((a, b) => a + 1 / b, 0);
     }
-  });
+  }
 }
 function bestSide(byBook, side) {
   let bv = 0, bk = null;
@@ -199,13 +236,13 @@ function bestSide(byBook, side) {
 }
 
 // ── Surebet detection ──────────────────────────────────────────────────────
-function detectSurebets(events) {
+function detectSurebets(eventsIterable) {
   const out = [];
-  events.forEach(ev => {
-    if (!ev.bestOdds?.h2h) return;
+  for (const ev of eventsIterable) {
+    if (!ev.bestOdds?.h2h) continue;
     const h = ev.bestOdds.h2h.home, d = ev.bestOdds.h2h.draw, a = ev.bestOdds.h2h.away;
     const odds = d ? [h, d, a] : [h, a];
-    if (odds.some(o => !o)) return;
+    if (odds.some(o => !o)) continue;
     const sum = odds.reduce((s, o) => s + 1 / o, 0);
     if (sum < 1) {
       const roi = (1 / sum - 1) * 100;
@@ -225,12 +262,12 @@ function detectSurebets(events) {
         ts: Date.now()
       });
     }
-  });
+  }
   out.sort((a, b) => b.roi - a.roi);
   return out;
 }
 
-// ── Steam move detection (cuotas con movimiento >=5% vs snapshot anterior) ─
+// ── Steam move detection ──────────────────────────────────────────────────
 function detectSteam(prev, current) {
   const out = [];
   current.forEach((ev, key) => {
@@ -259,7 +296,7 @@ function detectSteam(prev, current) {
   return out;
 }
 
-// ── Filtros API ────────────────────────────────────────────────────────────
+// ── API pública del orchestrator ──────────────────────────────────────────
 function events({ sport = 'all', league = null } = {}) {
   const list = [];
   state.events.forEach(ev => {
@@ -274,10 +311,30 @@ function findEvent(id) {
   for (const ev of state.events.values()) if (ev.id === id) return ev;
   return null;
 }
-
-function bookStatus() { return state.bookStatus; }
+function sourceStatus() { return state.sourceStatus; }
+function bookStatus() {
+  // Backwards-compat: derivamos book-level status desde el source-status
+  // de los scrapers (oddsapi no es una "casa" sino una fuente).
+  const out = {};
+  for (const s of state.sources) {
+    if (s.name.startsWith('scraper:')) {
+      const book = s.name.replace('scraper:', '');
+      const st = state.sourceStatus[s.name] || {};
+      out[book] = {
+        ok: !!st.ok,
+        lastOk: st.ok ? st.lastFetch : (out[book]?.lastOk || null),
+        lastError: st.lastError,
+        msEvents: st.count || 0,
+        lastDurMs: st.durMs || 0
+      };
+    }
+  }
+  return out;
+}
 function surebets() { return state.surebets; }
 function steamMoves() { return state.steam; }
+function discrepancies(opts) { return state.discrepancyLog.snapshot(opts); }
+function quota() { return state.oddsApiQuota; }
 function health() {
   return {
     cycles: state.cycles,
@@ -285,67 +342,68 @@ function health() {
     eventsTracked: state.events.size,
     surebets: state.surebets.length,
     steam: state.steam.length,
-    booksOk: Object.values(state.bookStatus).filter(b => b.ok).length,
-    booksTotal: Object.keys(state.bookStatus).length,
+    sourcesOk: Object.values(state.sourceStatus).filter(s => s.ok).length,
+    sourcesTotal: state.sources.length,
+    booksOk: Object.values(bookStatus()).filter(b => b.ok).length,
+    booksTotal: Object.keys(bookStatus()).length,
+    discrepanciesTotal: state.discrepancyLog.stats.total,
+    discrepanciesCritical: state.discrepancyLog.stats.critical,
+    oddsApiQuotaRemaining: state.oddsApiQuota.remaining,
     startedAt: state.startedAt
   };
 }
 
 // ── Ciclo principal ────────────────────────────────────────────────────────
-async function cycle(cfg) {
+async function cycle() {
   const t0 = Date.now();
   state.cycles += 1;
 
-  // Snapshot anterior para diff de steam
   const prevSnap = new Map(state.events);
-
-  // Resetear merging
   state.events.clear();
+  cycleContributors.clear();
 
-  // 4 scrapers en paralelo es el límite seguro (browser pool + memoria)
-  const limit = pLimit(4);
-  const scrapersToRun = cfg.enabledBooks
-    .filter(k => SCRAPERS[k])
-    .map(k => ({ key: k, scrape: SCRAPERS[k] }));
+  // 3 sources en paralelo (oddsapi puede tardar, scrapers son IO)
+  const limit = pLimit(3);
 
-  await Promise.allSettled(scrapersToRun.map(({ key, scrape }) =>
+  await Promise.allSettled(state.sources.map(src =>
     limit(async () => {
       const t = Date.now();
-      try {
-        const evs = await scrape({ sports: SPORTS });
-        let count = 0;
-        if (Array.isArray(evs)) {
-          evs.forEach(ev => { mergeEvent(key, ev); count++; });
-        }
-        state.bookStatus[key] = {
-          ok: true,
-          lastOk: Date.now(),
-          lastError: null,
-          msEvents: count,
-          lastDurMs: Date.now() - t
-        };
-        log(`[scrape] ${key} OK · ${count} eventos · ${Date.now() - t}ms`);
-        bus.emit('book-status', { book: key, ...state.bookStatus[key] });
-      } catch (e) {
-        state.bookStatus[key] = {
-          ok: false,
-          lastOk: state.bookStatus[key]?.lastOk || null,
-          lastError: e?.message || String(e),
-          msEvents: state.bookStatus[key]?.msEvents || 0,
-          lastDurMs: Date.now() - t
-        };
-        log(`[scrape] ${key} ERROR · ${state.bookStatus[key].lastError}`);
-        bus.emit('book-status', { book: key, ...state.bookStatus[key] });
+      const evs = await src.safeFetch(['soccer', 'basketball', 'tennis', 'amfootball', 'baseball', 'hockey', 'mma']);
+      evs.forEach(ev => mergeEventFromSource(src.name, ev));
+      const status = src.status();
+      status.durMs = Date.now() - t;
+      state.sourceStatus[src.name] = status;
+      bus.emit('source-status', { source: src.name, ...status });
+      log(`[source:${src.name}] ${status.ok ? 'OK' : 'ERR'} · ${status.count} eventos · ${status.durMs}ms${status.lastError ? ' · ' + status.lastError.slice(0,80) : ''}`);
+
+      // Si es oddsapi, capturar quota
+      if (src.name === 'oddsapi' && src.quota) {
+        state.oddsApiQuota = src.quota;
       }
     })
   ));
 
-  // Computar best odds y surebets/steam
+  // Detectar discrepancias entre fuentes (cross-validation)
+  let cycleDiscrepancies = 0;
+  for (const [evKey, contribMap] of cycleContributors.entries()) {
+    const ev = state.events.get(evKey);
+    if (!ev) continue;
+    const found = findDiscrepancies(ev, contribMap);
+    if (found.length) {
+      state.discrepancyLog.add(found);
+      cycleDiscrepancies += found.length;
+      // Loguear las críticas en stdout para que admins vean en logs de Render
+      found.filter(d => d.level === 'critical').forEach(d => {
+        log(`[discrepancy:CRITICAL] ${d.eventName} · ${d.bookKey}/${d.market}/${d.outcome} · ${d.sourceA.name}=${d.sourceA.value} vs ${d.sourceB.name}=${d.sourceB.value} · Δ${d.deltaPct}%`);
+      });
+    }
+  }
+
+  // Computar best odds + surebets + steam
   computeBest(state.events.values());
   const newSure = detectSurebets(state.events.values());
   const newSteam = detectSteam(prevSnap, state.events);
 
-  // Mantener histórico circular
   if (newSure.length) {
     state.surebets = newSure.concat(state.surebets).slice(0, 200);
     newSure.forEach(sb => bus.emit('surebet', sb));
@@ -362,6 +420,7 @@ async function cycle(cfg) {
     events: state.events.size,
     sureNew: newSure.length,
     steamNew: newSteam.length,
+    discrepanciesNew: cycleDiscrepancies,
     ts: Date.now()
   });
   bus.emit('odds-update', {
@@ -369,18 +428,61 @@ async function cycle(cfg) {
     ts: Date.now()
   });
 
-  log(`[orchestrator] ciclo #${state.cycles} · ${state.events.size} eventos · ${newSure.length} surebets nuevas · ${newSteam.length} steam · ${state.lastCycleMs}ms`);
+  log(`[orchestrator] ciclo #${state.cycles} · ${state.events.size} eventos · ${newSure.length} sure · ${newSteam.length} steam · ${cycleDiscrepancies} discr · ${state.lastCycleMs}ms`);
+}
+
+// ── Inicialización de sources ─────────────────────────────────────────────
+function buildSources(cfg) {
+  const sources = [];
+
+  // 1) The Odds API si hay key (fuente PRIMARIA)
+  const oddsKey = process.env.THE_ODDS_API_KEY || process.env.BS_ODDS_API_KEY || '';
+  if (oddsKey) {
+    // Sports más relevantes para AR — mantener bajo límite de quota
+    const sportsKeys = (process.env.ODDSAPI_SPORTS || [
+      'soccer_argentina_primera_division',
+      'soccer_conmebol_copa_libertadores',
+      'soccer_conmebol_copa_sudamericana',
+      'soccer_epl',
+      'soccer_spain_la_liga',
+      'soccer_italy_serie_a',
+      'soccer_germany_bundesliga',
+      'soccer_uefa_champs_league',
+      'basketball_nba',
+      'americanfootball_nfl',
+      'baseball_mlb',
+      'icehockey_nhl',
+      'tennis_atp',
+      'mma_mixed_martial_arts'
+    ].join(',')).split(',').filter(Boolean);
+    sources.push(new OddsApiSource({
+      apiKey: oddsKey,
+      sportsKeys,
+      region: process.env.ODDSAPI_REGION || 'eu'
+    }));
+    log(`[orchestrator] OddsAPI source habilitado · ${sportsKeys.length} sports · region=${process.env.ODDSAPI_REGION || 'eu'}`);
+  } else {
+    log('[orchestrator] WARNING: THE_ODDS_API_KEY no seteada — sin fuente primaria');
+  }
+
+  // 2) Scrapers (fuente secundaria para casas AR-only)
+  const scraperSources = createAllScraperSources(cfg.enabledBooks);
+  sources.push(...scraperSources);
+  log(`[orchestrator] ${scraperSources.length} scraper sources habilitados`);
+
+  // Ordenar por priority
+  sources.sort((a, b) => a.priority - b.priority);
+  return sources;
 }
 
 function start(cfg) {
   if (state.running) return;
   state.cfg = cfg;
   state.running = true;
-  // Primer ciclo inmediato (con jitter chico para evitar cold start agresivo)
-  setTimeout(() => cycle(cfg).catch(e => log('[cycle] err', e?.message || e)), 1500);
-  // Loop
+  state.sources = buildSources(cfg);
+  setTimeout(() => cycle().catch(e => log('[cycle] err', e?.message || e)), 1500);
   state.timer = setInterval(() => {
-    cycle(cfg).catch(e => log('[cycle] err', e?.message || e));
+    cycle().catch(e => log('[cycle] err', e?.message || e));
   }, cfg.interval);
 }
 function stop() {
@@ -393,9 +495,8 @@ function stop() {
 module.exports = {
   start, stop,
   events, findEvent,
-  surebets, steamMoves, bookStatus, health,
+  surebets, steamMoves, bookStatus, sourceStatus, discrepancies, quota, health,
   on: bus.on.bind(bus),
   off: bus.off.bind(bus),
-  // exposed for tests
-  _mergeEvent: mergeEvent
+  _mergeEventFromSource: mergeEventFromSource
 };

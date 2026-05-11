@@ -43,3 +43,6 @@ audit-out/
 
 # Service worker cache local
 sw-cache.json
+
+# Worktrees temporales de Claude Code
+.claude/worktrees/

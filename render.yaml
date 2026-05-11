@@ -43,6 +43,11 @@ services:
         value: 'bplay,betano,betwarrior,bet365ar,codere,caliente,casinomagic,betsson,jugabet,24bet,playcity,megapuesta'
       - key: CORS_ORIGIN
         value: '*'
+      # The Odds API — fuente PRIMARIA. Sin esto el sistema depende de scrapers.
+      - key: THE_ODDS_API_KEY
+        sync: false
+      - key: ODDSAPI_REGION
+        value: 'eu'
       # Factors APIs (opcionales — sin keys los factores quedan "unavailable")
       - key: OPENWEATHER_API_KEY
         sync: false
