@@ -46,6 +46,10 @@ services:
       # Factors APIs (opcionales — sin keys los factores quedan "unavailable")
       - key: OPENWEATHER_API_KEY
         sync: false
+      # API-Football: elegí UNA (directa o via RapidAPI). Si no cargás ninguna,
+      # las lesiones caen a ESPN scrape (best effort).
+      - key: APISPORTS_KEY
+        sync: false
       - key: RAPIDAPI_KEY
         sync: false
       # IA (cascada client-side) — se inyectan al frontend via build/inject-env.js

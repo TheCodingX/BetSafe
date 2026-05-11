@@ -20,7 +20,12 @@ const { httpJson, httpGet, log } = require('../lib');
 const cheerio = require('cheerio');
 const { LRUCache } = require('lru-cache');
 
-const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY || '';   // API-Football
+// Soportamos dos formas de autenticación contra api-sports:
+//   1) APISPORTS_KEY     → conexión directa a v3.football.api-sports.io
+//   2) RAPIDAPI_KEY      → conexión via marketplace RapidAPI
+// La directa es preferida (menos intermediarios, mismo free tier).
+const APISPORTS_KEY = process.env.APISPORTS_KEY || '';
+const RAPIDAPI_KEY  = process.env.RAPIDAPI_KEY || '';
 const cache = new LRUCache({ max: 200, ttl: 15 * 60 * 1000 });
 
 /** Obtiene lesiones para un partido. Recibe nombres canónicos de equipos. */
@@ -42,8 +47,8 @@ async function getInjuries({ homeName, awayName, league, leagueKey }) {
 }
 
 async function getInjuriesForTeam(teamName, leagueKey) {
-  // 1) Intento API-Football si hay key (mejor calidad)
-  if (RAPIDAPI_KEY) {
+  // 1) Intento API-Football si hay alguna key (directa o via RapidAPI)
+  if (APISPORTS_KEY || RAPIDAPI_KEY) {
     try {
       const r = await apiFootballInjuries(teamName);
       if (r) return r;
@@ -57,24 +62,38 @@ async function getInjuriesForTeam(teamName, leagueKey) {
   return null;
 }
 
+/** Devuelve base URL + headers según qué key tenemos disponible.
+ *  - APISPORTS_KEY → directa a v3.football.api-sports.io (recomendado)
+ *  - RAPIDAPI_KEY  → via marketplace RapidAPI */
+function apiFootballConfig() {
+  if (APISPORTS_KEY) {
+    return {
+      base: 'https://v3.football.api-sports.io',
+      headers: { 'x-apisports-key': APISPORTS_KEY }
+    };
+  }
+  return {
+    base: 'https://api-football-v1.p.rapidapi.com/v3',
+    headers: {
+      'X-RapidAPI-Key': RAPIDAPI_KEY,
+      'X-RapidAPI-Host': 'api-football-v1.p.rapidapi.com'
+    }
+  };
+}
+
 async function apiFootballInjuries(teamName) {
   // Endpoint: /injuries?team={id}&season={year}
   // Necesita buscar el team ID primero.
+  const cfg = apiFootballConfig();
   try {
-    const search = await httpJson(`https://api-football-v1.p.rapidapi.com/v3/teams?search=${encodeURIComponent(teamName)}`, {
-      headers: {
-        'X-RapidAPI-Key': RAPIDAPI_KEY,
-        'X-RapidAPI-Host': 'api-football-v1.p.rapidapi.com'
-      }
+    const search = await httpJson(`${cfg.base}/teams?search=${encodeURIComponent(teamName)}`, {
+      headers: cfg.headers
     });
     const teamId = search.response?.[0]?.team?.id;
     if (!teamId) return null;
     const season = new Date().getFullYear();
-    const data = await httpJson(`https://api-football-v1.p.rapidapi.com/v3/injuries?team=${teamId}&season=${season}`, {
-      headers: {
-        'X-RapidAPI-Key': RAPIDAPI_KEY,
-        'X-RapidAPI-Host': 'api-football-v1.p.rapidapi.com'
-      }
+    const data = await httpJson(`${cfg.base}/injuries?team=${teamId}&season=${season}`, {
+      headers: cfg.headers
     });
     const list = (data.response || [])
       .filter(i => i.fixture?.date && new Date(i.fixture.date) >= new Date(Date.now() - 30*24*3600*1000))
