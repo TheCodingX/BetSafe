@@ -1,0 +1,230 @@
+/* BetSafe — Comparator tab */
+(function () {
+  'use strict';
+
+  function render(panel) {
+    const matches = BSData.makeMatches();
+    panel.innerHTML = `
+      <div class="row between mb-3">
+        <div>
+          <h2 class="h3">Comparador en vivo · 12 casas legales AR<a class="help-q" tabindex="0" data-tip="Mostramos las cuotas de las 12 casas argentinas con licencia LOTBA/IPLyC en una sola vista. Resaltamos en verde la mejor cuota por outcome y calculamos la diferencia % entre la mejor y la peor — eso es valor que estás dejando si no comparás. Margen del libro = overround. Refresco cada 30s."></a></h2>
+          <p class="muted">Resaltamos la mejor cuota por outcome. Diferencia % entre la mejor y la peor. Refresco cada 30 s.</p>
+        </div>
+        <div class="cluster">
+          <select class="select" id="cSport"><option value="all">Todos los deportes</option>${BSData.SPORTS.map(s=>`<option value="${s.key}">${s.name}</option>`).join('')}</select>
+          <select class="select" id="cLeague"><option value="all">Todas las ligas</option>${BSData.LEAGUES.map(l=>`<option value="${l.key}">${l.name}</option>`).join('')}</select>
+          <button class="btn btn-outline btn-sm" id="cRefresh">${BSIcons.svg('refresh',{size:14})} Refrescar</button>
+        </div>
+      </div>
+
+      <div class="card stack mb-3">
+        <div class="risk-slider-block">
+          <div class="risk-slider-head">
+            <strong>Risk slider</strong>
+            <span class="muted tiny">· filtra por banda de cuota</span>
+          </div>
+          <div class="risk-slider-row">
+            <span class="risk-slider-edge">10%</span>
+            <input type="range" class="slider slider-risk" id="cRisk" min="10" max="100" value="50" />
+            <span class="risk-slider-edge">100%</span>
+            <strong class="risk-slider-val num" id="cRiskVal">50%</strong>
+          </div>
+        </div>
+        <div class="cluster" id="cBandPills"></div>
+      </div>
+
+      <div class="card stack">
+        <div class="row between">
+          <strong id="cCount">0 partidos</strong>
+          <span class="muted tiny" id="cTimer">Próximo refresh en 30 s</span>
+        </div>
+        <div id="cBody" class="stack"></div>
+      </div>
+
+      <div id="arbBanner" class="card card-tinted mt-3" hidden>
+        <div class="row between">
+          <div><strong class="text-success">Surebet detectada</strong><div class="muted tiny" id="arbBannerText">—</div></div>
+          <a href="#arbitrage" class="btn btn-primary btn-sm">Ver detalle</a>
+        </div>
+      </div>
+    `;
+
+    const bands = {
+      10: [1.10, 1.30], 25: [1.30, 1.60], 50: [1.60, 2.30],
+      75: [2.30, 3.50], 90: [3.50, 5.0], 100: [5.0, 99]
+    };
+
+    // Distribuir pills a lo largo del slider (cada una en su porcentaje umbral)
+    const pillBox = panel.querySelector('#cBandPills');
+    pillBox.classList.remove('cluster');
+    pillBox.classList.add('risk-band-track');
+    const bandLabels = [
+      { label: 'Conservador',  range: '1.10-1.40', pct: 10,  cls: 'low'  },
+      { label: 'Cauteloso',    range: '1.30-1.60', pct: 25,  cls: 'low'  },
+      { label: 'Equilibrado',  range: '1.60-2.30', pct: 50,  cls: 'mid'  },
+      { label: 'Moderado',     range: '2.30-3.50', pct: 75,  cls: 'mid'  },
+      { label: 'Agresivo',     range: '3.50-5.00', pct: 90,  cls: 'high' },
+      { label: 'Longshot',     range: '5.00+',     pct: 100, cls: 'high' }
+    ];
+    pillBox.innerHTML = bandLabels.map(b => `
+      <span class="risk-band" data-pct="${b.pct}" style="--p:${b.pct}%">
+        <span class="risk-band-pin ${b.cls}"></span>
+        <span class="risk-band-pill ${b.cls}">${b.label}</span>
+        <span class="risk-band-range">${b.range}</span>
+      </span>`).join('');
+
+    let activeSport = 'all', activeLeague = 'all', riskBand = 50;
+
+    function refresh() {
+      const list = matches.filter(m =>
+        (activeSport === 'all' || m.sport === activeSport) &&
+        (activeLeague === 'all' || m.league === activeLeague)
+      );
+      const tb = panel.querySelector('#cBody');
+      tb.innerHTML = list.map(m => row(m)).join('');
+      panel.querySelector('#cCount').textContent = list.length + ' partidos';
+
+      // Detect arbitrage
+      const arb = list.find(m => isArb(m));
+      const banner = panel.querySelector('#arbBanner');
+      if (arb) {
+        banner.hidden = false;
+        const arbInfo = arbDetails(arb);
+        panel.querySelector('#arbBannerText').textContent = `${arb.home.name} vs ${arb.away.name} · ROI ${arbInfo.roi.toFixed(2)}%`;
+      } else { banner.hidden = true; }
+
+      tb.querySelectorAll('[data-add]').forEach(b => b.addEventListener('click', () => BSDash.addToSlip(JSON.parse(b.dataset.add))));
+      tb.querySelectorAll('[data-detail]').forEach(b => b.addEventListener('click', () => openDetail(matches.find(m=>m.id===b.dataset.detail))));
+    }
+
+    /* Top-3 ranking helper: para cada outcome del 1X2, devuelve las 3 casas
+       que mejor pagan, ordenadas. Mismo mercado entre casas distintas. */
+    function top3(books, key) {
+      return books
+        .map(([k, b]) => ({ book: k, price: b[key] || 0 }))
+        .filter(x => x.price > 1)
+        .sort((a, b) => b.price - a.price)
+        .slice(0, 3);
+    }
+
+    function row(m) {
+      const books = Object.entries(m.markets.h2h);
+      const bestH = books.reduce((a, [k, b]) => b.home > a.v ? { v: b.home, book: k } : a, { v: 0, book: '' });
+      const bestD = books.reduce((a, [k, b]) => (b.draw || 0) > a.v ? { v: b.draw, book: k } : a, { v: 0, book: '' });
+      const bestA = books.reduce((a, [k, b]) => b.away > a.v ? { v: b.away, book: k } : a, { v: 0, book: '' });
+      const minH = Math.min(...books.map(([_, b]) => b.home).filter(Boolean));
+      const margin = BSMath.overround([bestH.v, bestD.v || 99, bestA.v]) * 100;
+      const delta = bestH.v / minH * 100 - 100;
+      const bn = (k) => BSData.ALL_BOOKS.find(b => b.key === k)?.name || k;
+
+      const top3H = top3(books, 'home');
+      const top3D = top3(books, 'draw');
+      const top3A = top3(books, 'away');
+
+      const renderCol = (label, code, list, m, side) => {
+        if (!list.length) return `<div class="cmp3-col"><div class="cmp3-col-head"><span class="label">${label}</span><span class="outcome">${code}</span></div><div class="muted tiny" style="padding:8px 10px">Sin cuota disponible</div></div>`;
+        return `
+          <div class="cmp3-col">
+            <div class="cmp3-col-head">
+              <span class="label">${label}</span>
+              <span class="outcome">${code}</span>
+            </div>
+            ${list.map((it, i) => {
+              const addPayload = JSON.stringify({ matchId: m.id, label, odd: it.price, book: it.book });
+              return `<button class="cmp3-row${i===0?' is-best':''}" data-add='${addPayload}' aria-label="${BSUI.esc(bn(it.book))} paga ${it.price.toFixed(2)}">
+                <span class="rank">${i+1}</span>
+                <span class="book">${window.BSLogos ? BSLogos.bookLogo(it.book, { size: 22 }) : ''}<span style="margin-left:6px">${BSUI.esc(bn(it.book))}</span></span>
+                <span class="price">${it.price.toFixed(2)}</span>
+              </button>`;
+            }).join('')}
+          </div>`;
+      };
+
+      const homeLbl = `Gana ${BSUI.esc(m.home.name)}`;
+      const awayLbl = `Gana ${BSUI.esc(m.away.name)}`;
+      const drawLbl = 'Empate';
+
+      return `
+        <article class="card cmp-match" style="display:flex;flex-direction:column;gap:14px">
+          <header class="row between" style="flex-wrap:wrap;gap:12px">
+            <div class="cluster">
+              ${BSIcons.teamLogo(m.home,{size:24})}
+              <strong>${BSUI.esc(m.home.name)}</strong>
+              <span class="dim">vs</span>
+              <strong>${BSUI.esc(m.away.name)}</strong>
+              ${BSIcons.teamLogo(m.away,{size:24})}
+            </div>
+            <div class="cluster" style="gap:8px;flex-wrap:wrap">
+              <span class="muted tiny">${BSUI.esc(m.leagueName)} · ${BSUI.dt(m.start)}</span>
+              <span class="badge badge-success">+${delta.toFixed(2)}% Δ</span>
+              <span class="badge" style="background:rgba(212,160,23,0.10);color:var(--gold-700);border-color:rgba(212,160,23,0.30)">Margen ${margin.toFixed(2)}%</span>
+              <button class="btn-ghost btn-icon btn-sm" data-detail="${m.id}" aria-label="Ver todas las casas">${BSIcons.svg('eye',{size:16})}</button>
+            </div>
+          </header>
+
+          <div class="cmp3">
+            ${renderCol(homeLbl, '1', top3H, m, 'home')}
+            ${bestD.v ? renderCol(drawLbl, 'X', top3D, m, 'draw') : ''}
+            ${renderCol(awayLbl, '2', top3A, m, 'away')}
+          </div>
+        </article>`;
+    }
+
+    function isArb(m) {
+      const books = Object.values(m.markets.h2h);
+      const bestH = Math.max(...books.map(b=>b.home));
+      const bestA = Math.max(...books.map(b=>b.away));
+      const bestD = Math.max(...books.map(b=>b.draw||0));
+      const odds = bestD ? [bestH, bestD, bestA] : [bestH, bestA];
+      return BSMath.surebet(odds).isSure;
+    }
+    function arbDetails(m) {
+      const books = Object.values(m.markets.h2h);
+      const bestH = Math.max(...books.map(b=>b.home));
+      const bestA = Math.max(...books.map(b=>b.away));
+      const bestD = Math.max(...books.map(b=>b.draw||0));
+      const odds = bestD ? [bestH, bestD, bestA] : [bestH, bestA];
+      return BSMath.surebet(odds);
+    }
+
+    function openDetail(m) {
+      const html = `
+        <h3 class="h3 mb-2">${BSUI.esc(m.home.name)} vs ${BSUI.esc(m.away.name)}</h3>
+        <p class="muted tiny mb-3">${BSUI.esc(m.leagueName)} · ${BSUI.dt(m.start)}</p>
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>Casa</th><th>1</th><th>X</th><th>2</th></tr></thead>
+            <tbody>
+              ${Object.entries(m.markets.h2h).map(([k, o]) => {
+                const b = BSData.ALL_BOOKS.find(x => x.key === k);
+                return `<tr><td><div class="cluster">${BSIcons.bookLogo(b||{name:k,color:'#666'},{size:18})} ${BSUI.esc(b?.name || k)} ${b?.license?'<span class="badge badge-success">'+b.license+'</span>':''}</div></td><td class="num">${o.home.toFixed(2)}</td><td class="num">${o.draw?o.draw.toFixed(2):'—'}</td><td class="num">${o.away.toFixed(2)}</td></tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>`;
+      BSUI.openModal(html, { large: true });
+    }
+
+    panel.querySelector('#cSport').addEventListener('change', e => { activeSport = e.target.value; refresh(); });
+    panel.querySelector('#cLeague').addEventListener('change', e => { activeLeague = e.target.value; refresh(); });
+    panel.querySelector('#cRefresh').addEventListener('click', () => { refresh(); BSUI.toast({ title:'Cuotas actualizadas', type:'success' }); });
+    panel.querySelector('#cRisk').addEventListener('input', e => { riskBand = +e.target.value; panel.querySelector('#cRiskVal').textContent = riskBand+'%'; });
+
+    refresh();
+
+    // Auto-refresh every 30s
+    let timer = 30, tickerEl = panel.querySelector('#cTimer');
+    const interval = setInterval(() => {
+      timer--; if (timer <= 0) { timer = 30; refresh(); }
+      tickerEl.textContent = `Próximo refresh en ${timer} s`;
+    }, 1000);
+    panel.__cleanup = () => clearInterval(interval);
+  }
+
+    function doRegister() {
+    if (typeof window.BSDash !== 'undefined') BSDash.register('comparator', render);
+    else document.addEventListener('DOMContentLoaded', () => BSDash.register('comparator', render));
+  }
+  doRegister();
+  window.__bsComparatorRender = render;
+})();

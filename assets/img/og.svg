@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b6b3a"/>
+      <stop offset="1" stop-color="#0a3d6b"/>
+    </linearGradient>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#12b76a"/>
+      <stop offset="1" stop-color="#34d399"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <g transform="translate(80,160)">
+    <text x="0" y="0" font-family="Inter, sans-serif" font-size="96" font-weight="800" fill="#fff">BetSafe</text>
+    <text x="0" y="80" font-family="Inter, sans-serif" font-size="36" font-weight="500" fill="#9ce5b8">Análisis cuantitativo de apuestas — Argentina legal</text>
+    <text x="0" y="180" font-family="JetBrains Mono, monospace" font-size="24" fill="#cdf3dc">25 casas · 48 selecciones · 80+ herramientas</text>
+  </g>
+  <g transform="translate(900,160)">
+    <circle cx="100" cy="100" r="100" fill="none" stroke="url(#g)" stroke-width="10" stroke-dasharray="320 200"/>
+    <path d="M50 50 L150 50 L120 100 L150 150 L50 150 L80 100 Z" fill="url(#g)"/>
+    <circle cx="100" cy="100" r="14" fill="#fff"/>
+  </g>
+</svg>

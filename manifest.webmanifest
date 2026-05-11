@@ -1,0 +1,33 @@
+{
+  "name": "BetSafe — Análisis Cuantitativo de Apuestas",
+  "short_name": "BetSafe",
+  "description": "Plataforma argentina legal de optimización de apuestas deportivas. Análisis cuantitativo, comparador de cuotas, arbitraje y banca.",
+  "start_url": "/dashboard.html",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#ffffff",
+  "theme_color": "#0b6b3a",
+  "lang": "es-AR",
+  "dir": "ltr",
+  "categories": ["finance", "sports", "productivity"],
+  "icons": [
+    {
+      "src": "assets/img/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/img/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    { "name": "Dashboard", "url": "/dashboard.html" },
+    { "name": "Arbitraje", "url": "/dashboard.html#arbitrage" },
+    { "name": "Mundial 2026", "url": "/dashboard.html#worldcup" }
+  ]
+}

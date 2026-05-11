@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 185" role="img" aria-label="BetSafe — Apostá inteligente. Ganá más.">
+  <title>BetSafe</title>
+  <defs>
+    <filter id="bl-fx" x="-10%" y="-10%" width="120%" height="120%">
+      <feGaussianBlur stdDeviation="0.8" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- ── Wordmark ── -->
+  <!-- "bet" — dark navy -->
+  <text x="5" y="135"
+        font-family="'Arial Black','Impact','Haettenschweiler',Arial,sans-serif"
+        font-size="115" font-weight="900" fill="#0c1e45"
+        letter-spacing="-4">bet</text>
+  <!-- "safe" — gold -->
+  <text x="218" y="135"
+        font-family="'Arial Black','Impact','Haettenschweiler',Arial,sans-serif"
+        font-size="115" font-weight="900" fill="#c49a1a"
+        letter-spacing="-4">safe</text>
+
+  <!-- ── Tagline ── -->
+  <line x1="5"   y1="156" x2="32"  y2="156" stroke="#c49a1a" stroke-width="2.5" stroke-linecap="round"/>
+  <text x="42" y="162"
+        font-family="'Arial',Helvetica,sans-serif"
+        font-size="13" font-weight="700"
+        letter-spacing="3.4" fill="#c49a1a">APOSTÁ INTELIGENTE. GANÁ MÁS.</text>
+  <line x1="526" y1="156" x2="553" y2="156" stroke="#c49a1a" stroke-width="2.5" stroke-linecap="round"/>
+</svg>

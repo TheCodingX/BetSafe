@@ -1,0 +1,45 @@
+# ============================================================================
+# BetSafe — .gitignore
+# ============================================================================
+
+# Secrets / env
+.env
+.env.local
+.env.*.local
+.env.production
+.env.development
+
+# Build artifacts
+assets/js/env.js
+.cache/
+dist/
+build/output/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Dependencies (no usamos npm packages en runtime — todo es vanilla)
+node_modules/
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Editor
+.vscode/settings.json
+.idea/
+*.sublime-workspace
+
+# Backups generados por el procesado del logo
+assets/img/betsafe-brand.original.png
+
+# Audit/preview output que no debería trackearse
+audit-out/
+
+# Service worker cache local
+sw-cache.json

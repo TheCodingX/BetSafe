@@ -1,0 +1,136 @@
+/* BetSafe — Tracker tab */
+(function () {
+  'use strict';
+
+  function render(panel) {
+    const hist = BSStore.get(BSStore.KEYS.history) || sampleHistory();
+    BSStore.set(BSStore.KEYS.history, hist);
+
+    const wins = hist.filter(h => h.result === 'W').length;
+    const losses = hist.filter(h => h.result === 'L').length;
+    const total = wins + losses;
+    const winrate = total ? wins / total : 0;
+    const totalStaked = hist.reduce((a, h) => a + (h.stake || 0), 0);
+    const profit = hist.reduce((a, h) => a + (h.profit || 0), 0);
+    const roi = totalStaked ? profit / totalStaked : 0;
+    const yieldPct = roi;
+    const avgOddWin = avg(hist.filter(h => h.result === 'W').map(h => h.odd));
+    const avgOddLose = avg(hist.filter(h => h.result === 'L').map(h => h.odd));
+    const worst = hist.reduce((min, h) => (h.profit || 0) < (min.profit || 0) ? h : min, hist[0] || { profit: 0 });
+
+    panel.innerHTML = `
+      <div class="row between mb-3">
+        <h2 class="h3">Tracker · banca y performance<a class="help-q" tabindex="0" data-tip="Seguimiento serio de tu banca: curva de evolución día a día, win rate, ROI, yield, racha actual y récord histórico, mejor y peor pick, cuota promedio (que indica tu estilo), historial filtrable por fecha/deporte/resultado. Export a CSV. Es la herramienta que separa a un apostador serio de uno recreativo."></a></h2>
+        <div class="cluster">
+          <input class="input input-sm" id="trFrom" type="date" />
+          <input class="input input-sm" id="trTo" type="date" />
+          <select class="select input-sm" id="trSport"><option value="all">Todos</option>${BSData.SPORTS.map(s=>`<option value="${s.key}">${s.name}</option>`).join('')}</select>
+          <select class="select input-sm" id="trRes"><option value="all">Todos</option><option value="W">Ganadas</option><option value="L">Perdidas</option><option value="P">Pendientes</option></select>
+          <button class="btn btn-outline btn-sm" id="trExport">${BSIcons.svg('download',{size:14})} CSV</button>
+        </div>
+      </div>
+
+      <div class="grid grid-4 reveal-stagger mb-4">
+        <div class="kpi"><div class="kpi-label">Profit total</div><div class="kpi-value ${profit>=0?'text-success':'text-danger'}">${BSUI.money(profit)}</div></div>
+        <div class="kpi"><div class="kpi-label">ROI</div><div class="kpi-value">${BSUI.pct(roi)}</div></div>
+        <div class="kpi"><div class="kpi-label">Win rate</div><div class="kpi-value">${BSUI.pct(winrate)}</div><div class="muted tiny">${wins}W · ${losses}L</div></div>
+        <div class="kpi"><div class="kpi-label">Yield</div><div class="kpi-value">${BSUI.pct(yieldPct)}</div></div>
+      </div>
+
+      <div class="grid grid-2 gap-4 mb-4">
+        <div class="card stack">
+          <strong>Distribución por deporte</strong>
+          <div class="bar-chart" id="trBars"></div>
+        </div>
+        <div class="card stack">
+          <strong>Cuotas promedio</strong>
+          <div class="row between"><span>Ganadoras</span><strong class="num text-success">${avgOddWin.toFixed(2)}</strong></div>
+          <div class="row between"><span>Perdedoras</span><strong class="num text-danger">${avgOddLose.toFixed(2)}</strong></div>
+          <div class="row between"><span>Estilo</span><strong>${avgOddWin > 2.2 ? 'Cazador de longshots' : 'Cazador de favoritas'}</strong></div>
+          <hr style="border:0;border-top:1px solid var(--border);margin:8px 0">
+          <strong>Worst trade rule</strong>
+          <div class="row between"><span>Peor pick</span><strong class="num ${worst.profit>0?'text-success':'text-danger'}">${BSUI.money(worst.profit||0)}</strong></div>
+          <div class="muted tiny">${worst.profit > 0 ? 'Aún tu peor trade es positivo. Excelente disciplina.' : 'Revisá tu peor trade para identificar fugas.'}</div>
+        </div>
+      </div>
+
+      <div class="card stack">
+        <div class="row between">
+          <strong>Historial de picks (${hist.length})</strong>
+          <span class="muted tiny">Click para editar</span>
+        </div>
+        <div class="table-wrap table-cards">
+          <table class="table">
+            <thead><tr><th>Fecha</th><th>Deporte</th><th>Evento</th><th>Stake</th><th>Cuota</th><th>Resultado</th><th>Profit</th></tr></thead>
+            <tbody id="trBody"></tbody>
+          </table>
+        </div>
+      </div>
+    `;
+
+    function renderBody() {
+      const fromV = panel.querySelector('#trFrom').value, toV = panel.querySelector('#trTo').value;
+      const sp = panel.querySelector('#trSport').value, re = panel.querySelector('#trRes').value;
+      const list = hist.filter(h =>
+        (sp === 'all' || h.sport === sp) &&
+        (re === 'all' || h.result === re) &&
+        (!fromV || h.at >= new Date(fromV).getTime()) &&
+        (!toV || h.at <= new Date(toV).getTime() + 86400000)
+      );
+      panel.querySelector('#trBody').innerHTML = list.slice(0, 50).map(h => `
+        <tr>
+          <td data-label="Fecha">${BSUI.dt(h.at)}</td>
+          <td data-label="Deporte">${BSUI.esc(BSData.SPORTS.find(s=>s.key===h.sport)?.name || h.sport)}</td>
+          <td data-label="Evento">${BSUI.esc(h.event)}</td>
+          <td data-label="Stake" class="num">${BSUI.money(h.stake)}</td>
+          <td data-label="Cuota" class="num">${h.odd.toFixed(2)}</td>
+          <td data-label="Resultado"><span class="badge ${h.result==='W'?'badge-success':h.result==='L'?'badge-danger':'badge-info'}">${h.result}</span></td>
+          <td data-label="Profit" class="num ${h.profit>=0?'text-success':'text-danger'}">${BSUI.money(h.profit||0)}</td>
+        </tr>`).join('') || '<tr><td colspan="7"><div class="empty">Sin resultados</div></td></tr>';
+    }
+
+    // Sport bars
+    const groups = {};
+    BSData.SPORTS.forEach(s => groups[s.key] = 0);
+    hist.forEach(h => { groups[h.sport] = (groups[h.sport] || 0) + (h.profit || 0); });
+    const max = Math.max(...Object.values(groups).map(Math.abs), 1);
+    panel.querySelector('#trBars').innerHTML = Object.entries(groups).filter(([_,v])=>v).slice(0, 8).map(([k, v]) => `
+      <div class="bar" data-tip="${BSData.SPORTS.find(s=>s.key===k)?.name}: ${BSUI.money(v)}" style="height:${(Math.abs(v)/max)*100}%; background: ${v>=0?'var(--brand-600)':'var(--danger)'}"></div>
+    `).join('');
+
+    panel.querySelectorAll('#trFrom,#trTo,#trSport,#trRes').forEach(i => i.addEventListener('input', renderBody));
+    panel.querySelector('#trExport').addEventListener('click', () => {
+      const rows = [['fecha','deporte','evento','stake','cuota','resultado','profit'].join(',')]
+        .concat(hist.map(h => [new Date(h.at).toISOString(), h.sport, `"${h.event}"`, h.stake, h.odd, h.result, h.profit].join(',')));
+      const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'betsafe-historial.csv'; a.click();
+    });
+
+    renderBody();
+    BSUI.bindTooltips(panel);
+  }
+
+  function avg(a) { return a.length ? a.reduce((x,y)=>x+y,0) / a.length : 0; }
+
+  function sampleHistory() {
+    const rng = BSMath.lcg(2024);
+    const out = []; const now = Date.now();
+    const evs = ['Lakers vs Celtics','PSG vs Lyon','Boca vs River','Bayern vs Dortmund','Real Madrid vs Barcelona','Yankees vs Red Sox','UFC 305: Khamzat vs Du Plessis'];
+    for (let i = 0; i < 60; i++) {
+      const r = rng();
+      const result = r > 0.45 ? 'W' : (r > 0.4 ? 'P' : 'L');
+      const stake = Math.round((1000 + r * 4000) / 100) * 100;
+      const odd = +(1.5 + r * 2.0).toFixed(2);
+      const profit = result === 'W' ? Math.round(stake * (odd - 1)) : (result === 'L' ? -stake : 0);
+      out.push({ at: now - i * 86400000 / 4, sport: ['soccer','basketball','tennis','mma','baseball'][i%5], event: evs[i % evs.length], stake, odd, result, profit });
+    }
+    return out;
+  }
+
+    function doRegister() {
+    if (typeof window.BSDash !== 'undefined') BSDash.register('tracker', render);
+    else document.addEventListener('DOMContentLoaded', () => BSDash.register('tracker', render));
+  }
+  doRegister();
+  window.__bsTrackerRender = render;
+})();

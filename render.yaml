@@ -1,0 +1,68 @@
+# BetSafe — Render.com deployment config
+# ============================================================================
+# Sitio estático con build step que inyecta env vars en window.__BS_CONFIG
+# antes de servir los HTML.
+#
+# Cómo usar:
+#   1) Pushea este repo a GitHub
+#   2) En render.com → New + → Blueprint → conectá el repo
+#   3) Render lee este YAML, crea el static site
+#   4) Settings → Environment → cargá las env vars (ver .env.example)
+#   5) Deploy
+#
+# Render free tier: 100GB bandwidth/mes, sin sleep para static sites.
+# ============================================================================
+
+services:
+  - type: web
+    name: betsafe
+    runtime: static
+    buildCommand: node build/inject-env.js
+    staticPublishPath: .
+    pullRequestPreviewsEnabled: true
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: SAMEORIGIN
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+      - path: /*
+        name: Permissions-Policy
+        value: camera=(), microphone=(), geolocation=()
+      - path: /assets/css/*
+        name: Cache-Control
+        value: public, max-age=31536000, immutable
+      - path: /assets/img/*
+        name: Cache-Control
+        value: public, max-age=31536000, immutable
+      - path: /*.html
+        name: Cache-Control
+        value: public, max-age=300, must-revalidate
+    routes:
+      - type: rewrite
+        source: /api/*
+        destination: /api/:splat
+      - type: rewrite
+        source: /app/*
+        destination: /dashboard.html
+    # Env vars que se inyectan al build (definí los valores en Render dashboard,
+    # NO los hardcodees acá).
+    envVars:
+      - key: BS_ODDS_API_KEY
+        sync: false
+      - key: BS_GROQ_API_KEY
+        sync: false
+      - key: BS_GEMINI_API_KEY
+        sync: false
+      - key: BS_OPENROUTER_API_KEY
+        sync: false
+      - key: BS_FOOTBALL_DATA_API_KEY
+        sync: false
+      - key: BS_SUPABASE_URL
+        sync: false
+      - key: BS_SUPABASE_ANON_KEY
+        sync: false
