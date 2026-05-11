@@ -1,14 +1,13 @@
-/* Scraper: Caliente.bet (PlayCity Group, opera bajo licencia LOTBA en AR) */
+/* Scraper: caliente (LOTBA AR) — usa deepCapture (shape-agnostic) */
 'use strict';
-module.exports = require('./_genericSpa')({
-  name: 'caliente',
-  pageUrl: 'https://www.caliente.bet/sports/',
-  xhrPattern: /\/(api|sb|sports?)\/(events?|fixtures?|markets?|odds|sportsbook)/i,
-  extractor: 'generic',
-  settleMs: 3000,
-  htmlSelectors: {
-    card: '[class*="event-row"], [class*="MatchCard"], [data-event]',
-    team: '[class*="competitor"], [class*="team-name"]',
-    odd: '[class*="odd"], [class*="OddValue"], [class*="price"]'
-  }
+
+module.exports = require('./_buildScraper')({
+  bookKey: 'caliente',
+  urls: [
+    'https://www.caliente.bet/sports/',
+    'https://www.caliente.bet/sports/soccer',
+    'https://www.caliente.bet/'
+  ],
+  timeoutMs: 35000,
+  scrollPasses: 3
 });

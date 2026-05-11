@@ -1,14 +1,13 @@
-/* Scraper: Betsson Argentina */
+/* Scraper: betsson (LOTBA AR) — usa deepCapture (shape-agnostic) */
 'use strict';
-module.exports = require('./_genericSpa')({
-  name: 'betsson',
-  pageUrl: 'https://www.betsson.bet.ar/sport/futbol',
-  xhrPattern: /\/(api|sb|betting|sportsbook|odds-api)\/(events?|fixtures?|markets?|odds)/i,
-  extractor: 'generic',
-  settleMs: 3500,
-  htmlSelectors: {
-    card: '[class*="event-row"], [class*="match-row"], [data-test-id*="event"]',
-    team: '[class*="participant"], [class*="team-name"], [data-test*="competitor"]',
-    odd: '[class*="odd"], [data-test*="price"], button[class*="odds"]'
-  }
+
+module.exports = require('./_buildScraper')({
+  bookKey: 'betsson',
+  urls: [
+    'https://www.betsson.bet.ar/sport/futbol',
+    'https://www.betsson.bet.ar/sport/',
+    'https://www.betsson.bet.ar/'
+  ],
+  timeoutMs: 35000,
+  scrollPasses: 3
 });

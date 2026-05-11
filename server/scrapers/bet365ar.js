@@ -1,15 +1,13 @@
-/* Scraper: Bet365 Argentina */
+/* Scraper: bet365ar (LOTBA AR) — usa deepCapture (shape-agnostic) */
 'use strict';
-module.exports = require('./_genericSpa')({
-  name: 'bet365ar',
-  // Dominio oficial AR LOTBA: bet365.bet.ar
-  pageUrl: 'https://www.bet365.bet.ar/#/AS/B1/',
-  xhrPattern: /\/(api|public)\/(events?|fixture|odds|inplay|prematch|sportsbook)/i,
-  extractor: 'generic',
-  settleMs: 4000,
-  htmlSelectors: {
-    card: 'div[class*="ovm-Fixture"], div[class*="rcl-MatchLineParticipants"]',
-    team: 'div[class*="ovm-FixtureDetailsTwoWay_Team"], span[class*="rcl-ParticipantFixture"]',
-    odd: 'span[class*="ovm-Participant_Odds"], span[class*="gll-Participant_Odds"]'
-  }
+
+module.exports = require('./_buildScraper')({
+  bookKey: 'bet365ar',
+  urls: [
+    'https://www.bet365.bet.ar/#/AS/B1/',
+    'https://www.bet365.bet.ar/#/HO/',
+    'https://www.bet365.bet.ar/'
+  ],
+  timeoutMs: 45000,
+  scrollPasses: 2
 });

@@ -14,12 +14,15 @@
     "node": ">=20"
   },
   "dependencies": {
-    "express": "^4.21.1",
-    "ws": "^8.18.0",
     "cheerio": "^1.0.0",
-    "playwright": "^1.49.0",
-    "undici": "^7.1.0",
+    "express": "^4.21.1",
+    "lru-cache": "^11.0.2",
     "p-limit": "^6.1.0",
-    "lru-cache": "^11.0.2"
+    "playwright": "^1.49.0",
+    "playwright-extra": "^4.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "undici": "^7.1.0",
+    "user-agents": "^2.1.57",
+    "ws": "^8.18.0"
   }
 }

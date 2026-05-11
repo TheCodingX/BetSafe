@@ -9,9 +9,44 @@
  */
 'use strict';
 
-const { chromium } = require('playwright');
+// Playwright con stealth real: oculta navigator.webdriver, fakes WebGL,
+// permissions, plugins, languages, hardwareConcurrency, etc.
+const { chromium: chromiumBase } = require('playwright');
+let chromiumStealth = null;
+try {
+  const { chromium } = require('playwright-extra');
+  const stealth = require('puppeteer-extra-plugin-stealth')();
+  chromium.use(stealth);
+  chromiumStealth = chromium;
+} catch (e) {
+  // si fallo el require de plugins, fallback a playwright nativo
+  chromiumStealth = chromiumBase;
+}
+const chromium = chromiumStealth || chromiumBase;
 
-const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+let UserAgent;
+try { UserAgent = require('user-agents'); } catch {}
+
+// User agents reales rotativos. Si no está la lib, usa fallback estático.
+function nextUA() {
+  if (UserAgent) {
+    try {
+      const ua = new UserAgent({ deviceCategory: 'desktop' });
+      return ua.toString();
+    } catch {}
+  }
+  // Fallback: UAs reales de Chrome estables
+  const POOL = [
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36'
+  ];
+  return POOL[Math.floor(Math.random() * POOL.length)];
+}
+
+const UA = nextUA();
 const ACCEPT_LANG = 'es-AR,es;q=0.9,en-US;q=0.6,en;q=0.4';
 
 // ── Logging ────────────────────────────────────────────────────────────────
@@ -46,8 +81,10 @@ async function httpGet(url, opts = {}) {
         ...(opts.headers || {})
       },
       headersTimeout,
-      bodyTimeout,
-      maxRedirections: 4
+      bodyTimeout
+      // NOTA: undici v7 removió `maxRedirections` como opción top-level.
+      // El default ya sigue redirects. Si necesitamos control fino, usar
+      // request-redirect-interceptor; para nuestros endpoints no es necesario.
     });
     if (statusCode >= 400) {
       const text = await body.text().catch(() => '');
@@ -61,7 +98,16 @@ async function httpGet(url, opts = {}) {
 
 async function httpJson(url, opts = {}) { return httpGet(url, { ...opts, json: true }); }
 
-// ── Browser pool (Playwright) ──────────────────────────────────────────────
+// ── Browser pool (Playwright + stealth) ───────────────────────────────────
+// Estrategias de evasión aplicadas:
+//   - playwright-extra-stealth plugin (oculta webdriver, WebGL, plugins, etc.)
+//   - User-Agent rotativo desde lib `user-agents` o pool curado
+//   - Headers Sec-CH-UA, sec-fetch-* coherentes con un navegador real
+//   - Viewport y screen realistas
+//   - Locale + timezone AR para parecer usuario argentino
+//   - Init script extra que mata flags residuales de automation
+//   - Block solo de resources pesados (imágenes, media, fonts) NO bloqueamos
+//     fonts opcionalmente porque algunos sites detectan eso como bot
 const browserPool = (() => {
   let browser = null;
   let launching = null;
@@ -75,31 +121,107 @@ const browserPool = (() => {
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
-        '--disable-blink-features=AutomationControlled'
+        '--disable-blink-features=AutomationControlled',
+        '--disable-features=IsolateOrigins,site-per-process,AutomationControlled',
+        '--disable-site-isolation-trials',
+        '--disable-features=BlockInsecurePrivateNetworkRequests',
+        '--no-first-run',
+        '--no-default-browser-check',
+        '--disable-extensions-except',
+        '--disable-component-extensions-with-background-pages'
       ]
     }).then(b => { browser = b; launching = null; return b; });
     return launching;
   }
 
-  async function newPage({ blockResources = true } = {}) {
+  async function newPage({ blockResources = true, ua } = {}) {
     const b = await ensure();
+    const userAgent = ua || nextUA();
+    // Detectar mobile/desktop del UA
+    const isMobile = /Mobile|Android|iPhone/.test(userAgent);
     const ctx = await b.newContext({
-      userAgent: UA,
+      userAgent,
       locale: 'es-AR',
       timezoneId: 'America/Argentina/Buenos_Aires',
-      viewport: { width: 1280, height: 800 },
-      extraHTTPHeaders: { 'Accept-Language': ACCEPT_LANG }
+      viewport: isMobile ? { width: 390, height: 844 } : { width: 1366, height: 768 },
+      screen: isMobile ? { width: 390, height: 844 } : { width: 1920, height: 1080 },
+      deviceScaleFactor: isMobile ? 3 : 1,
+      isMobile,
+      hasTouch: isMobile,
+      colorScheme: 'light',
+      reducedMotion: 'no-preference',
+      geolocation: { latitude: -34.6037, longitude: -58.3816 },  // Buenos Aires
+      permissions: ['geolocation'],
+      extraHTTPHeaders: {
+        'Accept-Language': ACCEPT_LANG,
+        'Accept-Encoding': 'gzip, deflate, br, zstd',
+        'sec-ch-ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+        'sec-ch-ua-mobile': isMobile ? '?1' : '?0',
+        'sec-ch-ua-platform': '"macOS"',
+        'Upgrade-Insecure-Requests': '1',
+        'sec-fetch-dest': 'document',
+        'sec-fetch-mode': 'navigate',
+        'sec-fetch-site': 'none',
+        'sec-fetch-user': '?1'
+      }
     });
-    // Bloquear assets pesados — solo HTML/JS/XHR/CSS necesarios para parse
+    // Inyectar script anti-detección antes de cualquier page script
+    await ctx.addInitScript(() => {
+      // navigator.webdriver -> false
+      Object.defineProperty(navigator, 'webdriver', { get: () => false, configurable: true });
+      // navigator.plugins -> simular plugins reales
+      Object.defineProperty(navigator, 'plugins', {
+        get: () => [{ name: 'Chrome PDF Plugin' }, { name: 'Chrome PDF Viewer' }, { name: 'Native Client' }]
+      });
+      // navigator.languages
+      Object.defineProperty(navigator, 'languages', { get: () => ['es-AR', 'es', 'en'] });
+      // chrome runtime
+      window.chrome = window.chrome || { runtime: {}, loadTimes: () => {}, csi: () => {} };
+      // permissions API fake
+      try {
+        const origQuery = navigator.permissions.query;
+        navigator.permissions.query = (params) =>
+          params?.name === 'notifications'
+            ? Promise.resolve({ state: Notification.permission })
+            : origQuery.call(navigator.permissions, params);
+      } catch {}
+      // WebGL vendor masking
+      try {
+        const getParam = WebGLRenderingContext.prototype.getParameter;
+        WebGLRenderingContext.prototype.getParameter = function (p) {
+          if (p === 37445) return 'Intel Inc.';      // UNMASKED_VENDOR_WEBGL
+          if (p === 37446) return 'Intel Iris OpenGL Engine'; // UNMASKED_RENDERER_WEBGL
+          return getParam.call(this, p);
+        };
+      } catch {}
+    });
+    // Solo bloquear assets verdaderamente pesados que NO afecten anti-bot
     if (blockResources) {
       await ctx.route('**/*', (route) => {
         const t = route.request().resourceType();
-        if (['image', 'media', 'font'].includes(t)) return route.abort();
+        const url = route.request().url();
+        // Bloquear imágenes/media/fonts solo de dominios no críticos
+        // (algunos sites usan font loading como anti-bot signal)
+        if (['image', 'media'].includes(t)) return route.abort();
+        // Bloquear fonts de CDN ajenos al site main domain
+        if (t === 'font') {
+          try {
+            const host = new URL(url).hostname;
+            const refer = route.request().frame()?.url() || '';
+            const refHost = refer ? new URL(refer).hostname : '';
+            if (!refHost || host === refHost || host.endsWith('.' + refHost.split('.').slice(-2).join('.'))) {
+              return route.continue();
+            }
+            return route.abort();
+          } catch { return route.continue(); }
+        }
         return route.continue();
       });
     }
     const page = await ctx.newPage();
-    page.setDefaultTimeout(15000);
+    // Default timeouts más generosos para sites con Cloudflare challenge
+    page.setDefaultTimeout(20000);
+    page.setDefaultNavigationTimeout(30000);
     return { page, ctx };
   }
 

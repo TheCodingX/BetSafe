@@ -40,7 +40,7 @@
 'use strict';
 
 class SourceBase {
-  constructor({ name, priority = 5, timeoutMs = 45000 }) {
+  constructor({ name, priority = 5, timeoutMs = 30000 }) {
     this.name = name;
     this.priority = priority;
     this.timeoutMs = timeoutMs;

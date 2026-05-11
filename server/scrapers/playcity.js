@@ -1,14 +1,13 @@
-/* Scraper: PlayCity (Caliente Group, LOTBA) */
+/* Scraper: playcity (LOTBA AR) — usa deepCapture (shape-agnostic) */
 'use strict';
-module.exports = require('./_genericSpa')({
-  name: 'playcity',
-  pageUrl: 'https://www.playcity.com.ar/sports',
-  xhrPattern: /\/(api|sb|sportsbook)\/(events?|fixtures?|markets?|odds)/i,
-  extractor: 'generic',
-  settleMs: 3000,
-  htmlSelectors: {
-    card: '[class*="event"], [class*="match"]',
-    team: '[class*="team"], [class*="participant"]',
-    odd: '[class*="odd"], [class*="price"]'
-  }
+
+module.exports = require('./_buildScraper')({
+  bookKey: 'playcity',
+  urls: [
+    'https://www.playcity.com.ar/apuestas-deportivas',
+    'https://www.playcity.com.ar/sports',
+    'https://www.playcity.com.ar/'
+  ],
+  timeoutMs: 30000,
+  scrollPasses: 3
 });

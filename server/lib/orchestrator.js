@@ -22,6 +22,8 @@ const pLimit = require('p-limit').default;
 
 const { OddsApiSource } = require('../sources/oddsapi');
 const { createAllScraperSources } = require('../sources/scrapers');
+const { SofaScoreSource } = require('../sources/sofascore');
+const { EspnSource } = require('../sources/espn');
 const { findDiscrepancies, DiscrepancyLog, recordContributor } = require('../engines/cross-validation');
 
 // Estado interno
@@ -375,14 +377,19 @@ async function cycle() {
   const t0 = Date.now();
   state.cycles += 1;
 
-  // Build a new Map y swap atómicamente al final para que lecturas
-  // concurrentes (events()) nunca vean state inconsistente.
   const prevSnap = new Map(state.events);
   const newEvents = new Map();
   cycleContributors.clear();
 
-  // 3 sources en paralelo (oddsapi puede tardar, scrapers son IO)
-  const limit = pLimit(3);
+  // 5 sources en paralelo. APIs públicas (priority 0) terminan en <5s y se
+  // commitean inmediatamente. Scrapers AR pueden tardar más pero agregan
+  // events incrementalmente.
+  const limit = pLimit(5);
+
+  // Progressive commit: cada source que termina hace que state.events refleje
+  // SOLO esa source (incremental). El usuario ve events de SofaScore/ESPN
+  // mientras los scrapers todavía corren.
+  let progressiveSwapDone = false;
 
   await Promise.allSettled(state.sources.map(src =>
     limit(async () => {
@@ -391,7 +398,6 @@ async function cycle() {
       evs.forEach(ev => mergeEventFromSource(src.name, ev, newEvents));
       const status = src.status();
       status.durMs = Date.now() - t;
-      // Preservar lastOk del status anterior si esta corrida falló
       const previousStatus = state.sourceStatus[src.name];
       if (!status.ok && previousStatus?.ok) {
         status.lastOk = previousStatus.lastOk || previousStatus.lastFetch;
@@ -402,12 +408,31 @@ async function cycle() {
       bus.emit('source-status', { source: src.name, ...status });
       log(`[source:${src.name}] ${status.ok ? 'OK' : 'ERR'} · ${status.count} eventos · ${status.durMs}ms${status.lastError ? ' · ' + status.lastError.slice(0,80) : ''}`);
 
-      // Si es oddsapi, capturar quota
+      // PROGRESSIVE SWAP: la primera vez que tenemos events, los exponemos
+      // a la UI inmediatamente. Las siguientes sources solo agregan al state
+      // existente sin pisar lo ya tenemos.
+      if (evs.length > 0 && !progressiveSwapDone) {
+        state.events = newEvents;
+        progressiveSwapDone = true;
+        computeBest(state.events.values());
+        bus.emit('odds-update', { events: events({ sport: 'all' }), ts: Date.now() });
+      } else if (evs.length > 0 && progressiveSwapDone) {
+        // Re-compute best odds para que cualquier nuevo book aporte
+        computeBest(state.events.values());
+        bus.emit('odds-update', { events: events({ sport: 'all' }), ts: Date.now() });
+      }
+
       if (src.name === 'oddsapi' && src.quota) {
         state.oddsApiQuota = src.quota;
       }
     })
   ));
+
+  // Si NINGUNA source devolvió events, igual hacemos el swap para que el
+  // estado refleje "ciclo terminado".
+  if (!progressiveSwapDone) {
+    state.events = newEvents;
+  }
 
   // Detectar discrepancias entre fuentes (cross-validation)
   let cycleDiscrepancies = 0;
@@ -425,15 +450,10 @@ async function cycle() {
     }
   }
 
-  // Computar best odds + surebets + steam
-  computeBest(newEvents.values());
-  const newSure = detectSurebets(newEvents.values());
-  const newSteam = detectSteam(prevSnap, newEvents);
-
-  // SWAP atómico: ahora newEvents reemplaza a state.events.
-  // Lecturas concurrentes vieron state.events vacío durante el ciclo? NO,
-  // porque solo trabajamos en newEvents. Swap es atómico en JS.
-  state.events = newEvents;
+  // Final pass: computar best/surebets/steam con TODO mergeado
+  computeBest(state.events.values());
+  const newSure = detectSurebets(state.events.values());
+  const newSteam = detectSteam(prevSnap, state.events);
 
   if (newSure.length) {
     state.surebets = newSure.concat(state.surebets).slice(0, 200);
@@ -501,6 +521,17 @@ function buildSources(cfg) {
   const scraperSources = createAllScraperSources(cfg.enabledBooks);
   sources.push(...scraperSources);
   log(`[orchestrator] ${scraperSources.length} scraper sources habilitados`);
+
+  // 3) Fuentes públicas suplementarias (fixtures sin odds, pero útiles
+  //    para no dejar partidos "ausentes" cuando ningún scraper los capturó).
+  if (process.env.ENABLE_SOFASCORE !== 'false') {
+    sources.push(new SofaScoreSource());
+    log('[orchestrator] SofaScore source habilitado');
+  }
+  if (process.env.ENABLE_ESPN !== 'false') {
+    sources.push(new EspnSource());
+    log('[orchestrator] ESPN source habilitado');
+  }
 
   // Ordenar por priority
   sources.sort((a, b) => a.priority - b.priority);

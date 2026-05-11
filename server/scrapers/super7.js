@@ -1,14 +1,13 @@
-/* Scraper: Super7 (LOTBA AR - Casino + apuestas deportivas) */
+/* Scraper: super7 (LOTBA AR) — usa deepCapture (shape-agnostic) */
 'use strict';
-module.exports = require('./_genericSpa')({
-  name: 'super7',
-  pageUrl: 'https://www.super7.bet.ar/sportbook',
-  xhrPattern: /\/(api|sb|sportsbook)\/(events?|fixtures?|markets?|odds)/i,
-  extractor: 'generic',
-  settleMs: 3000,
-  htmlSelectors: {
-    card: '[class*="event"], [class*="match"]',
-    team: '[class*="team"], [class*="participant"]',
-    odd: '[class*="odd"], [class*="price"]'
-  }
+
+module.exports = require('./_buildScraper')({
+  bookKey: 'super7',
+  urls: [
+    'https://www.super7.bet.ar/sportsbook',
+    'https://www.super7.bet.ar/apuestas',
+    'https://www.super7.bet.ar/'
+  ],
+  timeoutMs: 30000,
+  scrollPasses: 3
 });

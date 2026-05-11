@@ -1,14 +1,13 @@
-/* Scraper: Betfun (LOTBA AR) */
+/* Scraper: betfun (LOTBA AR) — usa deepCapture (shape-agnostic) */
 'use strict';
-module.exports = require('./_genericSpa')({
-  name: 'betfun',
-  pageUrl: 'https://www.betfun.bet.ar/sport',
-  xhrPattern: /\/(api|sb|sportsbook)\/(events?|fixtures?|markets?|odds|live|prematch)/i,
-  extractor: 'generic',
-  settleMs: 3000,
-  htmlSelectors: {
-    card: '[class*="event"], [class*="match"]',
-    team: '[class*="team"], [class*="participant"]',
-    odd: '[class*="odd"], [class*="price"]'
-  }
+
+module.exports = require('./_buildScraper')({
+  bookKey: 'betfun',
+  urls: [
+    'https://www.betfun.bet.ar/sports',
+    'https://www.betfun.bet.ar/apuestas',
+    'https://www.betfun.bet.ar/'
+  ],
+  timeoutMs: 30000,
+  scrollPasses: 3
 });
