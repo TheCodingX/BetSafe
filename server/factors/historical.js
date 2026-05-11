@@ -42,7 +42,14 @@ async function getHistorical({ homeName, awayName, leagueKey }) {
   }
 
   try {
-    const compCode = FD_COMPS[leagueKey] || 'PL';
+    const compCode = FD_COMPS[leagueKey];
+    if (!compCode) {
+      // football-data no cubre esta liga: no caigamos a 'PL' por default
+      // porque generaríamos team-not-found para todos los equipos exóticos.
+      const r = { unavailable: true, reason: 'league-not-mapped' };
+      cache.set(key, r);
+      return r;
+    }
     // Buscamos los IDs de equipos en la competencia
     const teams = await httpJson(`https://api.football-data.org/v4/competitions/${compCode}/teams`, {
       headers: { 'X-Auth-Token': FD_KEY }, timeout: 8000
@@ -55,20 +62,27 @@ async function getHistorical({ homeName, awayName, leagueKey }) {
       return r;
     }
 
-    // H2H histórico
-    const h2h = await httpJson(`https://api.football-data.org/v4/teams/${home.id}/matches?status=FINISHED&limit=200`, {
+    // H2H histórico (limit 100 para no exceder cuota free)
+    const h2hData = await httpJson(`https://api.football-data.org/v4/teams/${home.id}/matches?status=FINISHED&limit=100`, {
       headers: { 'X-Auth-Token': FD_KEY }, timeout: 10000
     }).catch(() => ({ matches: [] }));
-    const h2hMatches = (h2h.matches || []).filter(m =>
+    // Ordenar por fecha descendente (más reciente primero)
+    const allHomeMatches = (h2hData.matches || []).slice().sort((a, b) =>
+      new Date(b.utcDate) - new Date(a.utcDate)
+    );
+    const h2hMatches = allHomeMatches.filter(m =>
       (m.homeTeam?.id === home.id && m.awayTeam?.id === away.id) ||
       (m.homeTeam?.id === away.id && m.awayTeam?.id === home.id)
     ).slice(0, 10);
 
-    const formHome = (h2h.matches || []).slice(0, 5);
-    const awayMatches = await httpJson(`https://api.football-data.org/v4/teams/${away.id}/matches?status=FINISHED&limit=10`, {
+    // Forma reciente: los 5 últimos partidos del home (no H2H)
+    const formHome = allHomeMatches.slice(0, 5);
+    const awayData = await httpJson(`https://api.football-data.org/v4/teams/${away.id}/matches?status=FINISHED&limit=20`, {
       headers: { 'X-Auth-Token': FD_KEY }, timeout: 10000
     }).catch(() => ({ matches: [] }));
-    const formAway = (awayMatches.matches || []).slice(0, 5);
+    const formAway = (awayData.matches || []).slice().sort((a, b) =>
+      new Date(b.utcDate) - new Date(a.utcDate)
+    ).slice(0, 5);
 
     const result = {
       h2h: summarizeH2h(h2hMatches, home.id),
@@ -153,7 +167,7 @@ function summarizeForm(matches, teamId) {
 }
 
 function fuzzyMatch(a, b) {
-  const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
+  const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
   const A = norm(a), B = norm(b);
   if (A.includes(B) || B.includes(A)) return true;
   // Levenshtein simplificado (char overlap)

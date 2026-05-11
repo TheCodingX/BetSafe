@@ -133,23 +133,56 @@ function extractFromHtml(html, sel) {
   return out;
 }
 
+// Patrón XHR amplio que matchea las APIs internas más comunes de SPAs de
+// sportsbook (Kaizen, Sportradar, Sirplay, Pragmatic, custom, etc.)
+const BROAD_XHR_PATTERN = /\/(api|graphql|sb|sports?book|sport|public|content|odds-api|live|prematch|markets|events?|fixtures?|odds|leagues?|competitions?|tournaments?|matches?|cdn|feed|data|gateway)/i;
+
 module.exports = function genericSpa(cfg) {
   return async function scrape() {
+    // 1) Intentar captura XHR con el patrón específico
+    let xhrPayloads = [];
     try {
-      const payloads = await captureXhr(cfg.pageUrl, cfg.xhrPattern, { settleMs: cfg.settleMs || 2500 });
+      xhrPayloads = await captureXhr(cfg.pageUrl, cfg.xhrPattern, { settleMs: cfg.settleMs || 2500 });
       const out = [];
-      for (const p of payloads) {
+      for (const p of xhrPayloads) {
         const evs = (cfg.extractor === 'generic' || !cfg.extractor) ? genericExtract(p.json)
                   : cfg.extractor(p.json);
         out.push(...evs);
       }
       if (out.length) return out;
-    } catch (e) { log(`[${cfg.name}] xhr fail`, e?.message); }
+    } catch (e) { log(`[${cfg.name}] xhr fail`, e?.message?.slice(0, 80)); }
+
+    // 2) Si el patrón específico falló, intentar uno MÁS AMPLIO
+    if (cfg.xhrPattern !== BROAD_XHR_PATTERN) {
+      try {
+        const broadPayloads = await captureXhr(cfg.pageUrl, BROAD_XHR_PATTERN, { settleMs: cfg.settleMs || 3000 });
+        const out = [];
+        for (const p of broadPayloads) {
+          const evs = genericExtract(p.json);
+          out.push(...evs);
+        }
+        if (out.length) {
+          log(`[${cfg.name}] capturado vía pattern amplio · ${broadPayloads.length} XHR · ${out.length} ev`);
+          return out;
+        }
+        // Logueamos qué URLs vimos para que el admin pueda ajustar el pattern
+        if (broadPayloads.length) {
+          const sample = broadPayloads.slice(0, 5).map(p => p.url).join(', ');
+          log(`[${cfg.name}] vio ${broadPayloads.length} XHR pero no parseó: ${sample.slice(0, 200)}`);
+        } else {
+          log(`[${cfg.name}] sin XHR matched`);
+        }
+      } catch (e) { log(`[${cfg.name}] broad xhr fail`, e?.message?.slice(0, 80)); }
+    }
+
+    // 3) HTML fallback (último recurso)
     if (cfg.htmlSelectors) {
       try {
         const { html } = await fetchHtml(cfg.pageUrl, { waitFor: cfg.htmlSelectors.waitFor || cfg.htmlSelectors.card, settleMs: 1500 });
-        return extractFromHtml(html, cfg.htmlSelectors);
-      } catch (e) { log(`[${cfg.name}] html fail`, e?.message); }
+        const out = extractFromHtml(html, cfg.htmlSelectors);
+        if (out.length) log(`[${cfg.name}] capturado vía HTML · ${out.length} ev`);
+        return out;
+      } catch (e) { log(`[${cfg.name}] html fail`, e?.message?.slice(0, 80)); }
     }
     return [];
   };

@@ -42,10 +42,10 @@ const BOOK_LIMITS = {
   caliente:    { soccer: 250000, basketball: 150000, tennis: 100000, default: 120000 },
   casinomagic: { soccer: 100000, basketball:  60000, tennis:  40000, default:  50000 },
   betsson:     { soccer: 200000, basketball: 150000, tennis: 100000, default: 100000 },
-  jugabet:     { soccer: 150000, basketball:  80000, tennis:  60000, default:  80000 },
-  '24bet':     { soccer: 100000, basketball:  60000, tennis:  40000, default:  50000 },
   playcity:    { soccer: 150000, basketball:  80000, tennis:  60000, default:  80000 },
-  megapuesta:  { soccer:  80000, basketball:  50000, tennis:  30000, default:  40000 }
+  super7:      { soccer: 120000, basketball:  70000, tennis:  50000, default:  60000 },
+  betfun:      { soccer: 100000, basketball:  60000, tennis:  40000, default:  50000 },
+  jugadon:     { soccer: 100000, basketball:  60000, tennis:  40000, default:  50000 }
 };
 
 /* Slippage típico por casa al ejecutar (cuánto suele bajar la cuota entre
@@ -53,7 +53,7 @@ const BOOK_LIMITS = {
 const BOOK_SLIPPAGE = {
   bplay: 0.012, betano: 0.010, betwarrior: 0.014, bet365ar: 0.008,
   codere: 0.013, caliente: 0.012, casinomagic: 0.018, betsson: 0.011,
-  jugabet: 0.015, '24bet': 0.016, playcity: 0.014, megapuesta: 0.018
+  playcity: 0.014, super7: 0.015, betfun: 0.016, jugadon: 0.017
 };
 
 class ArbitrageEngine {
@@ -75,7 +75,15 @@ class ArbitrageEngine {
 
   start() {
     if (this.timer) return;
-    const tick = () => this.cycle().catch(e => log('[arb] cycle err', e?.message || e));
+    // Mutex: si el ciclo anterior aún corre, skipear este tick para evitar
+    // condiciones de carrera en this.activeIds / this.detected.
+    const tick = () => {
+      if (this._cycleRunning) return;
+      this._cycleRunning = true;
+      this.cycle()
+        .catch(e => log('[arb] cycle err', e?.message || e))
+        .finally(() => { this._cycleRunning = false; });
+    };
     tick();
     this.timer = setInterval(tick, this.interval);
   }
@@ -312,9 +320,14 @@ class ArbitrageEngine {
     sb.confidence = this.computeConfidence(sb, ev);
 
     // Account limits: ¿alcanza para nuestro bankroll?
+    // Si la misma casa aparece en varias legs (cross-market), sumamos
+    // los stakes contra el límite único de esa casa.
     const limits = sb.books.map(b => (BOOK_LIMITS[b] || {})[ev?.sport] || BOOK_LIMITS[b]?.default || 50000);
-    sb.bankrollFit = stakes.every((s, i) => s <= limits[i]);
-    sb.bookLimits = Object.fromEntries(sb.books.map((b, i) => [b, limits[i]]));
+    const stakeByBook = {};
+    sb.books.forEach((b, i) => { stakeByBook[b] = (stakeByBook[b] || 0) + stakes[i]; });
+    sb.bankrollFit = sb.books.every((b, i) => stakeByBook[b] <= limits[i]);
+    // bookLimits con info por leg (preservando duplicados)
+    sb.bookLimits = sb.books.map((b, i) => ({ book: b, limit: limits[i], stakeUsed: stakeByBook[b] }));
 
     // Latency order: empezar por el book más lento (mayor riesgo de cierre)
     const bookStatus = this.getBookStatus();

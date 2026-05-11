@@ -26,25 +26,37 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 const { request } = require('undici');
 
 async function httpGet(url, opts = {}) {
-  const { body, headers, statusCode } = await request(url, {
-    method: 'GET',
-    headers: {
-      'User-Agent': UA,
-      'Accept': opts.accept || 'application/json, text/html, */*',
-      'Accept-Language': ACCEPT_LANG,
-      'Cache-Control': 'no-cache',
-      'Pragma': 'no-cache',
-      ...(opts.headers || {})
-    },
-    headersTimeout: 8000,
-    bodyTimeout: 15000,
-    maxRedirections: 4
-  });
-  if (statusCode >= 400) {
-    const text = await body.text().catch(() => '');
-    throw new Error(`HTTP ${statusCode} for ${url} :: ${text.slice(0, 200)}`);
+  // `opts.timeout` (ms) limita el tiempo TOTAL del request (headers + body).
+  // headersTimeout y bodyTimeout son los individuales internos de undici.
+  const timeout = Number(opts.timeout) || 12000;
+  const headersTimeout = Math.min(8000, timeout);
+  const bodyTimeout = Math.min(15000, timeout);
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(new Error(`timeout ${timeout}ms`)), timeout);
+  try {
+    const { body, headers, statusCode } = await request(url, {
+      method: 'GET',
+      signal: ctrl.signal,
+      headers: {
+        'User-Agent': UA,
+        'Accept': opts.accept || 'application/json, text/html, */*',
+        'Accept-Language': ACCEPT_LANG,
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache',
+        ...(opts.headers || {})
+      },
+      headersTimeout,
+      bodyTimeout,
+      maxRedirections: 4
+    });
+    if (statusCode >= 400) {
+      const text = await body.text().catch(() => '');
+      throw new Error(`HTTP ${statusCode} for ${url} :: ${text.slice(0, 200)}`);
+    }
+    return opts.json ? body.json() : body.text();
+  } finally {
+    clearTimeout(timer);
   }
-  return opts.json ? body.json() : body.text();
 }
 
 async function httpJson(url, opts = {}) { return httpGet(url, { ...opts, json: true }); }
@@ -142,8 +154,11 @@ const TEAM_ALIASES = {
 function normalizeTeam(name) {
   if (!name) return { id: '', name: '' };
   const trimmed = String(name).trim();
+  // ̀-ͯ = bloque Unicode "Combining Diacritical Marks" (acentos).
+  // Usar el escape Unicode garantiza la portabilidad del regex sin importar
+  // cómo se guarde el archivo.
   const key = trimmed.toLowerCase()
-    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .replace(/\s+/g, ' ')
     .replace(/[.,]/g, '');
   const id = TEAM_ALIASES[key] || key

@@ -13,7 +13,8 @@
 
 const { captureXhr, fetchHtml, loadDom, buildEvent, resolveLeague, parseDecimal, log } = require('./_base');
 
-const PAGE_URL    = 'https://www.betano.com.ar/sport/futbol/partidos-de-hoy/';
+// Dominio oficial AR con licencia LOTBA: betano.bet.ar (NO betano.com.ar)
+const PAGE_URL    = 'https://www.betano.bet.ar/sport/futbol/partidos-de-hoy/';
 const XHR_PATTERN = /\/(api|public)\/(sb|sports?|events?|odds|markets)/i;
 
 async function scrape() {

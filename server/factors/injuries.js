@@ -91,7 +91,11 @@ async function apiFootballInjuries(teamName) {
     });
     const teamId = search.response?.[0]?.team?.id;
     if (!teamId) return null;
-    const season = new Date().getFullYear();
+    // Season en api-football: año de inicio de la temporada europea.
+    // En agosto-diciembre = año actual. En enero-julio = año anterior
+    // (la temporada europea 24/25 empieza en agosto 2024 y termina mayo 2025).
+    const now = new Date();
+    const season = now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1;
     const data = await httpJson(`${cfg.base}/injuries?team=${teamId}&season=${season}`, {
       headers: cfg.headers
     });
@@ -108,54 +112,70 @@ async function apiFootballInjuries(teamName) {
   } catch (e) { return null; }
 }
 
+// ESPN espera sport+league en estructura: sports/<sport>/<league>/...
+const ESPN_LEAGUE_PATHS = {
+  epl: 'soccer/eng.1', laliga: 'soccer/esp.1', seriea: 'soccer/ita.1',
+  bundesliga: 'soccer/ger.1', ligue1: 'soccer/fra.1',
+  ucl: 'soccer/uefa.champions', uel: 'soccer/uefa.europa',
+  lpf: 'soccer/arg.1', mls: 'soccer/usa.1',
+  libertadores: 'soccer/conmebol.libertadores',
+  sudamericana: 'soccer/conmebol.sudamericana',
+  nba: 'basketball/nba', wnba: 'basketball/wnba', euroleague: 'basketball/euroleague',
+  nfl: 'football/nfl', mlb: 'baseball/mlb', nhl: 'hockey/nhl'
+};
+
 async function espnInjuries(teamName, leagueKey) {
-  // ESPN tiene endpoints públicos como:
-  //   site.api.espn.com/apis/site/v2/sports/soccer/{league}/teams/{teamSlug}/injuries
-  const leagueSlugs = {
-    epl: 'eng.1', laliga: 'esp.1', seriea: 'ita.1', bundesliga: 'ger.1',
-    ligue1: 'fra.1', ucl: 'uefa.champions', uel: 'uefa.europa',
-    lpf: 'arg.1', mls: 'usa.1', nba: 'basketball/nba', nfl: 'football/nfl',
-    mlb: 'baseball/mlb', nhl: 'hockey/nhl'
-  };
-  const slug = leagueSlugs[leagueKey] || 'eng.1';
-  const teamSlug = String(teamName).toLowerCase().replace(/[^a-z]/g, '').slice(0, 20);
+  const leaguePath = ESPN_LEAGUE_PATHS[leagueKey];
+  if (!leaguePath) return null;   // no soportamos sin sport-league explícito
+
+  // Buscar el team ID via /teams (paginado, devuelve todos)
+  let teamId = null;
   try {
-    // Búsqueda genérica + injuries
-    const url = `https://site.api.espn.com/apis/site/v2/sports/soccer/${slug}/teams/${teamSlug}/injuries`;
-    const data = await httpJson(url, { timeout: 6000 });
-    const list = (data.items || []).map(i => ({
-      name: i.athlete?.displayName,
+    const teamsData = await httpJson(`https://site.api.espn.com/apis/site/v2/sports/${leaguePath}/teams`, { timeout: 8000 });
+    const allTeams = teamsData.sports?.[0]?.leagues?.[0]?.teams || [];
+    const norm = s => String(s || '').toLowerCase()
+      .normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/[^a-z0-9]/g, '');
+    const target = norm(teamName);
+    // Match por nombre completo, luego displayName, luego shortDisplayName, luego abbreviation
+    const match = allTeams.find(t => {
+      const tt = t.team || t;
+      return [tt.displayName, tt.name, tt.shortDisplayName, tt.location, tt.abbreviation]
+        .filter(Boolean).some(n => {
+          const nn = norm(n);
+          return nn === target || nn.includes(target) || target.includes(nn);
+        });
+    });
+    teamId = (match?.team || match)?.id;
+  } catch (e) {
+    // si /teams falla, no podemos seguir
+    return null;
+  }
+  if (!teamId) return null;
+
+  // Endpoint correcto de injuries por team ID
+  try {
+    const url = `https://site.api.espn.com/apis/site/v2/sports/${leaguePath}/teams/${teamId}/injuries`;
+    const data = await httpJson(url, { timeout: 8000 });
+    const items = data.items || data.injuries || [];
+    const list = items.map(i => ({
+      name: i.athlete?.displayName || i.athlete?.fullName,
       position: i.athlete?.position?.abbreviation || null,
       status: normalizeStatus(i.status, i.shortComment),
       reason: i.shortComment || i.longComment || null,
       expectedReturn: i.returnDate || null
-    }));
+    })).filter(i => i.name);
     if (list.length) return { team: teamName, source: 'espn', injuries: list };
-  } catch (e) { /* try team page */ }
-
-  // Fallback: scrape de la página pública de team en ESPN (HTML)
-  try {
-    const html = await httpGet(`https://www.espn.com/soccer/team/squad/_/id/${teamSlug}`, { accept: 'text/html', timeout: 6000 });
-    const $ = cheerio.load(html);
-    const list = [];
-    $('table tbody tr').each((_, tr) => {
-      const $tr = $(tr);
-      const statusBadge = $tr.find('[class*="injury"], [class*="status"]').text().trim();
-      if (!statusBadge) return;
-      const name = $tr.find('a').first().text().trim();
-      if (!name) return;
-      list.push({ name, position: null, status: normalizeStatus(statusBadge), reason: statusBadge });
-    });
-    if (list.length) return { team: teamName, source: 'espn-html', injuries: list };
   } catch (e) { /* ignore */ }
   return null;
 }
 
 function normalizeStatus(type, reason) {
   const s = String(type || reason || '').toLowerCase();
-  if (/out|missing|baja|ausente|sancion|sanction/.test(s)) return 'out';
+  // Anclar palabras con boundaries para evitar matches como "scout" → "out"
+  if (/\bout\b|\bmissing\b|\bbaja\b|\bausente\b|sancion|sanction/.test(s)) return 'out';
   if (/doubt|questionable|gtd|duda|incierto|probable/.test(s)) return 'doubt';
-  if (/return|back|recovered|fit/.test(s)) return 'returning';
+  if (/\breturn\b|\bback\b|recovered|\bfit\b/.test(s)) return 'returning';
   return 'doubt';
 }
 

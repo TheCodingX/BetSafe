@@ -55,10 +55,15 @@ function makeEventId(home, away, start) {
 const cycleContributors = new Map();
 
 // ── Merge de un evento (de cualquier fuente) ──────────────────────────────
-function mergeEventFromSource(sourceName, ev) {
+// targetMap permite pasar el newEvents del ciclo en curso, manteniendo
+// state.events intacto hasta que el swap atómico ocurre al final.
+function mergeEventFromSource(sourceName, ev, targetMap) {
+  const map = targetMap || state.events;
   if (!ev?.home?.name || !ev?.away?.name) return;
+  // Descartar eventos con start inválido (NaN propagaría a eventKey)
+  if (ev.start != null && !Number.isFinite(ev.start)) ev.start = null;
   const key = eventKey(ev.home.name, ev.away.name, ev.start);
-  let existing = state.events.get(key);
+  let existing = map.get(key);
   if (!existing) {
     existing = {
       id: makeEventId(ev.home.name, ev.away.name, ev.start),
@@ -73,7 +78,7 @@ function mergeEventFromSource(sourceName, ev) {
       lastUpdate: Date.now(),
       sources: []
     };
-    state.events.set(key, existing);
+    map.set(key, existing);
   }
   if (ev.league && !existing.league) existing.league = ev.league;
   if (ev.leagueName && !existing.leagueName) existing.leagueName = ev.leagueName;
@@ -90,21 +95,18 @@ function mergeEventFromSource(sourceName, ev) {
     for (const [bookKey, marketData] of Object.entries(marketByBook)) {
       if (!marketData) continue;
 
-      // Si ya hay una entrada para este book/market en el evento existing,
-      // y la fuente actual NO es la misma que la registró antes → comparar
+      // Sanitizamos SIEMPRE antes de mergear/grabar. Esto garantiza que
+      // isFinite2 se aplique sin importar la fuente (oddsapi o scraper).
+      const sanitized = sanitizeMarket(marketName, marketData);
       const previousValue = existing.markets[marketName]?.[bookKey];
       if (previousValue) {
-        // Ya hay valor de otra fuente. Registramos para cross-validation
-        // (incluso si los nuevos valores son iguales o mejores).
-        registerContributors(contrib, sourceName, marketName, bookKey, marketData);
-        // Mergeamos: si el nuevo tiene más outcomes los agregamos, pero no
-        // pisamos los anteriores cuando coinciden (preservamos al más viejo
-        // para no introducir lag artificial en la UI).
-        existing.markets[marketName][bookKey] = mergeMarketData(previousValue, marketData);
+        // Cross-validation: registramos para detectar discrepancias entre fuentes
+        registerContributors(contrib, sourceName, marketName, bookKey, sanitized);
+        // Preservamos el primer valor para no introducir lag artificial
+        existing.markets[marketName][bookKey] = mergeMarketData(previousValue, sanitized);
       } else {
-        // Primera fuente que aporta este book/market
-        existing.markets[marketName][bookKey] = sanitizeMarket(marketName, marketData);
-        registerContributors(contrib, sourceName, marketName, bookKey, marketData);
+        existing.markets[marketName][bookKey] = sanitized;
+        registerContributors(contrib, sourceName, marketName, bookKey, sanitized);
       }
     }
   }
@@ -127,6 +129,11 @@ function registerContributors(contribMap, sourceName, marketName, bookKey, marke
     }
   } else if (marketName === 'dc') {
     ['home_or_draw', 'draw_or_away', 'home_or_away'].forEach(o => recordContributor(contribMap, sourceName, marketName, bookKey, o, marketData[o]));
+  } else if (marketName === 'ah') {
+    // AH: si tiene line, lo incluimos como parte del outcome key
+    const line = marketData.line != null ? marketData.line : 0;
+    recordContributor(contribMap, sourceName, marketName, bookKey, 'home_minus', marketData.home_minus, line);
+    recordContributor(contribMap, sourceName, marketName, bookKey, 'away_plus', marketData.away_plus, line);
   }
 }
 
@@ -278,7 +285,8 @@ function detectSteam(prev, current) {
       const o2 = ev.bestOdds.h2h[side];
       if (!o1 || !o2) return;
       const deltaPct = ((o2 - o1) / o1) * 100;
-      if (Math.abs(deltaPct) >= 5) {
+      const absDelta = Math.abs(deltaPct);
+      if (absDelta >= 5) {
         out.push({
           eventId: ev.id,
           event: `${ev.home.name} vs ${ev.away.name}`,
@@ -287,7 +295,9 @@ function detectSteam(prev, current) {
           from: o1,
           to: o2,
           deltaPct: Number(deltaPct.toFixed(2)),
-          sharp: Math.abs(deltaPct) >= 5,
+          // 'sharp' real: solo movimientos grandes (>=8%) son indicios fuertes
+          // de sharp money. Entre 5-8% es ruido de mercado normal.
+          sharp: absDelta >= 8,
           ts: Date.now()
         });
       }
@@ -355,11 +365,20 @@ function health() {
 
 // ── Ciclo principal ────────────────────────────────────────────────────────
 async function cycle() {
+  // Mutex: si ya hay un ciclo corriendo, saltamos este. Evita carreras donde
+  // dos ciclos clearean state.events simultáneamente y se pierden eventos.
+  if (state._cycleRunning) {
+    log(`[orchestrator] skip ciclo solapado (anterior aún corriendo)`);
+    return;
+  }
+  state._cycleRunning = true;
   const t0 = Date.now();
   state.cycles += 1;
 
+  // Build a new Map y swap atómicamente al final para que lecturas
+  // concurrentes (events()) nunca vean state inconsistente.
   const prevSnap = new Map(state.events);
-  state.events.clear();
+  const newEvents = new Map();
   cycleContributors.clear();
 
   // 3 sources en paralelo (oddsapi puede tardar, scrapers son IO)
@@ -369,9 +388,16 @@ async function cycle() {
     limit(async () => {
       const t = Date.now();
       const evs = await src.safeFetch(['soccer', 'basketball', 'tennis', 'amfootball', 'baseball', 'hockey', 'mma']);
-      evs.forEach(ev => mergeEventFromSource(src.name, ev));
+      evs.forEach(ev => mergeEventFromSource(src.name, ev, newEvents));
       const status = src.status();
       status.durMs = Date.now() - t;
+      // Preservar lastOk del status anterior si esta corrida falló
+      const previousStatus = state.sourceStatus[src.name];
+      if (!status.ok && previousStatus?.ok) {
+        status.lastOk = previousStatus.lastOk || previousStatus.lastFetch;
+      } else if (status.ok) {
+        status.lastOk = status.lastFetch;
+      }
       state.sourceStatus[src.name] = status;
       bus.emit('source-status', { source: src.name, ...status });
       log(`[source:${src.name}] ${status.ok ? 'OK' : 'ERR'} · ${status.count} eventos · ${status.durMs}ms${status.lastError ? ' · ' + status.lastError.slice(0,80) : ''}`);
@@ -386,7 +412,7 @@ async function cycle() {
   // Detectar discrepancias entre fuentes (cross-validation)
   let cycleDiscrepancies = 0;
   for (const [evKey, contribMap] of cycleContributors.entries()) {
-    const ev = state.events.get(evKey);
+    const ev = newEvents.get(evKey);
     if (!ev) continue;
     const found = findDiscrepancies(ev, contribMap);
     if (found.length) {
@@ -400,9 +426,14 @@ async function cycle() {
   }
 
   // Computar best odds + surebets + steam
-  computeBest(state.events.values());
-  const newSure = detectSurebets(state.events.values());
-  const newSteam = detectSteam(prevSnap, state.events);
+  computeBest(newEvents.values());
+  const newSure = detectSurebets(newEvents.values());
+  const newSteam = detectSteam(prevSnap, newEvents);
+
+  // SWAP atómico: ahora newEvents reemplaza a state.events.
+  // Lecturas concurrentes vieron state.events vacío durante el ciclo? NO,
+  // porque solo trabajamos en newEvents. Swap es atómico en JS.
+  state.events = newEvents;
 
   if (newSure.length) {
     state.surebets = newSure.concat(state.surebets).slice(0, 200);
@@ -429,6 +460,7 @@ async function cycle() {
   });
 
   log(`[orchestrator] ciclo #${state.cycles} · ${state.events.size} eventos · ${newSure.length} sure · ${newSteam.length} steam · ${cycleDiscrepancies} discr · ${state.lastCycleMs}ms`);
+  state._cycleRunning = false;
 }
 
 // ── Inicialización de sources ─────────────────────────────────────────────
@@ -454,7 +486,7 @@ function buildSources(cfg) {
       'icehockey_nhl',
       'tennis_atp',
       'mma_mixed_martial_arts'
-    ].join(',')).split(',').filter(Boolean);
+    ].join(',')).split(',').map(s => s.trim()).filter(Boolean);
     sources.push(new OddsApiSource({
       apiKey: oddsKey,
       sportsKeys,
@@ -480,10 +512,13 @@ function start(cfg) {
   state.cfg = cfg;
   state.running = true;
   state.sources = buildSources(cfg);
-  setTimeout(() => cycle().catch(e => log('[cycle] err', e?.message || e)), 1500);
-  state.timer = setInterval(() => {
-    cycle().catch(e => log('[cycle] err', e?.message || e));
-  }, cfg.interval);
+  // Wrapper que libera el mutex si cycle() lanza, además de loguear
+  const safeCycle = () => cycle().catch(e => {
+    log('[cycle] err', e?.message || e);
+    state._cycleRunning = false;
+  });
+  setTimeout(safeCycle, 1500);
+  state.timer = setInterval(safeCycle, cfg.interval);
 }
 function stop() {
   if (!state.running) return;

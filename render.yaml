@@ -40,7 +40,7 @@ services:
       - key: ARB_INTERVAL_MS
         value: '5000'
       - key: ENABLED_BOOKS
-        value: 'bplay,betano,betwarrior,bet365ar,codere,caliente,casinomagic,betsson,jugabet,24bet,playcity,megapuesta'
+        value: 'bplay,betano,betwarrior,bet365ar,codere,caliente,casinomagic,betsson,playcity,super7,betfun,jugadon'
       - key: CORS_ORIGIN
         value: '*'
       # The Odds API — fuente PRIMARIA. Sin esto el sistema depende de scrapers.

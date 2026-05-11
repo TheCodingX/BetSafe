@@ -1,8 +1,8 @@
-/* Scraper: MegaPuesta (LOTBA) */
+/* Scraper: Jugadon (LOTBA AR) */
 'use strict';
 module.exports = require('./_genericSpa')({
-  name: 'megapuesta',
-  pageUrl: 'https://www.megapuesta.com.ar/sports',
+  name: 'jugadon',
+  pageUrl: 'https://www.jugadon.bet.ar/deportes',
   xhrPattern: /\/(api|sb|sportsbook)\/(events?|fixtures?|markets?|odds)/i,
   extractor: 'generic',
   settleMs: 3000,

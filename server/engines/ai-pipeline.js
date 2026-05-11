@@ -109,12 +109,15 @@ async function analyzeMatch(event, ctx = {}) {
 // Modelo Poisson ajustado por factores
 // ─────────────────────────────────────────────────────────────────────────
 function poissonModel(f) {
-  const h2h = f.event && f.market.h2h;
+  // Optional chaining defensivo en cada acceso
+  const h2h = f?.event && f?.market?.h2h;
   if (!h2h) return { unavailable: true };
   // λ base estimado desde cuotas implícitas
-  const odds = [h2h.home, h2h.draw, h2h.away].filter(Boolean);
+  const odds = [h2h.home, h2h.draw, h2h.away].filter(o => Number.isFinite(o) && o > 1);
   if (odds.length < 2) return { unavailable: true };
   const fair = shinNoVig(odds);
+  // Guard contra NaN/Infinity propagado desde shinNoVig
+  if (!fair || fair.some(p => !Number.isFinite(p) || p < 0 || p > 1)) return { unavailable: true };
 
   // λ total proxy: 2.6 fútbol, 220 NBA, 8.5 NFL
   let muTotal = 2.6;
@@ -125,18 +128,13 @@ function poissonModel(f) {
 
   // Ajuste por clima (impacto multiplicador)
   const impact = f.weather?.impact?.goalsMultiplier;
-  if (impact) muTotal *= impact;
-
-  // Ajuste por lesiones (impacto en goles del equipo afectado)
-  const sev = f.injuries?.severityScore;
-  if (sev) {
-    // Si el local está más diezmado, λ_home baja
-    // si el visitante está más diezmado, λ_away baja
-  }
+  if (Number.isFinite(impact) && impact > 0) muTotal *= impact;
 
   // Distribución home/away por probabilidades implícitas
   const pH = fair[0], pD = fair[1] || 0, pA = fair[2] || (1 - pH);
-  const homeShare = (pH + pD * 0.5) / (pH + pD + pA);
+  const denom = pH + pD + pA;
+  if (denom <= 0) return { unavailable: true };
+  const homeShare = (pH + pD * 0.5) / denom;
   let lambdaH = muTotal * Math.max(0.35, Math.min(0.75, homeShare));
   let lambdaA = muTotal - lambdaH;
 
@@ -189,28 +187,31 @@ function poissonCDF(k, lambda) {
 // Elo ajustado: rating implícito desde h2h + forma + sharp
 // ─────────────────────────────────────────────────────────────────────────
 function eloAdjustment(f) {
-  const hist = f.historical;
+  const hist = f?.historical;
   if (!hist || hist.unavailable) return { unavailable: true };
-  // Rating base 1500 + ajustes por forma
-  const homePts = hist.form?.home?.pointsPerGame || 1.5;
-  const awayPts = hist.form?.away?.pointsPerGame || 1.5;
-  // Cada 0.5 ppg over avg = +50 Elo
-  let eloH = 1500 + (homePts - 1.5) * 100;
-  let eloA = 1500 + (awayPts - 1.5) * 100;
-  // Home advantage estándar ~70 Elo
-  const homeAdv = 70;
-  // Sharp money adjustment: si los sharps movieron contra el favorito, premio al underdog
+  const homePts = Number(hist.form?.home?.pointsPerGame);
+  const awayPts = Number(hist.form?.away?.pointsPerGame);
+  const homeBase = Number.isFinite(homePts) ? homePts : 1.5;
+  const awayBase = Number.isFinite(awayPts) ? awayPts : 1.5;
+  let eloH = 1500 + (homeBase - 1.5) * 100;
+  let eloA = 1500 + (awayBase - 1.5) * 100;
+  const sport = f?.event?.sport || 'soccer';
+  // Home advantage por deporte (empíricos):
+  //   soccer ~70, basketball ~100, nfl ~50, baseball ~25, tennis 0 (neutral)
+  const homeAdvBySport = { soccer: 70, basketball: 100, amfootball: 50, baseball: 25, hockey: 40, tennis: 0, mma: 0 };
+  const homeAdv = homeAdvBySport[sport] != null ? homeAdvBySport[sport] : 50;
   const sharp = f.sharp?.score || 0;
-  // Cálculo de prob por Elo: 1 / (1 + 10^((eloA - eloH - homeAdv) / 400))
-  const pH = 1 / (1 + Math.pow(10, (eloA - eloH - homeAdv) / 400));
-  const pA = 1 - pH;
-  // Draw aprox: ~25% en fútbol
+  const pHraw = 1 / (1 + Math.pow(10, (eloA - eloH - homeAdv) / 400));
+  const pAraw = 1 - pHraw;
+  // Empate solo en sports que lo permiten (soccer principalmente).
+  const drawRate = (sport === 'soccer') ? 0.25 : 0;
+  const winScale = 1 - drawRate;
   return {
     eloHome: Math.round(eloH),
     eloAway: Math.round(eloA),
-    pHomeWin: Number((pH * 0.75).toFixed(4)),
-    pDraw:    0.25,
-    pAwayWin: Number((pA * 0.75).toFixed(4)),
+    pHomeWin: Number((pHraw * winScale).toFixed(4)),
+    pDraw:    drawRate,
+    pAwayWin: Number((pAraw * winScale).toFixed(4)),
     sharpAdj: sharp
   };
 }
@@ -247,9 +248,28 @@ async function llmStructured(factors, poisson, elo) {
   return { selections: [], synthesis: null, provider: 'offline' };
 }
 
+// Timeouts globales por LLM (en ms). Si la API cuelga, abortamos.
+const LLM_TIMEOUT_MS = 20000;
+
+/** Wrapper de fetch con AbortController para timeout estricto. */
+async function fetchWithTimeout(url, init, timeoutMs = LLM_TIMEOUT_MS) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(new Error(`llm-timeout ${timeoutMs}ms`)), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: ctrl.signal });
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+function safeJsonParse(text, defaultValue = {}) {
+  if (typeof text !== 'string') return defaultValue;
+  try { return JSON.parse(text); } catch { return defaultValue; }
+}
+
 async function groqJson(system, user) {
   if (!GROQ_KEY) throw new Error('no-key');
-  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+  const res = await fetchWithTimeout('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GROQ_KEY}` },
     body: JSON.stringify({
@@ -262,12 +282,12 @@ async function groqJson(system, user) {
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
-  return JSON.parse(data.choices?.[0]?.message?.content || '{}');
+  return safeJsonParse(data.choices?.[0]?.message?.content);
 }
 
 async function geminiJson(system, user) {
   if (!GEMINI_KEY) throw new Error('no-key');
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_KEY}`, {
+  const res = await fetchWithTimeout(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_KEY}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -277,13 +297,12 @@ async function geminiJson(system, user) {
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-  return JSON.parse(text);
+  return safeJsonParse(data.candidates?.[0]?.content?.parts?.[0]?.text);
 }
 
 async function openrouterJson(system, user) {
   if (!OPENROUTER_KEY) throw new Error('no-key');
-  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+  const res = await fetchWithTimeout('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${OPENROUTER_KEY}` },
     body: JSON.stringify({
@@ -296,7 +315,7 @@ async function openrouterJson(system, user) {
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
-  return JSON.parse(data.choices?.[0]?.message?.content || '{}');
+  return safeJsonParse(data.choices?.[0]?.message?.content);
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -362,11 +381,13 @@ function mergeSelections(event, factors, quant, poisson, elo, llm) {
       const t = factors.market.totals[line];
       const llmOver = llmSelections[`totals:over@${line}`];
       const llmUnder = llmSelections[`totals:under@${line}`];
-      if (t.over) {
+      // Solo mezclamos probs MODELADAS (Poisson + LLM). Las cuotas son
+      // implícitas con margen del book — NO se mezclan en consensus.
+      if (t.over && Number.isFinite(poisson.pOver25)) {
         const pPoisson = poisson.pOver25;
-        const llmP = llmOver?.modelProb || null;
-        const probs = [pPoisson, llmP, t.over ? 1 / t.over : null].filter(p => p != null);
-        const consensus = probs.length ? probs.reduce((s, p) => s + p, 0) / probs.length : null;
+        const llmP = Number.isFinite(llmOver?.modelProb) ? llmOver.modelProb : null;
+        const probs = [pPoisson, llmP].filter(p => p != null);
+        const consensus = probs.length ? probs.reduce((s, p) => s + p, 0) / probs.length : pPoisson;
         out.push({
           type: 'eq',
           market: 'totals',
@@ -384,9 +405,11 @@ function mergeSelections(event, factors, quant, poisson, elo, llm) {
           warnings: llmOver?.warnings || []
         });
       }
-      if (t.under) {
+      if (t.under && Number.isFinite(poisson.pOver25)) {
         const pPoisson = 1 - poisson.pOver25;
-        const llmP = llmUnder?.modelProb || null;
+        const llmP = Number.isFinite(llmUnder?.modelProb) ? llmUnder.modelProb : null;
+        const probs = [pPoisson, llmP].filter(p => p != null);
+        const consensus = probs.length ? probs.reduce((s, p) => s + p, 0) / probs.length : pPoisson;
         out.push({
           type: 'cons',
           market: 'totals',
@@ -397,7 +420,7 @@ function mergeSelections(event, factors, quant, poisson, elo, llm) {
           book: t.underBook,
           poissonProb: pPoisson,
           llmProb: llmP,
-          consensusProb: (pPoisson + (llmP || pPoisson)) / 2,
+          consensusProb: consensus,
           confidence: 0.7,
           factors: buildFactorList({ outcome: 'under' }, factors),
           rationale: llmUnder?.rationale || null,
@@ -441,13 +464,25 @@ function mergeSelections(event, factors, quant, poisson, elo, llm) {
 function applyFactorPenalties(confidence, variant, factors) {
   const inj = factors.injuries?.severityScore;
   if (inj) {
+    // Lesiones del propio equipo bajan confidence
     if (variant.outcome === 'home' && inj.home > 0.4) confidence -= 0.15;
     if (variant.outcome === 'away' && inj.away > 0.4) confidence -= 0.15;
+    // Lesiones del RIVAL son favorables: suben confidence
+    if (variant.outcome === 'home' && inj.away > 0.4) confidence += 0.08;
+    if (variant.outcome === 'away' && inj.home > 0.4) confidence += 0.08;
+    // Empate: lesiones grandes en ambos hacen el empate más probable
+    if (variant.outcome === 'draw' && inj.home > 0.3 && inj.away > 0.3) confidence += 0.05;
   }
   const w = factors.weather;
   if (w && !w.unavailable) {
-    if (variant.outcome === 'over' && w.impact?.goalsMultiplier < 0.95) confidence -= 0.10;
-    if (variant.outcome === 'under' && w.impact?.goalsMultiplier > 1.05) confidence -= 0.10;
+    const gm = w.impact?.goalsMultiplier;
+    if (Number.isFinite(gm)) {
+      if (variant.outcome === 'over' && gm < 0.95) confidence -= 0.10;
+      if (variant.outcome === 'under' && gm > 1.05) confidence -= 0.10;
+      // Bonificar la dirección opuesta
+      if (variant.outcome === 'over' && gm > 1.05) confidence += 0.05;
+      if (variant.outcome === 'under' && gm < 0.95) confidence += 0.05;
+    }
   }
   return Math.max(0, Math.min(1, confidence));
 }

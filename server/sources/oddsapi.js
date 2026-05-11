@@ -73,12 +73,16 @@ const SPORT_MAP = {
 };
 
 class OddsApiSource extends SourceBase {
-  constructor({ apiKey, sportsKeys, region = 'eu', markets = ['h2h', 'totals', 'btts'] } = {}) {
+  constructor({ apiKey, sportsKeys, region = 'eu', markets } = {}) {
     super({ name: 'oddsapi', priority: 1 });
     this.apiKey = apiKey;
     this.sportsKeys = sportsKeys || Object.keys(SPORT_MAP);
     this.region = region;
-    this.markets = markets;
+    // Default markets seguros para plan free: h2h siempre OK.
+    // 'totals' es OK pero algunas sports lo rechazan.
+    // 'btts' NO está disponible en plan free + region=eu → 422.
+    // Solo pedimos h2h por default; el usuario puede agregar más via env.
+    this.markets = markets && markets.length ? markets : ['h2h'];
     this.endpoint = 'https://api.the-odds-api.com/v4';
     this.quota = { remaining: null, used: null };
   }
@@ -137,8 +141,12 @@ class OddsApiSource extends SourceBase {
       const text = await res.body.text().catch(() => '');
       throw new Error(`HTTP ${res.statusCode}: ${text.slice(0, 160)}`);
     }
-    const data = await res.body.json();
-    if (!Array.isArray(data)) return [];
+    const data = await res.body.json().catch(() => null);
+    if (!Array.isArray(data)) {
+      // Posible respuesta de error en formato { message: "..." }
+      log(`[oddsapi:${sportKey}] respuesta no-array · ${JSON.stringify(data).slice(0, 100)}`);
+      return [];
+    }
 
     const sportInfo = SPORT_MAP[sportKey];
     return data.map(ev => this.normalize(ev, sportInfo)).filter(Boolean);
@@ -149,6 +157,17 @@ class OddsApiSource extends SourceBase {
     const away = ev.away_team;
     if (!home || !away) return null;
 
+    // Discard events without valid commence_time — produciría NaN al
+    // calcular eventKey y colisionaría con otros events sin tiempo.
+    const startMs = ev.commence_time ? new Date(ev.commence_time).getTime() : null;
+    if (startMs != null && !Number.isFinite(startMs)) return null;
+
+    // Comparación tolerante de nombres de equipos (acentos, mayúsculas, etc.)
+    const norm = s => String(s || '').toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]/g, '');
+    const homeN = norm(home), awayN = norm(away);
+
     const markets = { h2h: {}, totals: {}, btts: {} };
 
     (ev.bookmakers || []).forEach(b => {
@@ -158,9 +177,10 @@ class OddsApiSource extends SourceBase {
       (b.markets || []).forEach(m => {
         const outcomes = m.outcomes || [];
         if (m.key === 'h2h') {
-          const oHome = outcomes.find(o => o.name === home);
-          const oAway = outcomes.find(o => o.name === away);
-          const oDraw = outcomes.find(o => /^draw$|^empate$/i.test(o.name));
+          // Match con normalización (no strict ===) para tolerar acentos/espacios
+          const oHome = outcomes.find(o => norm(o.name) === homeN);
+          const oAway = outcomes.find(o => norm(o.name) === awayN);
+          const oDraw = outcomes.find(o => /^draw$|^empate$|^tie$/i.test(o.name));
           markets.h2h[ourKey] = {
             home: oHome?.price || null,
             draw: oDraw?.price || null,
@@ -192,7 +212,7 @@ class OddsApiSource extends SourceBase {
     return {
       home: { name: home },
       away: { name: away },
-      start: new Date(ev.commence_time).getTime(),
+      start: startMs,
       league: sportInfo?.league || null,
       leagueName: sportInfo?.name || ev.sport_title,
       sport: sportInfo?.sport || 'soccer',

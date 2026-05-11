@@ -2,7 +2,8 @@
 'use strict';
 module.exports = require('./_genericSpa')({
   name: 'bet365ar',
-  pageUrl: 'https://www.bet365.com.ar/#/AS/B1/',
+  // Dominio oficial AR LOTBA: bet365.bet.ar
+  pageUrl: 'https://www.bet365.bet.ar/#/AS/B1/',
   xhrPattern: /\/(api|public)\/(events?|fixture|odds|inplay|prematch|sportsbook)/i,
   extractor: 'generic',
   settleMs: 4000,

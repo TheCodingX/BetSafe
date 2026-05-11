@@ -40,9 +40,10 @@
 'use strict';
 
 class SourceBase {
-  constructor({ name, priority = 5 }) {
+  constructor({ name, priority = 5, timeoutMs = 45000 }) {
     this.name = name;
     this.priority = priority;
+    this.timeoutMs = timeoutMs;
     this._lastFetch = 0;
     this._lastError = null;
     this._lastCount = 0;
@@ -66,11 +67,18 @@ class SourceBase {
     };
   }
 
-  /** Wraps fetch with timing + error capture. Llamado por el orchestrator. */
+  /** Wraps fetch con timeout global + timing + error capture.
+   *  Si la fuente cuelga más de timeoutMs, se aborta y devuelve [].
+   *  Esto evita que un scraper colgado bloquee el ciclo entero. */
   async safeFetch(sports) {
     const t0 = Date.now();
     try {
-      const events = await this.fetch(sports);
+      const events = await Promise.race([
+        this.fetch(sports),
+        new Promise((_, rej) =>
+          setTimeout(() => rej(new Error(`source-timeout ${this.timeoutMs}ms`)), this.timeoutMs)
+        )
+      ]);
       const arr = Array.isArray(events) ? events : [];
       arr.forEach(ev => { if (ev && !ev._source) ev._source = this.name; });
       this._lastFetch = Date.now();

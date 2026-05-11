@@ -67,7 +67,7 @@ const CITIES = {
 
 function resolveCoords(venueText) {
   if (!venueText) return null;
-  const k = String(venueText).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const k = String(venueText).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   for (const [name, c] of Object.entries(VENUES)) if (k.includes(name)) return c;
   for (const [name, c] of Object.entries(CITIES)) if (k.includes(name)) return c;
   return null;

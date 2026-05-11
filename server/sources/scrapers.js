@@ -17,6 +17,10 @@
 const { SourceBase } = require('./_adapter');
 const { log } = require('../lib');
 
+// 12 casas con licencia LOTBA confirmada a mayo 2026:
+//   Codere, Bplay, Super 7, Jugadon, Betsson, BetWarrior, Bet365, Betfun,
+//   Caliente, PlayCity, Casino Magic, Betano.
+// (jugabet, 24bet, megapuesta NO tienen sitio LOTBA AR a esta fecha.)
 const SCRAPERS = {
   bplay:        require('../scrapers/bplay'),
   betano:       require('../scrapers/betano'),
@@ -26,15 +30,15 @@ const SCRAPERS = {
   caliente:     require('../scrapers/caliente'),
   casinomagic:  require('../scrapers/casinomagic'),
   betsson:      require('../scrapers/betsson'),
-  jugabet:      require('../scrapers/jugabet'),
-  '24bet':      require('../scrapers/24bet'),
   playcity:     require('../scrapers/playcity'),
-  megapuesta:   require('../scrapers/megapuesta')
+  super7:       require('../scrapers/super7'),
+  betfun:       require('../scrapers/betfun'),
+  jugadon:      require('../scrapers/jugadon')
 };
 
 const UNIQUE_BOOKS = new Set([
   'bplay', 'betwarrior', 'codere', 'caliente', 'casinomagic',
-  'jugabet', '24bet', 'playcity', 'megapuesta'
+  'playcity', 'super7', 'betfun', 'jugadon'
 ]);
 
 class ScraperSource extends SourceBase {
