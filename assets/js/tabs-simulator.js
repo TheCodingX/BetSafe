@@ -294,12 +294,10 @@
     return ({ soccer:'Fútbol', basketball:'Básquet', tennis:'Tenis', amfootball:'NFL', hockey:'Hockey', baseball:'MLB', mma:'MMA', boxing:'Boxeo' }[s] || s);
   }
 
-  // Top-3 AR books that pay best for a given odd reference
-  function top3Books(odd) {
-    // Stable rotation by odd value (deterministic, looks "intelligent")
+  // Top-3 AR books que ofrecen este sport (sin rotación ficticia).
+  function top3Books(_oddIgnored) {
     const ar = (BSData.BOOKS_AR || []);
-    const idx = Math.abs(Math.floor(odd * 100)) % ar.length;
-    return [ar[idx], ar[(idx + 3) % ar.length], ar[(idx + 7) % ar.length]];
+    return ar.slice(0, 3);
   }
 
   function drawEvolution(canvas, values) {

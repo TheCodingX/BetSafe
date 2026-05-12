@@ -118,7 +118,7 @@
           <strong>Tabla de grupos<a class="help-q" tabindex="0" data-tip="Posiciones actualizadas de los 12 grupos del Mundial 2026: puntos, partidos jugados, goles a favor/en contra y diferencia. Clasifican los 2 mejores de cada grupo más los 8 mejores terceros (el Mundial 2026 trae 48 selecciones)."></a></strong>
           <span class="muted tiny">12 grupos · clasifican los 2 mejores + los 8 mejores terceros</span>
         </div>
-        <div class="grid" id="wcGroups" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px"></div>
+        <div class="grid" id="wcGroupsTable" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px"></div>
       </section>
 
       <section class="card stack mt-4 reveal">
@@ -246,110 +246,71 @@
         <p class="muted tiny">${BSUI.esc(n.d)}</p>
       </div>`).join('');
 
-    // ───────── WC AI Picks (5 partidos sintéticos del torneo) ─────────
-    const WC_MATCHES = [
-      { home:{code:'AR',name:'Argentina'}, away:{code:'BR',name:'Brasil'}, stage:'Cuartos de final', odds:{1:2.05, X:3.30, 2:3.40} },
-      { home:{code:'FR',name:'Francia'},   away:{code:'ES',name:'España'}, stage:'Octavos',          odds:{1:2.30, X:3.20, 2:2.95} },
-      { home:{code:'EN',name:'Inglaterra'},away:{code:'PT',name:'Portugal'},stage:'Cuartos de final',odds:{1:2.40, X:3.20, 2:2.85} },
-      { home:{code:'DE',name:'Alemania'},  away:{code:'NL',name:'Países Bajos'}, stage:'Octavos',     odds:{1:2.20, X:3.30, 2:3.10} },
-      { home:{code:'BE',name:'Bélgica'},   away:{code:'CR',name:'Croacia'},stage:'Octavos',          odds:{1:2.05, X:3.30, 2:3.55} }
-    ];
+    // ───────── WC AI Picks · solo cuando el backend tiene matches de Mundial ─────────
+    // Filtramos events del snapshot live que sean del Mundial 2026.
+    // Sin matchs reales del torneo en vivo, mostramos empty state honesto.
     function flagOf(code) { return BSIcons.flagSvg(code, { size: 22 }); }
-    panel.querySelector('#wcAiPicks').innerHTML = WC_MATCHES.slice(0, 4).map((m, i) => {
-      const o = m.odds;
-      const cons = { lbl: m.home.name + ' o empate (1X)', odd: 1/((1/o[1])+(1/o.X)) };
-      const eq   = { lbl: 'Empate o ' + m.away.name + ' (X2)', odd: 1/((1/o.X)+(1/o[2])) };
-      const agg  = { lbl: m.away.name + ' +1 hándicap', odd: Math.max(1.6, o[2]*0.7) };
-      return `
-        <div class="card card-tinted card-pad-sm" style="--i:${i}">
-          <div class="row between">
-            <div class="cluster" style="gap:6px">${flagOf(m.home.code)}<strong>${BSUI.esc(m.home.name)}</strong><span class="dim">vs</span><strong>${BSUI.esc(m.away.name)}</strong>${flagOf(m.away.code)}</div>
-            <span class="badge badge-info">${BSUI.esc(m.stage)}</span>
-          </div>
-          <div class="row gap-2 mt-2" style="flex-wrap:wrap">
-            <span class="risk-pill low">Cons. ${cons.odd.toFixed(2)} · ${BSUI.esc(cons.lbl)}</span>
-            <span class="risk-pill mid">Equil. ${eq.odd.toFixed(2)} · ${BSUI.esc(eq.lbl)}</span>
-            <span class="risk-pill high">Agres. ${agg.odd.toFixed(2)} · ${BSUI.esc(agg.lbl)}</span>
-          </div>
-        </div>`;
-    }).join('');
+    const wcEvents = (BSData.liveEvents({ sport: 'soccer' }) || [])
+      .filter(e => /world.cup|mundial|wc.?26|fifa/i.test(e.leagueName || e.league || ''));
 
-    // ───────── WC Generador ─────────
-    panel.querySelector('#wcGenBtn').addEventListener('click', () => {
+    const aiHost = panel.querySelector('#wcAiPicks');
+    if (aiHost) {
+      if (!wcEvents.length) {
+        aiHost.innerHTML = `<div class="empty" style="padding:16px"><strong>Sin partidos del Mundial 2026 en vivo</strong><div class="muted tiny">Cuando las casas argentinas publiquen mercados específicos del torneo, los picks aparecen acá automáticamente con cuotas reales.</div></div>`;
+      } else {
+        aiHost.innerHTML = wcEvents.slice(0, 4).map((m, i) => {
+          const h = m.bestOdds?.h2h;
+          if (!h?.home || !h?.away) return '';
+          return `
+            <div class="card card-tinted card-pad-sm" style="--i:${i}">
+              <div class="row between">
+                <div class="cluster" style="gap:6px"><strong>${BSUI.esc(m.home?.name||'')}</strong><span class="dim">vs</span><strong>${BSUI.esc(m.away?.name||'')}</strong></div>
+                <span class="badge badge-info">${BSUI.esc(m.leagueName || 'Mundial 2026')}</span>
+              </div>
+              <div class="row gap-2 mt-2" style="flex-wrap:wrap">
+                <span class="risk-pill low">1 · ${h.home.toFixed(2)} <span class="muted tiny">${BSUI.esc(h.homeBook || '')}</span></span>
+                ${h.draw ? `<span class="risk-pill mid">X · ${h.draw.toFixed(2)} <span class="muted tiny">${BSUI.esc(h.drawBook || '')}</span></span>` : ''}
+                <span class="risk-pill high">2 · ${h.away.toFixed(2)} <span class="muted tiny">${BSUI.esc(h.awayBook || '')}</span></span>
+              </div>
+            </div>`;
+        }).join('');
+      }
+    }
+
+    // ───────── WC Generador · combina events reales del Mundial ─────────
+    panel.querySelector('#wcGenBtn')?.addEventListener('click', () => {
       const n    = Number(panel.querySelector('#wcGenLegs').value);
       const risk = panel.querySelector('#wcGenRisk').value;
-      const pool = WC_MATCHES.slice(0, n);
-      const legs = pool.map(m => {
-        const o = m.odds;
-        if (risk === 'cons') return { match: m, label: m.home.name + ' o empate', odd: 1/((1/o[1])+(1/o.X)) };
-        if (risk === 'agg')  return { match: m, label: m.away.name + ' +1 hándicap', odd: Math.max(1.6, o[2]*0.7) };
-        return { match: m, label: 'Empate o ' + m.away.name, odd: 1/((1/o.X)+(1/o[2])) };
-      });
-      const total = legs.reduce((a, b) => a * b.odd, 1);
+      const pool = wcEvents.filter(m => m.bestOdds?.h2h).slice(0, n);
+      const out = panel.querySelector('#wcGenOut');
       panel.querySelector('#wcGenStatus').textContent = `${n} legs · ${risk}`;
-      panel.querySelector('#wcGenOut').innerHTML = `
+      if (!pool.length) {
+        out.innerHTML = `<div class="empty" style="padding:16px"><strong>Sin matches del Mundial activos</strong><div class="muted tiny">Esperando que las casas publiquen mercados específicos del torneo.</div></div>`;
+        return;
+      }
+      const legs = pool.map(m => {
+        const h = m.bestOdds.h2h;
+        if (risk === 'cons') return { match: m, label: (m.home.name || '') + ' o empate', odd: h.home && h.draw ? 1/((1/h.home)+(1/h.draw)) : h.home };
+        if (risk === 'agg')  return { match: m, label: m.away.name, odd: h.away };
+        return { match: m, label: 'Empate o ' + (m.away.name || ''), odd: h.draw && h.away ? 1/((1/h.draw)+(1/h.away)) : h.away };
+      }).filter(l => Number.isFinite(l.odd));
+      if (!legs.length) {
+        out.innerHTML = `<div class="empty" style="padding:16px"><strong>No hay cuotas suficientes</strong><div class="muted tiny">Los partidos disponibles no tienen mercados completos todavía.</div></div>`;
+        return;
+      }
+      const total = legs.reduce((a, b) => a * b.odd, 1);
+      out.innerHTML = `
         <div class="card card-tinted stack-sm mt-3">
-          <strong>Combinada Mundial · ${n} legs</strong>
-          ${legs.map(l => `<div class="row between" style="font-size:.86rem"><span><strong>${BSUI.esc(l.match.home.name)}</strong> vs <strong>${BSUI.esc(l.match.away.name)}</strong><div class="muted tiny">${BSUI.esc(l.label)}</div></span><span class="num">${l.odd.toFixed(2)}</span></div>`).join('')}
+          <strong>Combinada Mundial · ${legs.length} legs</strong>
+          ${legs.map(l => `<div class="row between" style="font-size:.86rem"><span><strong>${BSUI.esc(l.match.home?.name||'')}</strong> vs <strong>${BSUI.esc(l.match.away?.name||'')}</strong><div class="muted tiny">${BSUI.esc(l.label)}</div></span><span class="num">${l.odd.toFixed(2)}</span></div>`).join('')}
           <div class="row between" style="border-top:1px solid var(--border);padding-top:8px"><span>Cuota total</span><strong class="num text-brand" style="font-size:1.1rem">${total.toFixed(2)}</strong></div>
           <div class="row between"><span class="muted tiny">Stake $10.000 ARS pagaría</span><strong class="num">${BSUI.money(10000 * total)}</strong></div>
         </div>`;
     });
 
-    // ───────── Tabla de grupos en vivo (12 grupos × 4 países) ─────────
-    const ALL_NATION_CODES = (BSData.NATIONS || []).map(n => n.code);
-    const GROUP_NATION_NAMES = {
-      AR: 'Argentina', BR: 'Brasil',  FR: 'Francia', ES: 'España',  DE: 'Alemania',
-      EN: 'Inglaterra', IT: 'Italia', PT: 'Portugal', NL: 'Países Bajos', BE: 'Bélgica',
-      HR: 'Croacia', UY: 'Uruguay', JP: 'Japón',  KR: 'Corea del Sur', AU: 'Australia',
-      MX: 'México',  CA: 'Canadá', US: 'Estados Unidos', SN: 'Senegal', MA: 'Marruecos',
-      EG: 'Egipto', NG: 'Nigeria', CM: 'Camerún', CO: 'Colombia', PE: 'Perú', EC: 'Ecuador',
-      CH: 'Suiza',  PL: 'Polonia', AT: 'Austria', DK: 'Dinamarca', NO: 'Noruega',
-      TR: 'Turquía', SA: 'Arabia Saudita', IR: 'Irán', QA: 'Qatar', PY: 'Paraguay',
-      CL: 'Chile', NZ: 'Nueva Zelanda', GH: 'Ghana', CI: 'Costa de Marfil', UZ: 'Uzbekistán',
-      JO: 'Jordania', RS: 'Serbia', SK: 'Eslovaquia', SC: 'Escocia', WL: 'Gales', UA: 'Ucrania', PA: 'Panamá'
-    };
-    // Build 12 groups of 4 from a deterministic order
-    const codes = Object.keys(GROUP_NATION_NAMES);
-    const groups = [];
-    const groupNames = ['A','B','C','D','E','F','G','H','I','J','K','L'];
-    for (let g = 0; g < 12; g++) {
-      const teams = codes.slice(g * 4, g * 4 + 4).map((c, i) => {
-        // deterministic stats
-        const seed = (g * 7 + i * 13) % 100;
-        const w = Math.max(0, Math.min(3, Math.round((seed % 4))));
-        const d = Math.max(0, 3 - w - ((seed * 3) % 3));
-        const l = 3 - w - d;
-        const gf = w * 2 + d + (seed % 4);
-        const ga = l * 2 + (seed % 3);
-        return {
-          code: c, name: GROUP_NATION_NAMES[c] || c,
-          pj: w + d + l, w, d, l, gf, ga, gd: gf - ga, pts: w * 3 + d
-        };
-      });
-      teams.sort((a, b) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf);
-      groups.push({ name: groupNames[g], teams });
-    }
-    panel.querySelector('#wcGroups').innerHTML = groups.map(g => `
-      <div class="card card-tinted card-pad-sm">
-        <div class="row between" style="margin-bottom:6px">
-          <strong>Grupo ${g.name}</strong>
-          <span class="muted tiny">PJ · PG · PE · PP · DG · Pts</span>
-        </div>
-        ${g.teams.map((t, i) => `
-          <div class="row between" style="padding:4px 0;border-bottom:${i<3?'1px dashed var(--border)':'0'};font-size:.84rem">
-            <div class="cluster" style="gap:6px;min-width:0;flex:1">
-              <span style="display:inline-block;width:14px;text-align:center;font-family:var(--font-mono);font-weight:800;color:${i<2?'var(--brand-700)':i===2?'var(--accent-700)':'var(--text-tertiary)'}">${i+1}</span>
-              ${flagOf(t.code)}
-              <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600">${BSUI.esc(t.name)}</span>
-            </div>
-            <span class="num" style="font-family:var(--font-mono);font-size:.78rem">
-              ${t.pj} · ${t.w} · ${t.d} · ${t.l} · ${t.gd>=0?'+':''}${t.gd} · <strong>${t.pts}</strong>
-            </span>
-          </div>
-        `).join('')}
-      </div>
-    `).join('');
+    // ───────── Tabla de grupos · cuando FIFA confirme la fase de grupos ─────────
+    // No fabricamos posiciones falsas. Mostramos hasta que haya feed real.
+    panel.querySelector('#wcGroupsTable').innerHTML = `<div class="empty" style="padding:24px;grid-column:1/-1;text-align:center"><strong>Fase de grupos · pendiente</strong><div class="muted tiny" style="margin-top:6px;max-width:480px;margin-inline:auto">Cuando empiece el torneo (junio 2026), las posiciones reales — puntos, goles y diferencia — aparecen acá con datos de SofaScore/ESPN. Mientras tanto: <a href="https://www.fifa.com/es/tournaments/mens/worldcup/canadamexicousa2026" target="_blank" rel="noopener noreferrer">FIFA — Mundial 2026</a>.</div></div>`;
   }
 
     function doRegister() {

@@ -128,11 +128,12 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('formLogin').requestSubmit();
   }));
 
-  document.getElementById('formLogin').addEventListener('submit', e => {
+  document.getElementById('formLogin').addEventListener('submit', async e => {
     e.preventDefault();
     const u = document.getElementById('user').value.trim();
     const p = document.getElementById('pass').value;
-    const r = BSAuth.login(u, p);
+    document.getElementById('loginErr').textContent = '';
+    const r = await BSAuth.login(u, p);
     if (r.ok) {
       BSUI.toast({ title: '¡Bienvenido!', message: 'Sesión iniciada.', type: 'success' });
       if (r.session.tier === 'vip') BSUI.confetti(80);
@@ -142,13 +143,23 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  document.getElementById('formSignup').addEventListener('submit', e => {
+  document.getElementById('formSignup').addEventListener('submit', async e => {
     e.preventDefault();
     const fd = new FormData(e.target);
     const age = Number(fd.get('age'));
+    const email = String(fd.get('email') || '').trim();
+    const password = String(fd.get('password') || '');
+    const name = String(fd.get('name') || '').trim();
     if (age < 18) { BSUI.toast({ title: 'Debés ser mayor de 18', type: 'danger' }); return; }
-    BSAuth.login('admin', 'admin');
-    BSUI.toast({ title: 'Cuenta creada', message: 'Te logueamos como Standard.', type: 'success' });
+    // Si hay Supabase configurado, intentamos signup real. Si no, demo local.
+    if (BSAuth.isSupabaseEnabled && BSAuth.isSupabaseEnabled()) {
+      const r = await BSAuth.signUp({ email, password, name });
+      if (!r.ok) { BSUI.toast({ title: 'No se pudo crear', message: r.error, type: 'danger' }); return; }
+      BSUI.toast({ title: 'Cuenta creada', message: 'Bienvenido.', type: 'success' });
+    } else {
+      await BSAuth.login('admin', 'admin');
+      BSUI.toast({ title: 'Cuenta creada (demo)', message: 'Te logueamos como Standard. Configurá Supabase para sign-up real.', type: 'success' });
+    }
     setTimeout(() => location.href = 'dashboard.html', 600);
   });
 });

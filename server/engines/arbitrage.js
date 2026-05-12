@@ -123,14 +123,31 @@ class ArbitrageEngine {
 
     if (newSurebets.length) {
       // Filtrar por ROI mínimo (ya con slippage descontado) y descartar
-      // anomalías de data: cualquier "arb" con netRoi > 25% es casi seguro
-      // odds stale o un side de un live que ya no es vendible. Los arbs
-      // reales en bookies regulados raras veces pasan del 5-8%.
-      const filtered = newSurebets.filter(sb =>
-        sb.netRoi >= this.minRoi && sb.grossRoi <= 0.25);
+      // anomalías. Books regulados típicamente cierran o anulan cualquier
+      // arb superior al 8-10% por "error manifiesto" — los arbs reales en
+      // AR rondan el 0.5-5%. Cualquier cosa >12% es CASI seguro odds stale
+      // de un live game ya resuelto. Lo marcamos como `suspicious` para
+      // que la UI pueda mostrarlo pero el motor no lo emite por default.
+      const PALPABLE_ERROR_CAP = 0.12;
+      const SUSPICIOUS_CAP = 0.25;
+      const filtered = [];
+      const suspicious = [];
+      for (const sb of newSurebets) {
+        if (sb.netRoi < this.minRoi) continue;
+        if (sb.grossRoi > SUSPICIOUS_CAP) continue;  // data error pura
+        if (sb.grossRoi > PALPABLE_ERROR_CAP) {
+          sb.flag = 'palpable-error-risk';
+          suspicious.push(sb);
+          continue;
+        }
+        filtered.push(sb);
+      }
       filtered.sort((a, b) => b.confidence - a.confidence || b.netRoi - a.netRoi);
       this.detected = filtered.concat(this.detected).slice(0, 500);
       filtered.forEach(sb => this.emit('surebet', sb));
+      if (suspicious.length) {
+        this.suspicious = suspicious.concat(this.suspicious || []).slice(0, 100);
+      }
     }
     if (closed.length) this.emit('surebets-closed', closed);
 

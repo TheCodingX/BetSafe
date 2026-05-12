@@ -104,6 +104,63 @@ app.get('/api/books', (req, res) => res.json(orchestrator.bookStatus()));
 app.get('/api/sources', (req, res) => res.json(orchestrator.sourceStatus()));
 app.get('/api/quota', (req, res) => res.json(orchestrator.quota()));
 
+// Listar deportes presentes en el snapshot actual (útil para popular filtros UI).
+app.get('/api/sports', (req, res) => {
+  const events = orchestrator.events({ sport: 'all' });
+  const counts = {};
+  for (const ev of events) {
+    if (!ev.sport) continue;
+    counts[ev.sport] = (counts[ev.sport] || 0) + 1;
+  }
+  res.json({
+    sports: Object.entries(counts).map(([key, count]) => ({ key, count }))
+                 .sort((a, b) => b.count - a.count),
+    total: events.length, ts: Date.now()
+  });
+});
+
+// Listar ligas presentes en el snapshot actual.
+app.get('/api/leagues', (req, res) => {
+  const events = orchestrator.events({ sport: req.query.sport || 'all' });
+  const map = new Map();
+  for (const ev of events) {
+    const key = ev.league || ev.leagueName || null;
+    if (!key) continue;
+    const entry = map.get(key) || { league: ev.league, leagueName: ev.leagueName, sport: ev.sport, count: 0 };
+    entry.count++;
+    map.set(key, entry);
+  }
+  res.json({
+    leagues: [...map.values()].sort((a, b) => b.count - a.count),
+    total: events.length, ts: Date.now()
+  });
+});
+
+// Metrics estilo Prometheus-lite (text/plain) para monitoring básico.
+app.get('/api/metrics', (req, res) => {
+  const snap = orchestrator.health ? orchestrator.health() : null;
+  const events = orchestrator.events({ sport: 'all' });
+  const arbSnap = arbEngine.snapshot();
+  const lines = [
+    `# HELP betsafe_events_total Eventos en snapshot`,
+    `# TYPE betsafe_events_total gauge`,
+    `betsafe_events_total ${events.length}`,
+    `# HELP betsafe_surebets_active Surebets activas`,
+    `# TYPE betsafe_surebets_active gauge`,
+    `betsafe_surebets_active ${arbSnap.activeSurebets || 0}`,
+    `# HELP betsafe_cycles_total Ciclos de scraping ejecutados`,
+    `# TYPE betsafe_cycles_total counter`,
+    `betsafe_cycles_total ${snap?.cycles || 0}`,
+    `# HELP betsafe_arb_cycles_total Ciclos de arbitraje`,
+    `# TYPE betsafe_arb_cycles_total counter`,
+    `betsafe_arb_cycles_total ${arbSnap.cycles || 0}`,
+    `# HELP betsafe_last_cycle_ms Duración del último ciclo de scraping`,
+    `# TYPE betsafe_last_cycle_ms gauge`,
+    `betsafe_last_cycle_ms ${snap?.lastCycleMs || 0}`
+  ];
+  res.type('text/plain').send(lines.join('\n') + '\n');
+});
+
 // Cross-validation: discrepancias entre fuentes (admin/debug)
 // El parámetro level filtra: 'critical' (>=5%) o 'warning' (2-5%).
 app.get('/api/discrepancies', (req, res) => {
@@ -384,7 +441,19 @@ app.use((req, res) => {
 
 // ── HTTP + WebSocket ───────────────────────────────────────────────────────
 const server = http.createServer(app);
-const wss = new WebSocketServer({ noServer: true });
+// perMessageDeflate ahorra ~70% bandwidth en frames JSON repetitivos
+// (snapshot inicial es 2-5MB → ~600KB-1.5MB on the wire). Threshold 1024
+// para no comprimir frames chiquitos donde el overhead supera el ahorro.
+const wss = new WebSocketServer({
+  noServer: true,
+  perMessageDeflate: {
+    threshold: 1024,
+    zlibDeflateOptions: { level: 6 },
+    concurrencyLimit: 10,
+    serverNoContextTakeover: true,
+    clientNoContextTakeover: true
+  }
+});
 
 server.on('upgrade', (req, socket, head) => {
   if (req.url === '/api/live' || req.url === '/api/live/') {

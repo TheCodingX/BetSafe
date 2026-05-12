@@ -89,11 +89,16 @@ function bind() {
   }
 }
 document.getElementById('suBack').addEventListener('click', () => { if (step > 0) { step--; render(); } });
-document.getElementById('suNext').addEventListener('click', () => {
+document.getElementById('suNext').addEventListener('click', async () => {
   if (step === 1 && data.age < 18) { BSUI.toast({ title: 'Debés ser mayor de 18', type: 'danger' }); return; }
   if (step < 2) { step++; render(); return; }
-  // Finish — auto-login as standard
-  BSAuth.login('admin', 'admin');
+  // Finish — Supabase real signup si está configurado; sino demo local.
+  if (BSAuth.isSupabaseEnabled && BSAuth.isSupabaseEnabled() && data.email && data.pass) {
+    const r = await BSAuth.signUp({ email: data.email, password: data.pass, name: data.user || data.email.split('@')[0] });
+    if (!r.ok) { BSUI.toast({ title: 'No se pudo crear la cuenta', message: r.error, type: 'danger' }); return; }
+  } else {
+    await BSAuth.login('admin', 'admin');
+  }
   BSStore.set(BSStore.KEYS.bankroll, { current: data.bankroll, initial: data.bankroll, history: [{ at: Date.now(), value: data.bankroll }] });
   BSStore.set(BSStore.KEYS.age, { ok: true, at: Date.now() });
   BSUI.toast({ title: 'Cuenta creada', type: 'success' });

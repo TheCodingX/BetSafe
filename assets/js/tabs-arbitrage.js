@@ -291,9 +291,12 @@
         'h2h-2way':  '1X2 — 2-way',
         'btts':      'BTTS sí/no',
         'cross-1+X2':'Cross-market 1 + X2',
-        'cross-2+1X':'Cross-market 2 + 1X'
+        'cross-2+1X':'Cross-market 2 + 1X',
+        'cross-X+12':'Cross-market X + 12'
       })[sb.market] || (sb.market.startsWith('totals-') ? `Over/Under ${sb.market.replace('totals-', '')}`
-                                                       : sb.market.startsWith('ah-') ? `Hándicap ${sb.market.replace('ah-', '')}` : sb.market);
+                                                       : sb.market.startsWith('ah-') ? `Hándicap ${sb.market.replace('ah-', '')}`
+                                                       : sb.market.startsWith('cross-') ? sb.market.replace('cross-', 'Cross-market ').replace(/\+/g, ' + ')
+                                                       : sb.market);
 
       const warnFit = sb.bankrollFit === false;
 

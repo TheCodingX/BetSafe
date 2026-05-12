@@ -320,7 +320,7 @@
         <div class="ag-engine" id="agEngine" hidden aria-live="polite">
           <div class="ag-engine-bar"><div class="ag-engine-bar-fill"></div></div>
           <ul class="ag-engine-steps">
-            <li data-step="fetch">Trayendo cuotas live de 25 casas</li>
+            <li data-step="fetch">Trayendo cuotas live de las casas LOTBA</li>
             <li data-step="filter">Filtrando partidos por tu criterio</li>
             <li data-step="model">Análisis táctico de cada partido</li>
             <li data-step="ev">Computando EV + Kelly por leg</li>
@@ -357,22 +357,19 @@
       const sportTxt = activeSport === 'all' ? 'Todos los deportes' : (BSData.SPORTS.find(s=>s.key===activeSport)?.name || activeSport);
       const lgTxt = activeLeagues.has('all') ? 'todas las ligas' : `${activeLeagues.size} liga${activeLeagues.size>1?'s':''}`;
       panel.querySelector('#agStatusLine').textContent = `${sportTxt} · ${lgTxt} · ${list.length} partidos · riesgo ${activeRisk==='cons'?'conservador':activeRisk==='eq'?'intermedio':'agresivo'}`;
-      panel.querySelector('#agLeagueCount').textContent = activeLeagues.has('all') ? 'Todas' : `${activeLeagues.size} seleccionada${activeLeagues.size>1?'s':''}`;
+      // #agLeagueCount es opcional — algunos layouts no lo incluyen
+      const lgCountEl = panel.querySelector('#agLeagueCount');
+      if (lgCountEl) lgCountEl.textContent = activeLeagues.has('all') ? 'Todas' : `${activeLeagues.size} seleccionada${activeLeagues.size>1?'s':''}`;
     }
 
-    // Top-3 books that pay best AND cover ALL markets used in combo
-    function top3Books(odd, marketsUsed = ['h2h']) {
+    /* Books que COBREN todos los markets usados en la combinada.
+     * No inventamos ranking aleatorio: devolvemos los eligibles en su orden
+     * natural (priority del catálogo) limitado a 3. La cuota real por casa
+     * se computa en `bestBookForCombo` más abajo. */
+    function top3Books(_oddIgnored, marketsUsed = ['h2h']) {
       const ar = BSData.BOOKS_AR || [];
       const eligible = ar.filter(b => marketsUsed.every(mk => COVER[b.key]?.[mk]));
-      const pool = eligible.length >= 3 ? eligible : ar;
-      const idx = Math.abs(Math.floor(odd * 100)) % Math.max(1, pool.length);
-      const out = []; const seen = new Set();
-      for (let i = 0; i < pool.length && out.length < 3; i++) {
-        const k = (idx + i * 3) % pool.length;
-        if (!seen.has(pool[k].key)) { seen.add(pool[k].key); out.push(pool[k]); }
-      }
-      while (out.length < 3) out.push(pool[out.length] || ar[out.length]);
-      return out;
+      return (eligible.length ? eligible : ar).slice(0, 3);
     }
 
     /** Para una combinada armada, calcula la cuota TOTAL en cada casa que el
@@ -898,7 +895,7 @@
       out.querySelectorAll('[data-combo-whatif]').forEach(b => b.addEventListener('click', () => {
         const i = Number(b.dataset.comboWhatif); const c = combos[i];
         try { sessionStorage.setItem('bs:whatif:legs', JSON.stringify(c.legs.map(l => ({ event: l.match.home.name + ' vs ' + l.match.away.name, label: l.label, odd: l.odd, p: l.p })))); } catch (e) {}
-        if (window.BSDash && BSDash.activate) BSDash.activate('whatif');
+        if (window.BSDash && BSDash.go) BSDash.go('whatif');
         BSUI.toast({ title: 'Cargada en What-If', message: 'Simulá los 2^' + c.legs.length + ' escenarios.', type: 'success' });
       }));
       // Análisis detallado: abre modal con expansión IA
@@ -930,7 +927,7 @@
               <p style="font-size:.82rem;line-height:1.55">${c.legs.length>=4?'Combinada de 4+ legs: probabilidad combinada baja, varianza alta. Considerá ½ o ¼ Kelly.':'Combinada balanceada. Stake plano o ½ Kelly recomendado.'}</p>
             </div>
           </div>`;
-        if (BSUI.modal) BSUI.modal({ title: 'Análisis IA', body: html });
+        if (BSUI.openModal) BSUI.openModal(html, { large: true });
         else BSUI.toast({ title: 'Análisis', message: 'Confianza ' + conf + '%, EV ' + (c.ev*100).toFixed(1) + '%', type: 'info' });
       }));
     });

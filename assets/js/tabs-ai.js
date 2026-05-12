@@ -249,6 +249,7 @@
     if (s.poissonProb != null) probs.push({ label: 'Poisson', v: s.poissonProb });
     if (s.eloProb != null)     probs.push({ label: 'Elo', v: s.eloProb });
     if (s.llmProb != null)     probs.push({ label: 'IA', v: s.llmProb });
+    if (s.consensusProb != null) probs.push({ label: 'Consenso', v: s.consensusProb, highlight: true });
 
     const addPayload = JSON.stringify({
       matchId: ev.id, eventId: ev.id, label: s.label || s.outcome,
@@ -267,7 +268,7 @@
           <strong class="num text-brand" style="font-size:1.4rem">${s.odd?.toFixed?.(2) || '—'}</strong>
           <span class="cluster tiny">${bookLogo}<span class="muted">${BSUI.esc(bookName(s.book))}</span></span>
         </div>
-        ${probs.length ? `<div class="ai-probs">${probs.map(p => `<span class="ai-prob"><span class="muted tiny">${p.label}</span><strong>${(p.v*100).toFixed(0)}%</strong></span>`).join('')}</div>` : ''}
+        ${probs.length ? `<div class="ai-probs">${probs.map(p => `<span class="ai-prob${p.highlight?' is-consensus':''}"><span class="muted tiny">${p.label}</span><strong>${(p.v*100).toFixed(0)}%</strong></span>`).join('')}</div>` : ''}
         ${ev_pct != null ? `<div class="row between tiny" style="margin-top:6px"><span class="muted">EV</span><strong class="${evClass}">${ev_pct > 0 ? '+' : ''}${ev_pct.toFixed(2)}%</strong></div>` : ''}
         ${s.kellyHalf ? `<div class="row between tiny"><span class="muted">Stake ½ Kelly</span><strong>${s.kellyHalf.toFixed(2)}% banca</strong></div>` : ''}
         ${s.rationale ? `<p class="muted tiny" style="margin-top:6px;line-height:1.4">${BSUI.esc(s.rationale).slice(0, 180)}${s.rationale.length > 180 ? '…' : ''}</p>` : ''}

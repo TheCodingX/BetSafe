@@ -167,11 +167,30 @@ class OddsApiSource extends SourceBase {
     return allEvents;
   }
 
+  /* Markets para CADA sport. The Odds API rechaza con 422 si pedís un market
+   * que no aplica al sport (e.g. `btts` en NBA). Mapeo conservador: pedimos
+   * `h2h,totals` a sports que lo soportan, `h2h` only al resto. La librería
+   * de markets por sport puede ampliarse cuando confirmemos cuáles acepta
+   * el plan actual (free vs paid). */
+  marketsForSport(sportKey) {
+    // override global vía env: si user setea ODDS_API_MARKETS=h2h,spreads,totals
+    // usamos eso para TODOS los sports. Si fija ['h2h'] usamos solo h2h.
+    if (this.markets.length > 1 || this.markets[0] !== 'h2h') return this.markets;
+    // Defaults por sport: amplio donde sabemos que The Odds API soporta `totals`
+    if (sportKey.startsWith('soccer_'))      return ['h2h', 'totals'];
+    if (sportKey === 'basketball_nba')        return ['h2h', 'totals', 'spreads'];
+    if (sportKey === 'baseball_mlb')          return ['h2h', 'totals', 'spreads'];
+    if (sportKey === 'americanfootball_nfl')  return ['h2h', 'totals', 'spreads'];
+    if (sportKey === 'icehockey_nhl')         return ['h2h', 'totals', 'spreads'];
+    return ['h2h'];
+  }
+
   async fetchSport(sportKey) {
+    const markets = this.marketsForSport(sportKey);
     const url = `${this.endpoint}/sports/${encodeURIComponent(sportKey)}/odds/`
               + `?apiKey=${this.apiKey}`
               + `&regions=${this.region}`
-              + `&markets=${this.markets.join(',')}`
+              + `&markets=${markets.join(',')}`
               + `&oddsFormat=decimal&dateFormat=iso`;
 
     // Capturar headers de cuota

@@ -4,7 +4,8 @@
 #   - Frontend estático (HTML/CSS/JS) en la raíz `/`
 #   - API REST en /api/*
 #   - WebSocket push en /api/live
-#   - Scrapeo cada SCRAPE_INTERVAL_MS de las 12 casas argentinas legales
+#   - Scrapeo cada SCRAPE_INTERVAL_MS de las 6 casas argentinas legales
+#     (Bplay, Betano, BetWarrior, Bet365 AR, Codere, Betsson)
 #
 # Cómo deployar:
 #   1) Pushear este repo a GitHub
@@ -40,7 +41,11 @@ services:
       - key: ARB_INTERVAL_MS
         value: '5000'
       - key: ENABLED_BOOKS
-        value: 'bplay,betano,betwarrior,bet365ar,codere,caliente,casinomagic,betsson,playcity,super7,betfun,jugadon'
+        value: 'bplay,betano,betwarrior,bet365ar,codere,betsson'
+      - key: PICKS_CONCURRENCY
+        value: '5'
+      - key: ODDS_API_SPORTS_PER_CYCLE
+        value: '6'
       - key: CORS_ORIGIN
         value: '*'
       # The Odds API — fuente PRIMARIA. Sin esto el sistema depende de scrapers.
