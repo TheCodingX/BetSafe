@@ -4,7 +4,7 @@
 
   async function render(panel) {
     // Mostrar skeleton, luego cargar eventos en vivo del backend
-    panel.innerHTML = `<div class="card stack" style="min-height:280px"><div class="row between"><strong>Cargando cuotas en vivo…</strong><span class="muted tiny">conectando con el scraper</span></div><div class="empty">Recibiendo cuotas de las 12 casas argentinas legales.</div></div>`;
+    panel.innerHTML = `<div class="card stack" style="min-height:280px"><div class="row between"><strong>Cargando cuotas en vivo…</strong><span class="muted tiny">conectando con el scraper</span></div><div class="empty">Recibiendo cuotas de las casas argentinas legales.</div></div>`;
     let matches = await BSData.awaitLive({ timeoutMs: 12000 });
     if (!matches.length) {
       panel.innerHTML = `<div class="card stack" style="min-height:280px;text-align:center;padding:40px"><strong>Sin cuotas todavía</strong><p class="muted">El primer ciclo del backend tarda unos segundos. Cuando termine, las cuotas reales aparecen acá.</p><span class="muted tiny">${BSData.liveFreshness()}</span></div>`;
@@ -15,7 +15,7 @@
     panel.innerHTML = `
       <div class="row between mb-3">
         <div>
-          <h2 class="h3">Comparador en vivo · 12 casas legales AR<a class="help-q" tabindex="0" data-tip="Mostramos las cuotas de las 12 casas argentinas con licencia LOTBA/IPLyC en una sola vista. Resaltamos en verde la mejor cuota por outcome y calculamos la diferencia % entre la mejor y la peor — eso es valor que estás dejando si no comparás. Margen del libro = overround. Refresco cada 30s."></a></h2>
+          <h2 class="h3">Comparador en vivo · casas legales AR<a class="help-q" tabindex="0" data-tip="Mostramos las cuotas de las casas argentinas con licencia LOTBA/IPLyC en una sola vista. Resaltamos en verde la mejor cuota por outcome y calculamos la diferencia % entre la mejor y la peor — eso es valor que estás dejando si no comparás. Margen del libro = overround. Refresco cada 30s."></a></h2>
           <p class="muted">Resaltamos la mejor cuota por outcome. Diferencia % entre la mejor y la peor. Refresco cada 30 s.</p>
         </div>
         <div class="cluster">

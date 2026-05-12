@@ -36,14 +36,18 @@ const SPORT_MAP = {
   futbol_americano: 'amfootball',
   rugby: 'rugby',
   rugby_union: 'rugby',
+  rugby_league: 'rugby',
   volleyball: 'volleyball',
   voleibol: 'volleyball',
   handball: 'handball',
   balonmano: 'handball',
   esports: 'esports',
   e_futbol: 'esports',
+  efootball: 'esports',
+  ebasket: 'esports',
   'e-fútbol': 'esports',
   tabletennis: 'tabletennis',
+  table_tennis: 'tabletennis',
   tenis_de_mesa: 'tabletennis',
   badminton: 'badminton',
   mma: 'mma',
@@ -55,7 +59,14 @@ const SPORT_MAP = {
   darts: 'darts',
   dardos: 'darts',
   snooker: 'snooker',
-  golf: 'golf'
+  golf: 'golf',
+  cycling: 'cycling',
+  ciclismo: 'cycling',
+  motorsport: 'motorsport',
+  motor_sport: 'motorsport',
+  formula_1: 'motorsport',
+  f1: 'motorsport',
+  australian_football: 'amfootball'
 };
 
 function normalizeSport(handle) {
@@ -150,6 +161,30 @@ function extractTeams(participants) {
   return { home: hn, away: an };
 }
 
+/* GameTypeIds que indican "h2h con 3 outcomes (1X2)". */
+const GTID_1X2 = new Set([1]);
+/* GameTypeIds que indican "h2h con 2 outcomes (sin empate)". */
+const GTID_2WAY = new Set([97]);
+/* GameTypeIds que indican "Apuesta sin empate / DNB". */
+const GTID_DNB = new Set([3]);
+/* GameTypeIds de totals (línea genérica con SpecialOddsValue). */
+const GTID_TOTALS = new Set([
+  18,    // Más/Menos goles (soccer)
+  317,   // Más/Menos goles incl. prórroga (hockey)
+  393,   // Más/Menos puntos (volleyball)
+  959,   // Total de carreras (baseball)
+  2083,  // Más/Menos puntos totales (basketball)
+  103    // Total puntos amfootball (cuando aplica)
+]);
+/* GameTypeIds de handicap (con SpecialOddsValue como línea). */
+const GTID_HANDICAP = new Set([
+  159,   // Handicap genérico (basket, baseball, hockey)
+  259    // Rugby handicap sin empate
+]);
+/* DC y BTTS son soccer-only en Codere. */
+const GTID_DC = 2;
+const GTID_BTTS = 31;
+
 /* ── Procesa un Game (mercado) → mercado interno ────────────────────────────── */
 function processGame(g, teams, sport) {
   const results = Array.isArray(g.Results) ? g.Results : [];
@@ -160,15 +195,29 @@ function processGame(g, teams, sport) {
   const byOrder = (i) => results.find(r => r.SortOrder === i) ?? results[i];
   const odd = (i) => parseOdd(byOrder(i)?.Odd);
 
-  /* 1X2 — SortOrder 0=home, 1=draw, 2=away (Codere convention) */
-  if (gtid === 1) {
+  /* 1X2 — SortOrder 0=home, 1=draw, 2=away.
+   * Codere a veces usa GTID=1 también para 2-way (rugby/ice_hockey sin draw):
+   * si results.length === 2 lo tratamos como 2-way. */
+  if (GTID_1X2.has(gtid)) {
+    if (results.length === 2) {
+      const h = odd(0), a = odd(1);
+      if (!h || !a) return null;
+      return { kind: 'h2h', value: { home: h, draw: null, away: a } };
+    }
     const h = odd(0), d = odd(1), a = odd(2);
     if (!h || !a) return null;
     return { kind: 'h2h', value: { home: h, draw: d, away: a } };
   }
 
-  /* DNB (1-2, sin empate) */
-  if (gtid === 3) {
+  /* 2-way h2h (basketball, baseball, tennis, hockey, esports, mma, volley) */
+  if (GTID_2WAY.has(gtid)) {
+    const h = odd(0), a = odd(1);
+    if (!h || !a) return null;
+    return { kind: 'h2h', value: { home: h, draw: null, away: a } };
+  }
+
+  /* DNB / Apuesta sin empate */
+  if (GTID_DNB.has(gtid)) {
     const h = odd(0), a = odd(1);
     if (!h || !a) return null;
     return { kind: 'h2h', value: { home: h, draw: null, away: a } };
@@ -181,7 +230,7 @@ function processGame(g, teams, sport) {
    *   2 → X2 (draw/away)   ej. "X / Atlético"
    * Como los `Name` traen team names, parsea por SortOrder.
    */
-  if (gtid === 2) {
+  if (gtid === GTID_DC) {
     const p1x = odd(0);
     const p12 = odd(1);
     const px2 = odd(2);
@@ -189,15 +238,22 @@ function processGame(g, teams, sport) {
     return { kind: 'dc', value: { home_or_draw: p1x, home_or_away: p12, draw_or_away: px2 } };
   }
 
-  /* Totals (Más/Menos) — SortOrder 0=Over, 1=Under */
-  if (gtid === 18 && line != null) {
+  /* Totals (Más/Menos). Múltiples GameTypeIds dependiendo del sport. */
+  if (GTID_TOTALS.has(gtid) && line != null) {
     const ov = odd(0), un = odd(1);
     if (!ov || !un) return null;
     return { kind: 'totals_candidate', value: { line, over: ov, under: un } };
   }
 
+  /* Handicap (basket, baseball, hockey, rugby) */
+  if (GTID_HANDICAP.has(gtid) && line != null) {
+    const ho = odd(0), ao = odd(1);
+    if (!ho || !ao) return null;
+    return { kind: 'ah', value: { line, home_minus: ho, away_plus: ao } };
+  }
+
   /* BTTS — Results[].Name = "Sí"/"No" o SortOrder 0=Yes, 1=No */
-  if (gtid === 31) {
+  if (gtid === GTID_BTTS) {
     const rSi = results.find(r => /^s[íi]$/i.test(r.Name)) ?? byOrder(0);
     const rNo = results.find(r => /^no$/i.test(r.Name)) ?? byOrder(1);
     const py = parseOdd(rSi?.Odd);

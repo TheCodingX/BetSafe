@@ -35,11 +35,53 @@ const HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
 };
 
+/* Lista completa de sports que Codere expone con SportHandle.
+ * Confirmado: GetSports devuelve 23 sports — cubrimos todos los que tienen
+ * eventos vendibles (excluimos horse_racing porque su feed no es estándar).
+ */
 const SPORT_HANDLES = new Set([
   'soccer', 'basketball', 'tennis', 'baseball',
-  'ice_hockey', 'american_football', 'volleyball',
-  'rugby', 'handball', 'esports', 'mma', 'boxing', 'tabletennis'
+  'ice_hockey', 'american_football', 'australian_football',
+  'volleyball', 'rugby', 'rugby_league', 'handball',
+  'esports', 'efootball', 'ebasket',
+  'mma', 'artes_marciales', 'boxeo',
+  'tabletennis', 'table_tennis', 'badminton',
+  'darts', 'snooker', 'golf', 'cycling', 'motorsport',
+  'cricket'
 ]);
+
+/* Por-sport cap de ligas a consultar. Soccer es lo más grande de Argentina
+ * y se merece más cobertura; los deportes menores requieren menos llamadas.
+ * Total esperado: ~140-160 leagues × ~1.5KB JSON = 250KB bajados por ciclo.
+ */
+const LEAGUES_PER_SPORT = {
+  soccer: 35,
+  basketball: 18,
+  tennis: 20,
+  baseball: 8,
+  ice_hockey: 8,
+  american_football: 8,
+  esports: 6,
+  efootball: 6,
+  mma: 5,
+  artes_marciales: 5,
+  volleyball: 5,
+  rugby: 5,
+  rugby_league: 4,
+  handball: 4,
+  tabletennis: 6,
+  table_tennis: 6,
+  ebasket: 3,
+  boxeo: 3,
+  darts: 4,
+  snooker: 3,
+  golf: 4,
+  cycling: 3,
+  motorsport: 5,
+  badminton: 3,
+  australian_football: 2,
+  cricket: 3
+};
 
 const LEAGUE_PRIORITY = [
   /liga profesional|primera nacional|copa argentina/i,
@@ -103,25 +145,48 @@ async function discoverLeagueNodeIds() {
     log(`[codere] discovery err: ${e.message?.slice(0, 80)}`);
   }
 
-  // Estrategia: top 30 soccer + top 5 de cada otro deporte. Mantiene buena
-  // cobertura en futbol (lo más jugado) y agrega variedad cross-sport.
-  const soccer = out.filter(l => l.sport === 'soccer').sort((a, b) => Number(b.priority) - Number(a.priority)).slice(0, 30);
-  const others = out.filter(l => l.sport !== 'soccer');
+  // Agrupamos por sport y aplicamos el cap per-sport (LEAGUES_PER_SPORT).
+  // Dentro de cada sport: priority leagues primero, después by alfabético
+  // (estable para que el round-robin no oscille entre ciclos).
   const bySport = new Map();
-  for (const l of others) {
+  for (const l of out) {
     if (!bySport.has(l.sport)) bySport.set(l.sport, []);
     bySport.get(l.sport).push(l);
   }
-  const otherTop = [];
-  for (const [, list] of bySport) {
-    otherTop.push(...list.sort((a, b) => Number(b.priority) - Number(a.priority)).slice(0, 5));
+  const final = [];
+  for (const [sport, list] of bySport) {
+    const cap = LEAGUES_PER_SPORT[sport] || 3;
+    const sorted = [...list].sort((a, b) => {
+      const pdiff = Number(b.priority) - Number(a.priority);
+      if (pdiff !== 0) return pdiff;
+      return (a.leagueName || '').localeCompare(b.leagueName || '');
+    });
+    final.push(...sorted.slice(0, cap));
   }
-  const final = [...soccer, ...otherTop];
 
   cachedLeagueNodeIds = final;
   cachedLeagueNodeIdsAt = Date.now();
   return final;
 }
+
+/* Set completo de GameTypeIds que el parser entiende. Se pide para CADA
+ * liga sin importar el sport — Codere ignora los que no apliquen a ese
+ * deporte (e.g. BTTS=31 no aplica a basketball, vuelve vacío). */
+const ALL_GAME_TYPES = [
+  1,    // 1X2 / 2-way según resultados
+  97,   // 2-way h2h (basket/tennis/baseball/hockey/volley/mma)
+  3,    // DNB
+  2,    // Doble Oportunidad (soccer)
+  18,   // Totals soccer
+  317,  // Totals hockey
+  393,  // Totals volleyball
+  959,  // Totals baseball
+  2083, // Totals basketball
+  103,  // Totals amfootball
+  159,  // Handicap (basket/baseball/hockey)
+  259,  // Handicap rugby
+  31    // BTTS (soccer)
+].join(';');
 
 async function scrape() {
   const t0 = Date.now();
@@ -130,9 +195,9 @@ async function scrape() {
   const leagues = await discoverLeagueNodeIds();
 
   const [homeInfo, liveEvents, ...leaguePayloads] = await Promise.all([
-    get('/Home/GetHomeInfo?countHomeLiveEvents=20&gameTypesHomeLiveEvents=1;18;2;31').catch(() => null),
+    get(`/Home/GetHomeInfo?countHomeLiveEvents=20&gameTypesHomeLiveEvents=${ALL_GAME_TYPES}`).catch(() => null),
     get('/Home/GetHomeLiveEvents').catch(() => null),
-    ...leagues.map(l => get(`/Home/GetEvents?parentid=${l.nodeId}&gameTypes=1;18;2;31`).catch(() => null))
+    ...leagues.map(l => get(`/Home/GetEvents?parentid=${l.nodeId}&gameTypes=${ALL_GAME_TYPES}`).catch(() => null))
   ]);
 
   const merged = new Map();

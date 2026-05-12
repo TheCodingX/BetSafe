@@ -33,7 +33,7 @@
 
     // Esperar al primer snapshot del backend si todavía no lo tenemos
     if (!BSData.liveReady()) {
-      panel.innerHTML = `<div class="card stack" style="min-height:240px;padding:40px;text-align:center"><strong>Cargando partidos en vivo…</strong><p class="muted tiny">Recibiendo cuotas reales de las 12 casas argentinas legales.</p><span class="muted tiny">${BSData.liveFreshness()}</span></div>`;
+      panel.innerHTML = `<div class="card stack" style="min-height:240px;padding:40px;text-align:center"><strong>Cargando partidos en vivo…</strong><p class="muted tiny">Recibiendo cuotas reales de las casas argentinas legales.</p><span class="muted tiny">${BSData.liveFreshness()}</span></div>`;
       await BSData.awaitLive({ timeoutMs: 12000 });
     }
     const matches = BSData.liveEvents({});

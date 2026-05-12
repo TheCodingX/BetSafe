@@ -9,7 +9,7 @@ window.FEATURES_DATA = [
   {
     name: 'Comparador de cuotas', area: 'Core',
     items: [
-      { name: 'Comparador en vivo de las 12 casas legales AR', tier: 'standard', desc: 'Una sola vista con todas las cuotas' },
+      { name: 'Comparador en vivo de las casas legales AR', tier: 'standard', desc: 'Una sola vista con todas las cuotas legales AR' },
       { name: 'Resaltar la mejor cuota por outcome', tier: 'standard', desc: 'En verde, automáticamente' },
       { name: 'Diferencia % entre la mejor y la peor', tier: 'standard', desc: 'Cuánto valor estás dejando' },
       { name: 'Filtrar por deporte y por liga', tier: 'standard', desc: '14 deportes, 16 ligas top' },

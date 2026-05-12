@@ -1,7 +1,7 @@
 /* BetSafe — Arbitrage VIP (motor hiper-preciso)
  * ============================================================================
  * Conecta con el motor de arbitraje del backend que:
- *   - Corre cada 5s sobre el snapshot de 12 casas
+ *   - Corre cada 5s sobre el snapshot de las casas legales
  *   - Detecta multi-mercado: 1X2 (2-way y 3-way), totals (cada línea),
  *     BTTS, AH, y cross-market (1+X2, 2+1X)
  *   - Cada surebet trae: confidence, slippage real por casa, stakes óptimos,
@@ -23,7 +23,7 @@
 
   function render(panel) {
     if (!BSAuth.isVip()) {
-      panel.innerHTML = `<div class="card card-vip card-pad-lg stack"><span class="badge-vip">VIP</span><h2 class="h3">Arbitraje en vivo (VIP)</h2><p class="muted">Motor de arbitraje hiper-preciso: 12 casas, multi-mercado, cross-market, confidence score, scan cada 5 segundos.</p><a href="pricing.html" class="btn btn-gold">Ver planes</a></div>`;
+      panel.innerHTML = `<div class="card card-vip card-pad-lg stack"><span class="badge-vip">VIP</span><h2 class="h3">Arbitraje en vivo (VIP)</h2><p class="muted">Motor de arbitraje hiper-preciso: multi-casa, multi-mercado, cross-market, confidence score, scan cada 5 segundos.</p><a href="pricing.html" class="btn btn-gold">Ver planes</a></div>`;
       return;
     }
 
@@ -32,7 +32,7 @@
     panel.innerHTML = `
       <div class="row between mb-3">
         <div>
-          <h2 class="h3">Arbitraje en vivo · motor hiper-preciso<a class="help-q" tabindex="0" data-tip="Motor dedicado que escanea las 12 casas argentinas cada 5 segundos. Detecta surebets en 1X2 (2-way y 3-way), totals (cada línea), BTTS, AH y cross-market. Cada surebet trae confidence score basado en margen + time-to-event + slippage histórico por casa."></a></h2>
+          <h2 class="h3">Arbitraje en vivo · motor hiper-preciso<a class="help-q" tabindex="0" data-tip="Motor dedicado que escanea las casas argentinas cada 5 segundos. Detecta surebets en 1X2 (2-way y 3-way), totals (cada línea), BTTS, AH y cross-market. Cada surebet trae confidence score basado en margen + time-to-event + slippage histórico por casa."></a></h2>
           <p class="muted">Scan cada 5s · 1X2 + totals + BTTS + AH + cross-market · stake óptimo con slippage real · 100% datos en vivo</p>
         </div>
         <div class="cluster">
@@ -437,7 +437,7 @@
       refresh();
     }));
 
-    log('Conectado al motor de arbitraje del backend · escaneando cada 5s · 12 casas legales AR');
+    log('Conectado al motor de arbitraje del backend · escaneando cada 5s · casas legales AR');
     refresh();
     renderHist();
 

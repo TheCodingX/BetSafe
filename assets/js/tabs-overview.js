@@ -54,7 +54,7 @@
       if (!events.length) {
         host.innerHTML = `<div class="empty" style="padding:40px;text-align:center">
           <strong>Esperando el primer ciclo de scraping…</strong>
-          <p class="muted tiny">El backend está consultando las 12 casas argentinas legales. Cuando se complete el primer ciclo, los próximos partidos aparecen acá.</p>
+          <p class="muted tiny">El backend está consultando las casas argentinas legales. Cuando se complete el primer ciclo, los próximos partidos aparecen acá.</p>
           <span class="muted tiny">Estado: ${BSData.liveFreshness()}</span>
         </div>`;
         return;

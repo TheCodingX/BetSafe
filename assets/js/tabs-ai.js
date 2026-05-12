@@ -59,7 +59,7 @@
     return `
       <div class="row between mb-4">
         <div>
-          <h2 class="h3">AI Picks · análisis ultra profundo<a class="help-q" tabindex="0" data-tip="Cada pick combina cuotas reales de 12 casas + clima del venue + lesiones reportadas + movimiento sharp del mercado + histórico H2H + 4 modelos cuantitativos (Shin no-vig, Poisson xG, Elo ajustado, LLM). Confidence score basado en consistencia entre modelos. Esto NO es ChatGPT diciéndote 'apostá a tal' — es análisis quant institucional."></a></h2>
+          <h2 class="h3">AI Picks · análisis ultra profundo<a class="help-q" tabindex="0" data-tip="Cada pick combina cuotas reales de casas legales + clima del venue + lesiones reportadas + movimiento sharp del mercado + histórico H2H + 4 modelos cuantitativos (Shin no-vig, Poisson xG, Elo ajustado, LLM). Confidence score basado en consistencia entre modelos. Esto NO es ChatGPT diciéndote 'apostá a tal' — es análisis quant institucional."></a></h2>
           <p class="muted">${isVip ? `VIP — análisis ilimitado · backend a tiempo real` : `Standard — top ${limit} partidos por EV`}</p>
         </div>
         <div class="cluster">

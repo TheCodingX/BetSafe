@@ -1,7 +1,7 @@
 /* BetSafe — Smart Money Alerts (VIP)
  * ============================================================================
  * Detección de steam moves (movimientos >5%) generados por el backend al
- * comparar snapshots consecutivos de las 12 casas argentinas legales.
+ * comparar snapshots consecutivos de las casas argentinas legales.
  *
  * NO se generan signals fake. Si el backend todavía no detectó movimientos,
  * la UI muestra "esperando…".
@@ -24,7 +24,7 @@
       <div class="row between mb-3">
         <div>
           <h2 class="h3">Smart Money Alerts<a class="help-q" tabindex="0" data-tip="Smart Money = dinero profesional/sharp. Detectamos cuando una cuota se mueve 5%+ entre dos ciclos de scraping (steam move) — señal de que sharps tomaron posición."></a></h2>
-          <p class="muted">Flujo real de movimientos sharp · cruce de 12 casas argentinas · push en vivo via WebSocket.</p>
+          <p class="muted">Flujo real de movimientos sharp · cruce de casas argentinas · push en vivo via WebSocket.</p>
         </div>
         <button class="btn btn-primary mag" id="newAlert">+ Crear alerta</button>
       </div>

@@ -7,7 +7,7 @@
  * eventos, devolvemos [] y la UI muestra "cargando…" hasta que el backend
  * empuje el primer snapshot.
  *
- * Catálogos = configuración estática auditable (12 casas AR legales, ligas,
+ * Catálogos = configuración estática auditable (casas AR legales, ligas,
  * códigos de país, escudos de equipos para el rendering del frontend).
  * ============================================================================
  */
@@ -282,7 +282,7 @@
     });
   }
 
-  /** Surebets en vivo (detectadas por el backend cruzando 12 casas). */
+  /** Surebets en vivo (detectadas por el backend cruzando las casas legales AR). */
   function liveSurebets() { return global.BSLive ? global.BSLive.surebets() : []; }
 
   /** Steam moves (movimientos sharp >5%) detectados en el último ciclo. */

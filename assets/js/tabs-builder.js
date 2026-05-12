@@ -6,7 +6,7 @@
     const slip = BSStore.get(BSStore.KEYS.slip) || { legs: [], stake: 1000 };
 
     // Mostrar skeleton mientras llega el snapshot del backend
-    panel.innerHTML = `<div class="card stack" style="min-height:240px"><div class="row between"><strong>Cargando partidos en vivo…</strong><span class="muted tiny" id="bdrSt">conectando con el scraper</span></div><div class="empty">Recibiendo datos de las 12 casas argentinas legales.</div></div>`;
+    panel.innerHTML = `<div class="card stack" style="min-height:240px"><div class="row between"><strong>Cargando partidos en vivo…</strong><span class="muted tiny" id="bdrSt">conectando con el scraper</span></div><div class="empty">Recibiendo datos de las casas argentinas legales.</div></div>`;
 
     // Esperar a que el backend nos entregue eventos reales
     let matches = await BSData.awaitLive({ timeoutMs: 12000 });
@@ -241,7 +241,7 @@
   function renderEmpty(err) {
     return `<div class="card stack" style="min-height:280px;align-items:center;text-align:center;padding:40px">
       <strong>Aún no hay datos en vivo</strong>
-      <p class="muted">El backend está scrapeando las 12 casas argentinas. Cuando llegue el primer snapshot, los partidos aparecen acá automáticamente.</p>
+      <p class="muted">El backend está scrapeando las casas argentinas. Cuando llegue el primer snapshot, los partidos aparecen acá automáticamente.</p>
       ${err ? `<small class="muted tiny">Detalle técnico: ${BSUI.esc(err)}</small>` : ''}
       <span class="muted tiny">Último estado: ${BSData.liveFreshness()}</span>
     </div>`;

@@ -65,7 +65,7 @@
     return events;
   }
 
-  /** Surebets activas detectadas por el backend cruzando 12 casas. */
+  /** Surebets activas detectadas por el backend cruzando las casas legales AR. */
   async function getSurebets() {
     if (!global.BSLive) return [];
     // Si todavía no llegó snapshot, esperamos un poco

@@ -42,7 +42,7 @@
       <div class="stack-lg reveal-stagger">
         <span class="eyebrow eyebrow-elegant">Análisis profesional argentino · es-AR</span>
         <h1 class="h1 hero-headline">Apostar ya no es <span class="strike-rotate">suerte</span>.<br>Es <span class="grad type-cycle" data-words="análisis,ciencia,método,disciplina">análisis</span>.</h1>
-        <p class="lead">Mirás un partido, abrís 12 casas, te perdés en pestañas. <strong>BetSafe te muestra todo en una sola vista</strong>: dónde te pagan más, cómo ven los números cada partido, y cuánto te conviene apostar según tu banca. Sin gurúes, sin grupos de Telegram. Una herramienta limpia para pensar mejor antes de jugar.</p>
+        <p class="lead">Mirás un partido, abrís 6 casas, te perdés en pestañas. <strong>BetSafe te muestra todo en una sola vista</strong>: dónde te pagan más, cómo ven los números cada partido, y cuánto te conviene apostar según tu banca. Sin gurúes, sin grupos de Telegram. Una herramienta limpia para pensar mejor antes de jugar.</p>
         <div class="row">
           <a href="dashboard.html#overview" class="btn btn-primary btn-lg mag" id="heroCta">Empezar gratis<span class="arrow" style="margin-left:6px">→</span></a>
           <a href="#demo" class="btn btn-outline btn-lg">Ver comparador en vivo</a>
@@ -111,7 +111,7 @@
 
   <!-- TRUST / OPERAMOS — moved up here (replaces old team ticker) -->
   <section class="container reveal" style="padding-top:8px">
-    <p class="eyebrow-elegant text-center" style="display:flex;justify-content:center;margin-bottom:14px">Operamos sobre las 12 casas legales del país</p>
+    <p class="eyebrow-elegant text-center" style="display:flex;justify-content:center;margin-bottom:14px">Operamos sobre las casas legales argentinas (LOTBA / IPLyC)</p>
     <div class="card marquee" aria-label="Casas con licencia LOTBA">
       <div class="marquee-track" id="bookmarks"></div>
     </div>
@@ -200,7 +200,7 @@
 
       <!-- Title + subtitle -->
       <h2 id="wcBannerTitle" class="wc-mega__title">Llegá al Mundial <em>preparado</em>.</h2>
-      <p class="wc-mega__sub">48 selecciones, 16 sedes, favoritos al título y cuotas comparadas en las 12 casas legales argentinas, día a día.</p>
+      <p class="wc-mega__sub">48 selecciones, 16 sedes, favoritos al título y cuotas comparadas en las casas legales argentinas, día a día.</p>
 
       <!-- Nation flag chips — corrected SVG flags -->
       <div class="wc-mega__nations" aria-label="Selecciones participantes">
@@ -317,7 +317,7 @@
       <div id="wcLiveComparator" class="wc-mega__cmp-grid">
         <div class="empty" style="grid-column:1/-1;padding:32px;text-align:center;border:1px dashed var(--border);border-radius:12px">
           <strong>Mercados del Mundial 2026 — pendiente apertura</strong>
-          <p class="muted tiny" style="max-width:560px;margin:8px auto 0">El sorteo de grupos se hizo el 5 diciembre 2025. A medida que las 12 casas legales argentinas publiquen los mercados de cada partido, las cuotas reales aparecen acá automáticamente vía nuestro motor de scraping.</p>
+          <p class="muted tiny" style="max-width:560px;margin:8px auto 0">El sorteo de grupos se hizo el 5 diciembre 2025. A medida que las casas legales argentinas publiquen los mercados de cada partido, las cuotas reales aparecen acá automáticamente vía nuestro motor de scraping.</p>
         </div>
       </div>
       <div style="margin-top:16px;text-align:right">
@@ -381,7 +381,7 @@
       <article class="card card-hover stack">
         <div class="badge badge-brand">Comparador</div>
         <h3 class="h4">25 casas, una sola vista</h3>
-        <p class="muted">Bplay, Betano, BetWarrior, Codere, Caliente y las 12 casas legales. Resaltamos la mejor cuota por outcome y mostramos el margen del libro. Refresco cada 30 s.</p>
+        <p class="muted">Bplay, Betano, BetWarrior, Bet365 AR, Codere y Betsson — las casas legales argentinas con licencia LOTBA / IPLyC. Resaltamos la mejor cuota por outcome y mostramos el margen del libro. Refresco cada 30 s.</p>
         <a href="dashboard.html#comparator" class="text-brand fw-600">Ver comparador →</a>
       </article>
       <article class="card card-hover stack">
@@ -899,13 +899,13 @@ function buildDemoComparator() {
       .filter(m => m.markets?.h2h && Object.keys(m.markets.h2h).length >= 2)
       .slice(0, 4);
     if (!matches.length) {
-      host.innerHTML = `<div class="card stack" style="padding:40px;text-align:center"><strong>Comparador en vivo</strong><p class="muted">Esperando el primer ciclo del backend de scraping de las 12 casas argentinas legales. Cuando llegue el snapshot, las cuotas reales aparecen acá.</p><span class="muted tiny">Estado: ${BSData.liveFreshness()}</span></div>`;
+      host.innerHTML = `<div class="card stack" style="padding:40px;text-align:center"><strong>Comparador en vivo</strong><p class="muted">Esperando el primer ciclo del backend de scraping de las casas argentinas legales. Cuando llegue el snapshot, las cuotas reales aparecen acá.</p><span class="muted tiny">Estado: ${BSData.liveFreshness()}</span></div>`;
       return;
     }
     host.innerHTML = `
       <div class="card stack">
         <div class="row between">
-          <strong>Cuotas en vivo · 12 casas argentinas (LOTBA / IPLyC)</strong>
+          <strong>Cuotas en vivo · casas argentinas (LOTBA / IPLyC)</strong>
           <span class="muted tiny">Push en vivo via WebSocket · última actualización ${BSData.liveFreshness()}</span>
         </div>
         <div class="table-wrap">
@@ -1010,7 +1010,7 @@ function buildVipSurebets() {
   function render() {
     const sb = BSData.liveSurebets ? BSData.liveSurebets().slice(0, 4) : [];
     if (!sb.length) {
-      host.innerHTML = `<div class="empty" style="padding:14px"><strong>Esperando surebets en vivo</strong><div class="muted tiny">El motor cruza las 12 casas en cada ciclo de scraping. Cuando aparece una oportunidad real con ROI &gt; 0, aparece acá automáticamente.</div></div>`;
+      host.innerHTML = `<div class="empty" style="padding:14px"><strong>Esperando surebets en vivo</strong><div class="muted tiny">El motor cruza todas las casas en cada ciclo de scraping. Cuando aparece una oportunidad real con ROI &gt; 0, aparece acá automáticamente.</div></div>`;
       return;
     }
     host.innerHTML = sb.map(s => `
@@ -1032,7 +1032,7 @@ function buildFaq() {
   const items = [
     { q: '¿BetSafe es una casa de apuestas?', a: 'No. Somos una herramienta de análisis cuantitativo. Vos operás en las casas legales argentinas (LOTBA / IPLyC) y nosotros te damos comparador, IA, banca y arbitraje. Nunca tocamos tu dinero ni tomamos apuestas.' },
     { q: '¿Es legal en Argentina?', a: 'Sí. Cumplimos con el marco LOTBA / IPLyC del Instituto Provincial de Lotería y Casinos. Verificación +18, juego responsable, datos bajo Ley 25.326 (Habeas Data). Mostramos disclaimers y links a SEDRONAR / FEJAR.' },
-    { q: '¿Necesito cuenta en cada casa?', a: 'Sí. BetSafe te dice qué casa paga más por cada outcome; vos operás directamente desde tu cuenta en Bplay, Betano, BetWarrior, Bet365, Codere, etc. Soportamos las 12 casas argentinas legales y 13 internacionales.' },
+    { q: '¿Necesito cuenta en cada casa?', a: 'Sí. BetSafe te dice qué casa paga más por cada outcome; vos operás directamente desde tu cuenta en Bplay, Betano, BetWarrior, Bet365, Codere, etc. Soportamos las casas argentinas legales con licencia LOTBA y IPLyC.' },
     { q: '¿Qué diferencia hay con un grupo de Telegram?', a: 'Todo. En Telegram recibís "tips" sin contexto, sin responsabilidad, sin métricas. En BetSafe cada pick viene con probabilidad implícita, EV, value index, riesgo, contexto del partido y aviso explícito. Mediamos CLV, ROI, Yield, Sharpe, drawdown — auditable y reproducible.' },
     { q: '¿La IA es real o es un truco?', a: 'Real. Cada pick pasa por nuestro motor de análisis táctico, con cascada interna de fallback automático. Sin que tengas que configurar nada, el sistema siempre usa la mejor variante disponible y se recupera solo si una capa falla. Respuesta en vivo en menos de 2 segundos.' },
     { q: '¿Cómo funciona el arbitraje?', a: 'El motor escanea cada 30 segundos las 25 casas, detecta cuándo la suma 1/cuota_outcome del partido es < 1 (oportunidad de surebet), calcula stakes óptimos por casa, aplica slippage protection (margen 1.5% default) y te avisa con audio y toast. Histórico de las últimas 500 detecciones, ROI promedio, mejor ROI.' },

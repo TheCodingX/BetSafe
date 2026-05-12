@@ -179,7 +179,7 @@
 
     // Top goleadores del Mundial: pendiente publicación oficial FIFA.
     // Por ahora mostramos disclaimer honesto.
-    panel.querySelector('#wcSco').innerHTML = `<div class="empty" style="padding:18px"><strong>Top goleadores — pendiente</strong><div class="muted tiny">El mercado "Botín de Oro Mundial 2026" se publica más cerca del torneo. Cuando las 12 casas lo abran, las cuotas aparecen acá.</div></div>`;
+    panel.querySelector('#wcSco').innerHTML = `<div class="empty" style="padding:18px"><strong>Top goleadores — pendiente</strong><div class="muted tiny">El mercado "Botín de Oro Mundial 2026" se publica más cerca del torneo. Cuando las casas lo abran, las cuotas aparecen acá.</div></div>`;
 
     // Nations by confederation
     let activeConf = BSData.CONFEDERATIONS[0].key;

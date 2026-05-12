@@ -130,7 +130,7 @@
     if (step === 1) return `
       <div class="stack">
         <h3 class="h4">Tus deportes favoritos</h3>
-        <p class="muted tiny">Filtramos picks y comparador a estos. Vamos a comparar siempre las 12 casas argentinas legales en cada partido.</p>
+        <p class="muted tiny">Filtramos picks y comparador a estos. Vamos a comparar siempre las casas argentinas legales en cada partido.</p>
         <div class="mt-2">
           <strong class="tiny">Deportes</strong>
           <div class="cluster mt-2" id="ob-sports">${BSData.SPORTS.slice(0,8).map(s =>
