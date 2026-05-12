@@ -599,9 +599,15 @@ function buildSources(cfg) {
 
   // 3) Fuentes públicas suplementarias (fixtures sin odds, pero útiles
   //    para no dejar partidos "ausentes" cuando ningún scraper los capturó).
-  if (process.env.ENABLE_SOFASCORE !== 'false') {
+  //
+  // SofaScore: por DEFAULT desactivado en hosts cloud porque Cloudflare
+  // bloquea sistemáticamente las IPs de Render/Fly/Railway con 403. ESPN
+  // ya cubre el mismo rol (fixtures sin odds) y SÍ responde a cloud IPs.
+  // Para reactivarlo si tenés una IP "limpia" (e.g. residential proxy),
+  // setear ENABLE_SOFASCORE=true.
+  if (process.env.ENABLE_SOFASCORE === 'true') {
     sources.push(new SofaScoreSource());
-    log('[orchestrator] SofaScore source habilitado');
+    log('[orchestrator] SofaScore source habilitado (opt-in)');
   }
   if (process.env.ENABLE_ESPN !== 'false') {
     sources.push(new EspnSource());
