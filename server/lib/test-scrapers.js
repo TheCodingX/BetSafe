@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* BetSafe — Live test runner para los 12 scrapers AR
+/* BetSafe — Live test runner para los scrapers AR dedicados
  * ============================================================================
  * Corre cada scraper contra el sitio REAL y reporta:
  *   - Cuántos eventos retornó
@@ -23,15 +23,7 @@ const SCRAPERS = {
   bplay:        require('../scrapers/bplay'),
   betano:       require('../scrapers/betano'),
   betwarrior:   require('../scrapers/betwarrior'),
-  bet365ar:     require('../scrapers/bet365ar'),
-  codere:       require('../scrapers/codere'),
-  caliente:     require('../scrapers/caliente'),
-  casinomagic:  require('../scrapers/casinomagic'),
-  betsson:      require('../scrapers/betsson'),
-  playcity:     require('../scrapers/playcity'),
-  super7:       require('../scrapers/super7'),
-  betfun:       require('../scrapers/betfun'),
-  jugadon:      require('../scrapers/jugadon')
+  codere:       require('../scrapers/codere')
 };
 
 const TIMEOUT_MS = Number(process.env.TIMEOUT_MS || 30000);

@@ -14,20 +14,15 @@
 (function (global) {
   'use strict';
 
-  // 12 casas AR legales (LOTBA / IPLyC) — IDs coinciden con server/scrapers/<id>.js
+  // Casas AR legales (LOTBA / IPLyC) — IDs coinciden con server/scrapers/<id>.js
+  // y con BOOK_MAP de server/sources/oddsapi.js (bet365ar y betsson via Odds API).
   const BOOKS_AR = [
     { key: 'bplay',       name: 'Bplay',        license: 'LOTBA', color: '#0066ff' },
     { key: 'betano',      name: 'Betano',       license: 'LOTBA', color: '#ff6900' },
     { key: 'betwarrior',  name: 'BetWarrior',   license: 'LOTBA', color: '#1a1a1a' },
     { key: 'bet365ar',    name: 'Bet365 AR',    license: 'LOTBA', color: '#14805e' },
     { key: 'codere',      name: 'Codere',       license: 'LOTBA', color: '#00a651' },
-    { key: 'caliente',    name: 'Caliente',     license: 'LOTBA', color: '#e30000' },
-    { key: 'casinomagic', name: 'Magic',        license: 'LOTBA', color: '#7e3aa6' },
-    { key: 'betsson',     name: 'Betsson',      license: 'LOTBA', color: '#003a70' },
-    { key: 'jugabet',     name: 'JugaBet',      license: 'LOTBA', color: '#1aaf5d' },
-    { key: '24bet',       name: '24bet',        license: 'LOTBA', color: '#191919' },
-    { key: 'playcity',    name: 'PlayCity',     license: 'LOTBA', color: '#00b3a4' },
-    { key: 'megapuesta',  name: 'MegaPuesta',   license: 'LOTBA', color: '#ff2d55' }
+    { key: 'betsson',     name: 'Betsson',      license: 'LOTBA', color: '#003a70' }
   ];
   const BOOKS_INTL = [];
   const ALL_BOOKS = BOOKS_AR.slice();
@@ -229,21 +224,15 @@
     { date:'2026-07-19', name:'Mundial 2026 — Final',           loc:'MetLife, Nueva York', tag:'WC' }
   ];
 
-  // Cobertura real de mercados por casa (curado manualmente al inspeccionar
-  // los SPAs de las 12 casas en mayo 2026).
+  // Cobertura real de mercados por casa (verificada empíricamente con los
+  // scrapers dedicados / Odds API en mayo 2026).
   const BOOK_MARKET_COVERAGE = {
     bplay:       { h2h: true, dc: true,  totals: true,  btts: true,  ah: true,  corners: true,  cards: true  },
     betano:      { h2h: true, dc: true,  totals: true,  btts: true,  ah: true,  corners: true,  cards: true  },
     betwarrior:  { h2h: true, dc: true,  totals: true,  btts: true,  ah: false, corners: true,  cards: false },
     bet365ar:    { h2h: true, dc: true,  totals: true,  btts: true,  ah: true,  corners: true,  cards: true  },
     codere:      { h2h: true, dc: true,  totals: true,  btts: true,  ah: false, corners: false, cards: false },
-    caliente:    { h2h: true, dc: true,  totals: true,  btts: true,  ah: true,  corners: false, cards: false },
-    casinomagic: { h2h: true, dc: false, totals: true,  btts: false, ah: false, corners: false, cards: false },
-    betsson:     { h2h: true, dc: true,  totals: true,  btts: true,  ah: true,  corners: true,  cards: true  },
-    jugabet:     { h2h: true, dc: true,  totals: true,  btts: true,  ah: false, corners: false, cards: false },
-    '24bet':     { h2h: true, dc: false, totals: true,  btts: false, ah: false, corners: false, cards: false },
-    playcity:    { h2h: true, dc: true,  totals: true,  btts: true,  ah: false, corners: false, cards: false },
-    megapuesta:  { h2h: true, dc: false, totals: true,  btts: false, ah: false, corners: false, cards: false }
+    betsson:     { h2h: true, dc: true,  totals: true,  btts: true,  ah: true,  corners: true,  cards: true  }
   };
 
   // Tasa real impuesto a apuestas online por jurisdicción (LOTBA / IPLyC / etc)

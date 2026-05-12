@@ -39,21 +39,14 @@ const BOOK_LIMITS = {
   betwarrior:  { soccer: 250000, basketball: 150000, tennis: 100000, default: 120000 },
   bet365ar:    { soccer: 500000, basketball: 300000, tennis: 200000, default: 250000 },
   codere:      { soccer: 200000, basketball: 120000, tennis:  80000, default: 100000 },
-  caliente:    { soccer: 250000, basketball: 150000, tennis: 100000, default: 120000 },
-  casinomagic: { soccer: 100000, basketball:  60000, tennis:  40000, default:  50000 },
-  betsson:     { soccer: 200000, basketball: 150000, tennis: 100000, default: 100000 },
-  playcity:    { soccer: 150000, basketball:  80000, tennis:  60000, default:  80000 },
-  super7:      { soccer: 120000, basketball:  70000, tennis:  50000, default:  60000 },
-  betfun:      { soccer: 100000, basketball:  60000, tennis:  40000, default:  50000 },
-  jugadon:     { soccer: 100000, basketball:  60000, tennis:  40000, default:  50000 }
+  betsson:     { soccer: 200000, basketball: 150000, tennis: 100000, default: 100000 }
 };
 
 /* Slippage típico por casa al ejecutar (cuánto suele bajar la cuota entre
  * detección y aceptación de la apuesta). Empírico, mejorable con data real. */
 const BOOK_SLIPPAGE = {
   bplay: 0.012, betano: 0.010, betwarrior: 0.014, bet365ar: 0.008,
-  codere: 0.013, caliente: 0.012, casinomagic: 0.018, betsson: 0.011,
-  playcity: 0.014, super7: 0.015, betfun: 0.016, jugadon: 0.017
+  codere: 0.013, betsson: 0.011
 };
 
 class ArbitrageEngine {

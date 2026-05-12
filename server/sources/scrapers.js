@@ -1,45 +1,31 @@
 /* BetSafe — Source: scrapers wrapper
  * ============================================================================
- * Envuelve los 12 scrapers individuales (server/scrapers/<id>.js) en la
- * interfaz unificada SourceBase. Cada scraper queda como una "sub-source"
- * con su propia priority — las que The Odds API NO cubre tienen priority alta
- * (=fuente única, irreemplazable), las que sí cubre tienen priority baja
- * (=fallback, principal valor: cross-validation).
+ * Envuelve los scrapers individuales (server/scrapers/<id>.js) en la interfaz
+ * unificada SourceBase. Cada scraper queda como una "sub-source" con su propia
+ * priority — las que The Odds API NO cubre tienen priority alta (=fuente única,
+ * irreemplazable), las que sí cubre tienen priority baja (=fallback / cross-val).
  *
- * Prioridades:
- *   - bplay, betwarrior, codere, caliente, casinomagic, jugabet, 24bet,
- *     playcity, megapuesta  →  priority 2 (fuente única para esas casas)
- *   - betano, bet365ar, betsson                                   →  priority 4 (fallback)
+ * Casas activas (4 scraping dedicado + 2 via Odds API):
+ *   - bplay        → priority 2 (XML público — fuente única)
+ *   - betwarrior   → priority 2 (Kambi API — fuente única)
+ *   - codere       → priority 2 (NavigationService — fuente única)
+ *   - betano       → priority 4 (Kaizen JSON + Playwright — fallback)
+ *   - bet365 AR + betsson → cubiertos directamente por The Odds API
  * ============================================================================
  */
 'use strict';
 
 const { SourceBase } = require('./_adapter');
-const { log } = require('../lib');
 
-// 12 casas con licencia LOTBA confirmada a mayo 2026:
-//   Codere, Bplay, Super 7, Jugadon, Betsson, BetWarrior, Bet365, Betfun,
-//   Caliente, PlayCity, Casino Magic, Betano.
-// (jugabet, 24bet, megapuesta NO tienen sitio LOTBA AR a esta fecha.)
 const SCRAPERS = {
   bplay:        require('../scrapers/bplay'),
   betano:       require('../scrapers/betano'),
   betwarrior:   require('../scrapers/betwarrior'),
-  bet365ar:     require('../scrapers/bet365ar'),
-  codere:       require('../scrapers/codere'),
-  caliente:     require('../scrapers/caliente'),
-  casinomagic:  require('../scrapers/casinomagic'),
-  betsson:      require('../scrapers/betsson'),
-  playcity:     require('../scrapers/playcity'),
-  super7:       require('../scrapers/super7'),
-  betfun:       require('../scrapers/betfun'),
-  jugadon:      require('../scrapers/jugadon')
+  codere:       require('../scrapers/codere')
 };
 
-const UNIQUE_BOOKS = new Set([
-  'bplay', 'betwarrior', 'codere', 'caliente', 'casinomagic',
-  'playcity', 'super7', 'betfun', 'jugadon'
-]);
+// Casas cuyo scraper es la ÚNICA fuente (The Odds API no las cubre)
+const UNIQUE_BOOKS = new Set(['bplay', 'betwarrior', 'codere']);
 
 class ScraperSource extends SourceBase {
   constructor({ bookKey }) {
@@ -85,7 +71,7 @@ class ScraperSource extends SourceBase {
   }
 }
 
-/** Crea las 12 sources scraper, una por cada bookmaker AR. */
+/** Crea las sources scraper para cada bookmaker AR activo. */
 function createAllScraperSources(enabledBooks) {
   const keys = enabledBooks && enabledBooks.length ? enabledBooks : Object.keys(SCRAPERS);
   return keys.filter(k => SCRAPERS[k]).map(k => new ScraperSource({ bookKey: k }));

@@ -1,9 +1,9 @@
 # BetSafe — Setup y deploy
 
 > Plataforma argentina de análisis cuantitativo de apuestas legales.
-> **NO somos casa de apuestas.** Vos operás en las 12 casas LOTBA / IPLyC y
-> nosotros te damos comparador en vivo (scraping real cada 30s), IA, banca y
-> arbitraje.
+> **NO somos casa de apuestas.** Vos operás en las casas LOTBA / IPLyC
+> habilitadas y nosotros te damos comparador en vivo (scraping real cada 30s),
+> IA, banca y arbitraje.
 
 ## Arquitectura
 
@@ -20,36 +20,30 @@
                          ▼
 ┌──────────────────────────────────────────────────────┐
 │              BACKEND (Node 20 + Playwright)          │
-│   • 12 scrapers (server/scrapers/*.js)               │
+│   • 4 scrapers dedicados (server/scrapers/*.js)      │
+│   • Bet365 AR + Betsson vía The Odds API             │
 │   • Orquestador: ciclo cada SCRAPE_INTERVAL_MS       │
-│   • Detector de surebets (cruza las 12 casas)        │
+│   • Detector de surebets (cruza todas las casas)     │
 │   • Detector de steam moves (snapshots consecutivos) │
 │   • Sirve también el frontend estático en /          │
 └──────────────────────────────────────────────────────┘
                          │
        ┌─────────────────┼─────────────────┐
        ▼                 ▼                 ▼
-   Bplay, Betano,    Bet365 AR,         Codere, Caliente,
-   BetWarrior       Betsson, …          PlayCity, …
-   (Kaizen)         (varios SPAs)       (varios SPAs)
+   Bplay (XML)       Betano (Kaizen)    Bet365 AR + Betsson
+   BetWarrior (Kambi) Codere (.NET)     (The Odds API)
 ```
 
-## Las 12 casas argentinas legales (LOTBA / IPLyC)
+## Casas argentinas legales (LOTBA / IPLyC) soportadas
 
-| Key           | Nombre        | License | URL pública                              |
-| ------------- | ------------- | ------- | ---------------------------------------- |
-| `bplay`       | Bplay         | LOTBA   | https://www.bplay.com.ar                 |
-| `betano`      | Betano        | LOTBA   | https://www.betano.com.ar                |
-| `betwarrior`  | BetWarrior    | LOTBA   | https://www.betwarrior.bet.ar            |
-| `bet365ar`    | Bet365 AR     | LOTBA   | https://www.bet365.com.ar                |
-| `codere`      | Codere        | LOTBA   | https://www.codere.bet.ar                |
-| `caliente`    | Caliente      | LOTBA   | https://www.caliente.bet                 |
-| `casinomagic` | Magic         | LOTBA   | https://www.casinomagiconline.com.ar     |
-| `betsson`     | Betsson AR    | LOTBA   | https://www.betsson.bet.ar               |
-| `jugabet`     | JugaBet       | LOTBA   | https://www.jugabet.com.ar               |
-| `24bet`       | 24bet         | LOTBA   | https://www.24bet.ar                     |
-| `playcity`    | PlayCity      | LOTBA   | https://www.playcity.com.ar              |
-| `megapuesta`  | MegaPuesta    | LOTBA   | https://www.megapuesta.com.ar            |
+| Key           | Nombre        | License | URL pública                              | Fuente              |
+| ------------- | ------------- | ------- | ---------------------------------------- | ------------------- |
+| `bplay`       | Bplay         | LOTBA   | https://www.bplay.com.ar                 | XML feed público    |
+| `betano`      | Betano        | LOTBA   | https://www.betano.com.ar                | Kaizen JSON + Playwright |
+| `betwarrior`  | BetWarrior    | LOTBA   | https://www.betwarrior.bet.ar            | Kambi public API    |
+| `codere`      | Codere        | LOTBA   | https://www.codere.bet.ar                | NavigationService .NET API |
+| `bet365ar`    | Bet365 AR     | LOTBA   | https://www.bet365.com.ar                | The Odds API        |
+| `betsson`     | Betsson AR    | LOTBA   | https://www.betsson.bet.ar               | The Odds API        |
 
 ## Cómo arranca el backend (local)
 
@@ -63,7 +57,7 @@ PORT=8787 SCRAPE_INTERVAL_MS=30000 npm start
 Logs esperados:
 ```
 [14:02:11] [server] listening on :8787
-[14:02:11] [server] enabled books: bplay,betano,…,megapuesta
+[14:02:11] [server] enabled books: bplay,betano,betwarrior,bet365ar,codere,betsson
 [14:02:11] [server] scrape interval: 30s
 [14:02:13] [scrape] bplay OK · 18 eventos · 2147ms
 [14:02:14] [scrape] betano OK · 22 eventos · 2820ms

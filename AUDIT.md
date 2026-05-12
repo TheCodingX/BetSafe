@@ -48,10 +48,10 @@ arbitraje en vivo, money management de grado profesional, hub Mundial 2026 y 80+
 - **Mark idle micro-pulse** (`logo-mark--anim` 6s float ±1px).
 
 ### 1.2 Librería de logos SVG (cero dependencias externas)
-- **25 sportsbooks** con SVG art bespoke:
-  Bplay, Betano, BetWarrior, bet365, Codere, Caliente, Casino Magic, Betsson, JugaBet, 24bet,
-  PlayCity, MegaPuesta (AR-legales), Pinnacle, Betfair, William Hill, BetMGM, DraftKings,
-  FanDuel, Unibet, SBOBET, bwin, 888sport, Caesars, Bovada, Stake.
+- **20 sportsbooks** con SVG art bespoke:
+  Bplay, Betano, BetWarrior, bet365 AR, Codere, Betsson (AR-legales), Pinnacle, Betfair,
+  William Hill, BetMGM, DraftKings, FanDuel, Unibet, SBOBET, bwin, 888sport, Caesars,
+  Bovada, Stake.
 - **17 leagues**: EPL, LaLiga, Serie A, Bundesliga, Ligue 1, UCL, UEL, Liga Profesional AR,
   Copa Libertadores, NBA, NFL, MLB, NHL, MLS, UFC, FIFA, World Cup 2026.
 - **6 confederations**: UEFA, CONMEBOL, CONCACAF, AFC, CAF, OFC.

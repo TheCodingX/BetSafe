@@ -86,11 +86,9 @@
    * ===================================================================*/
   const CDN = {
     book: {
-      // ONLY AR books with verified Google s2 favicons (returns real logo, not
-      // the placeholder globe). The 6 books whose Google favicon returned the
-      // placeholder (caliente, casinomagic, jugabet, 24bet, playcity, megapuesta)
-      // are intentionally absent here so bookLogo() goes straight to our
-      // custom SVG art — looks better than a generic globe icon.
+      // Favicons CDN para las 6 casas LOTBA activas (Bplay, Betano, BetWarrior,
+      // Codere, Bet365, Betsson). Si Google s2 devuelve placeholder, se cae al
+      // SVG art definido en BOOK_RENDERERS más abajo.
       bplay:       'https://www.google.com/s2/favicons?domain=bplay.bet.ar&sz=128',
       betano:      'https://www.google.com/s2/favicons?domain=betano.bet.ar&sz=128',
       betwarrior:  'https://www.google.com/s2/favicons?domain=betwarrior.bet.ar&sz=128',
@@ -239,14 +237,7 @@
     bet365:      { name: 'bet365',        primary: '#0a663c', accent: '#ffd60a',  legal: 'AR' },
     bet365ar:    { name: 'Bet365 AR',     primary: '#0a663c', accent: '#ffd60a',  legal: 'AR' },
     codere:      { name: 'Codere',        primary: '#117a3a', accent: '#fff',     legal: 'AR' },
-    caliente:    { name: 'Caliente',      primary: '#c0392b', accent: '#ffce00',  legal: 'AR' },
-    casinomagic: { name: 'Magic',         primary: '#7c3aed', accent: '#ec4899',  legal: 'AR' },
-    betsson:     { name: 'Betsson',       primary: '#0033a0', accent: '#ffd200',  legal: 'AR' },
-    jugabet:     { name: 'JugaBet',       primary: '#0ea5e9', accent: '#fff',     legal: 'AR' },
-    bet24:       { name: '24bet',         primary: '#0f172a', accent: '#22c55e',  legal: 'AR' },
-    '24bet':     { name: '24bet',         primary: '#0f172a', accent: '#22c55e',  legal: 'AR' },
-    playcity:    { name: 'PlayCity',      primary: '#1e40af', accent: '#fbbf24',  legal: 'AR' },
-    megapuesta:  { name: 'MegaPuesta',    primary: '#16a34a', accent: '#fff',     legal: 'AR' }
+    betsson:     { name: 'Betsson',       primary: '#0033a0', accent: '#ffd200',  legal: 'AR' }
   };
 
   /* ✅ CDN-only logo lookups — NUNCA usa SVG art recreado.
@@ -275,8 +266,7 @@
       const chain = [url, googleFavicon(domain, 128), googleFavicon(domain, 64)];
       return imgWithFallback(chain, b.name, size, fb);
     }
-    // 2) Si tenemos SVG art para ese key → usarlo (caliente, casinomagic, betsson,
-    //    jugabet, 24bet, playcity, megapuesta tienen renderers ricos en BOOK_RENDERERS).
+    // 2) Si tenemos SVG art recreado para esa casa → usarlo (Betsson).
     const renderer = BOOK_RENDERERS[k];
     if (renderer) {
       return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 48 48" role="img" aria-label="${String(b.name||'').replace(/"/g,'')}">${renderer(b)}</svg>`;
@@ -301,57 +291,11 @@
     codere: b => `
       <path d="M28 14 a10 10 0 1 0 0 20 a8 8 0 1 1 0-16 z" fill="${b.accent}"/>
       <circle cx="34" cy="24" r="2.5" fill="${b.accent}"/>`,
-    // ICON ONLY (sin wordmark — el nombre vive en el strong externo)
-    // Caliente — flame on red
-    caliente: b => `
-      <rect width="48" height="48" rx="10" fill="#c8102e"/>
-      <path d="M24 7 c-2 7 5 10 5 16 a9 9 0 0 1-18 1 c0-4 3-7 4-9 c0 2 1 3 2 3 c2 0 1-5 3-11 c1 1 2 1 4 0z" fill="#ffd200"/>
-      <path d="M24 23 c-1 4 3 6 3 10 a4.5 4.5 0 0 1-9 0 c0-2 1-3 2-4 c1 0 2 0 2-1 c0-2 0-3 2-5z" fill="#ffffff"/>`,
-    // Magic — wand + sparkles on purple-pink gradient
-    casinomagic: b => `
-      <defs>
-        <linearGradient id="cm-grad" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%"  stop-color="#7c3aed"/>
-          <stop offset="100%" stop-color="#ec4899"/>
-        </linearGradient>
-      </defs>
-      <rect width="48" height="48" rx="10" fill="url(#cm-grad)"/>
-      <path d="M11 9 L21 27 L17 30 L7 12 Z" fill="#ffd700"/>
-      <circle cx="22" cy="29" r="3.5" fill="#fff"/>
-      <path d="M33 11 l1.8 3.4 l3.6 .5 l-2.6 2.4 l.6 3.6 l-3.4-1.8 l-3.4 1.8 l.6-3.6 l-2.6-2.4 l3.6-.5 z" fill="#fff"/>
-      <circle cx="38" cy="34" r="2" fill="#fff" opacity=".9"/>
-      <circle cx="11" cy="38" r="1.4" fill="#fff" opacity=".75"/>
-      <circle cx="32" cy="40" r="1.1" fill="#fff" opacity=".65"/>`,
-    // Betsson — bold "b" monogram on royal blue
+    // Betsson — bold "b" monogram on royal blue (favicon CDN actúa primero;
+    // este SVG es fallback si Google s2 devuelve placeholder).
     betsson: b => `
       <rect width="48" height="48" rx="10" fill="#003a70"/>
-      <text x="24" y="36" text-anchor="middle" font-family="'Inter',sans-serif" font-size="38" font-weight="900" fill="#ffd200" letter-spacing="-.08em">b</text>`,
-    // JugaBet — stylized "J" on sky blue with star
-    jugabet: b => `
-      <rect width="48" height="48" rx="10" fill="#0ea5e9"/>
-      <path d="M33 9 L33 31 a11 11 0 0 1-22 0 a11 11 0 0 1 11-11" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
-      <circle cx="33" cy="9" r="4" fill="#ffd200"/>`,
-    // 24bet — large "24" monogram on dark
-    bet24: b => `
-      <rect width="48" height="48" rx="10" fill="#0f172a"/>
-      <text x="24" y="36" text-anchor="middle" font-family="'JetBrains Mono','Inter',monospace" font-size="30" font-weight="900" fill="#22c55e" letter-spacing="-.10em">24</text>`,
-    '24bet': b => `
-      <rect width="48" height="48" rx="10" fill="#0f172a"/>
-      <text x="24" y="36" text-anchor="middle" font-family="'JetBrains Mono','Inter',monospace" font-size="30" font-weight="900" fill="#22c55e" letter-spacing="-.10em">24</text>`,
-    // PlayCity — city skyline silhouette
-    playcity: b => `
-      <rect width="48" height="48" rx="10" fill="#1e40af"/>
-      <path d="M5 38 L5 22 L11 22 L11 13 L18 13 L18 22 L25 22 L25 9 L32 9 L32 22 L39 22 L39 16 L43 16 L43 38 Z" fill="#fbbf24"/>
-      <rect x="13" y="26" width="1.6" height="3" fill="#1e40af"/>
-      <rect x="20" y="26" width="1.6" height="3" fill="#1e40af"/>
-      <rect x="27" y="13" width="1.6" height="3" fill="#1e40af"/>
-      <rect x="34" y="26" width="1.6" height="3" fill="#1e40af"/>
-      <rect x="40" y="20" width="1.6" height="3" fill="#1e40af"/>
-      <circle cx="40" cy="11" r="2" fill="#fbbf24" opacity=".9"/>`,
-    // MegaPuesta — bold "M" peaks on green
-    megapuesta: b => `
-      <rect width="48" height="48" rx="10" fill="#16a34a"/>
-      <path d="M7 38 L13 8 L20 22 L24 6 L28 22 L35 8 L41 38 L34 38 L31 22 L26 32 L22 32 L17 22 L14 38 Z" fill="#fff"/>`
+      <text x="24" y="36" text-anchor="middle" font-family="'Inter',sans-serif" font-size="38" font-weight="900" fill="#ffd200" letter-spacing="-.08em">b</text>`
   };
 
   /* =====================================================================

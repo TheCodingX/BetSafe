@@ -52,7 +52,7 @@ const { buildFactors } = require('./factors');
 const PORT                  = Number(process.env.PORT || 8787);
 const SCRAPE_INTERVAL_MS    = Number(process.env.SCRAPE_INTERVAL_MS || 30000);
 const ARB_INTERVAL_MS       = Number(process.env.ARB_INTERVAL_MS || 5000);
-const ENABLED_BOOKS         = (process.env.ENABLED_BOOKS || 'bplay,betano,betwarrior,bet365ar,codere,caliente,casinomagic,betsson,playcity,super7,betfun,jugadon').split(',').map(s=>s.trim()).filter(Boolean);
+const ENABLED_BOOKS         = (process.env.ENABLED_BOOKS || 'bplay,betano,betwarrior,bet365ar,codere,betsson').split(',').map(s=>s.trim()).filter(Boolean);
 const CORS_ORIGIN           = process.env.CORS_ORIGIN || '*';
 const PUBLIC_DIR            = path.resolve(__dirname, '..');
 

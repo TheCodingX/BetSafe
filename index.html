@@ -849,7 +849,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Bookmark marquee — SOLO casas argentinas legales con LOGO REAL (CDN)
   const bm = document.getElementById('bookmarks');
   if (bm && window.BSLogos) {
-    const arBooks = ['bplay','betano','betwarrior','bet365','codere','caliente','casinomagic','betsson','jugabet','bet24','playcity','megapuesta'];
+    const arBooks = ['bplay','betano','betwarrior','bet365','codere','betsson'];
     const items = arBooks.map(k => {
       const b = BSLogos.BOOKS[k] || { name: k, primary: '#1f2937' };
       return `<span class="tk">${BSLogos.bookLogo(k, { size: 22 })}<strong>${b.name}</strong></span>`;
@@ -872,7 +872,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Book logo strip — full SVG art
   const bls = document.getElementById('bookLogoStrip');
   if (bls && window.BSLogos) {
-    const order = ['bplay','betano','betwarrior','bet365','codere','caliente','casinomagic','betsson','jugabet','bet24','playcity','megapuesta'];
+    const order = ['bplay','betano','betwarrior','bet365','codere','betsson'];
     bls.innerHTML = order.map(k => `
       <a class="logo-strip__item" href="dashboard.html#comparator" aria-label="${BSLogos.BOOKS[k]?.name||k}">
         ${BSLogos.bookLogo(k,{size:42})}

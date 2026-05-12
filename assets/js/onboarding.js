@@ -137,8 +137,8 @@
             `<label class="check"><input type="checkbox" value="${s.key}" ${d.sports.includes(s.key)?'checked':''}><span class="box"></span><span>${s.name}</span></label>`).join('')}</div>
         </div>
         <div class="card card-tinted mt-3" style="font-size:.85rem">
-          <strong>Comparamos siempre las 12 casas legales AR.</strong>
-          <span class="muted"> Bplay, Betano, BetWarrior, Bet365, Codere, Caliente, Magic, Betsson, JugaBet, 24bet, PlayCity, MegaPuesta — sin que tengas que elegir.</span>
+          <strong>Comparamos las 6 casas legales AR principales en tiempo real.</strong>
+          <span class="muted"> Bplay, Betano, BetWarrior, Bet365 AR, Codere, Betsson — sin que tengas que elegir.</span>
         </div>
       </div>`;
     return `
