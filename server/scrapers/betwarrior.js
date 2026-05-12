@@ -16,7 +16,7 @@
 'use strict';
 
 const { httpJsonNative, log } = require('../lib');
-const { parseKambiListView } = require('../lib/kambiJson');
+const { parseKambiListView, parseKambiBetoffers } = require('../lib/kambiJson');
 
 const OP = 'tecacargrl';
 const BASE = `https://us.offering-api.kambicdn.com/offering/v2018/${OP}`;
@@ -112,6 +112,65 @@ function mergeEvents(primary, secondary) {
   return [...map.values()];
 }
 
+/* Enriquece markets de un set de events haciendo batch a /betoffer/event/{ids}.json.
+ * Modifica `events` in-place: agrega markets.totals/btts/dc/ah si no existían.
+ * Para mantener latencia baja: hasta 30 IDs por request, paralelizamos batches.
+ * Devuelve la cantidad de events que recibieron al menos un mercado nuevo.
+ */
+async function enrichWithBetOffers(events, allPayload) {
+  if (!events.length || !allPayload) return 0;
+
+  // Mapear (home,away,start) → Kambi event ID desde el payload original
+  const idByKey = new Map();
+  for (const item of allPayload.events || []) {
+    if (!item.event) continue;
+    const key = `${item.event.homeName}|${item.event.awayName}|${Date.parse(item.event.start)}`.toLowerCase();
+    idByKey.set(key, item.event.id);
+  }
+
+  // Recolectar IDs de events que ya tenemos
+  const idsToFetch = [];
+  const evByEventId = new Map();
+  for (const ev of events) {
+    const key = `${ev.home.name}|${ev.away.name}|${ev.start}`.toLowerCase();
+    const eid = idByKey.get(key);
+    if (eid) {
+      idsToFetch.push(eid);
+      evByEventId.set(eid, ev);
+    }
+  }
+  if (!idsToFetch.length) return 0;
+
+  // Dividir en batches de 30
+  const BATCH = 30;
+  const batches = [];
+  for (let i = 0; i < idsToFetch.length; i += BATCH) batches.push(idsToFetch.slice(i, i + BATCH));
+
+  let enrichedCount = 0;
+  await Promise.all(batches.map(async (batch) => {
+    const url = `${BASE}/betoffer/event/${batch.join(',')}.json?lang=es_AR&market=AR`;
+    try {
+      const payload = await httpJsonNative(url, { headers: HEADERS, timeout: 15000 });
+      const byEvent = parseKambiBetoffers(payload, 'soccer');
+      for (const [eid, ctx] of byEvent) {
+        const ev = evByEventId.get(eid);
+        if (!ev) continue;
+        let added = false;
+        for (const [mk, v] of Object.entries(ctx.markets)) {
+          if (!ev.markets[mk]) {
+            ev.markets[mk] = { [BOOK]: v };
+            added = true;
+          }
+        }
+        if (added) enrichedCount++;
+      }
+    } catch (_) {
+      // batch puntual falló — los otros pueden funcionar
+    }
+  }));
+  return enrichedCount;
+}
+
 async function scrape() {
   const t0 = Date.now();
   if (cachedEvents.length && Date.now() - cachedAt < 60_000) return cachedEvents;
@@ -127,7 +186,14 @@ async function scrape() {
   const allEvents = allPayload ? parseKambiListView(allPayload, BOOK) : [];
   const leagueEvents = leaguePayloads.filter(Boolean).flatMap(p => parseKambiListView(p, BOOK));
 
-  const merged = mergeEvents(allEvents, leagueEvents);
+  let merged = mergeEvents(allEvents, leagueEvents);
+
+  // 4) Enrich top 100 events with full betOffers (BTTS, DC, AH).
+  //    Limitamos a 100 para mantener el scrape <8s.
+  const enriched = await enrichWithBetOffers(merged.slice(0, 100), allPayload);
+  if (enriched > 0) {
+    log(`[betwarrior-kambi] enriched ${enriched} events with extra markets`);
+  }
 
   if (merged.length) {
     cachedEvents = merged;
