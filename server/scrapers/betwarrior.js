@@ -217,4 +217,6 @@ async function scrape() {
   return [];
 }
 
+scrape.breaker = breaker;
+
 module.exports = scrape;

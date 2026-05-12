@@ -640,8 +640,9 @@ function stop() {
 }
 
 /* Estado de los circuit breakers de cada scraper.
- * El módulo de scraper expone `scrape.breaker` (si lo definió). Permite a
- * /api/breakers ver si Cloudflare nos baneó y cuándo va a reintentar. */
+ * Los scrapers exponen `scrape.breaker` (1 breaker) o `scrape.breakers` (varios,
+ * e.g. betano tiene `direct` + `playwright`). Permite a /api/breakers ver si
+ * Cloudflare nos baneó y cuándo va a reintentar. */
 function breakers() {
   const out = {};
   for (const src of state.sources) {
@@ -649,14 +650,51 @@ function breakers() {
     if (scraper?.breaker && typeof scraper.breaker.status === 'function') {
       out[src.name] = scraper.breaker.status();
     }
+    if (scraper?.breakers && typeof scraper.breakers === 'object') {
+      for (const [subKey, br] of Object.entries(scraper.breakers)) {
+        if (br && typeof br.status === 'function') {
+          out[`${src.name}:${subKey}`] = br.status();
+        }
+      }
+    }
   }
   return out;
+}
+
+/* Reset manual de breakers. Útil cuando sabés que Cloudflare aflojó y querés
+ * forzar reintento sin esperar el cooldown exponencial.
+ * Si `name` está dado, solo resetea ese; si no, resetea todos. */
+function resetBreakers(name = null) {
+  const reset = [];
+  for (const src of state.sources) {
+    const scraper = src.scrape;
+    if (scraper?.breaker && typeof scraper.breaker.status === 'function') {
+      if (!name || name === src.name) {
+        scraper.breaker.state = 'CLOSED';
+        scraper.breaker.consecutiveFails = 0;
+        scraper.breaker.cooldownAttempts = 0;
+        reset.push(src.name);
+      }
+    }
+    if (scraper?.breakers && typeof scraper.breakers === 'object') {
+      for (const [subKey, br] of Object.entries(scraper.breakers)) {
+        const k = `${src.name}:${subKey}`;
+        if (!name || name === k || name === src.name) {
+          br.state = 'CLOSED';
+          br.consecutiveFails = 0;
+          br.cooldownAttempts = 0;
+          reset.push(k);
+        }
+      }
+    }
+  }
+  return reset;
 }
 
 module.exports = {
   start, stop,
   events, findEvent,
-  surebets, steamMoves, bookStatus, sourceStatus, discrepancies, quota, health, breakers,
+  surebets, steamMoves, bookStatus, sourceStatus, discrepancies, quota, health, breakers, resetBreakers,
   on: bus.on.bind(bus),
   off: bus.off.bind(bus),
   _mergeEventFromSource: mergeEventFromSource

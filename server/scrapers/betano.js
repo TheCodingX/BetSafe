@@ -76,8 +76,8 @@ async function tryDirect() {
         out.push(ev);
       }
     } catch (e) {
-      if (e?.circuitOpen) break;   // breaker abierto → no insistir
-      // Cloudflare 403 esperado si la IP fue marcada — fallback abajo
+      if (e?.circuitOpen) { log(`[betano-json:direct] circuit OPEN · skip ${url}`); break; }
+      log(`[betano-json:direct] err ${url.split('?')[0].slice(-60)}: ${e.message?.slice(0, 120)}`);
     }
   }
   return out;
@@ -121,7 +121,8 @@ async function tryPlaywright() {
       if (!captured.length) throw new Error('no-json-captured');
     });
   } catch (e) {
-    log(`[betano-json] playwright err: ${e.message?.slice(0, 80)}${e.circuitOpen ? ' · circuit OPEN' : ''}`);
+    const stackLine = (e.stack || '').split('\n').slice(1, 3).join(' | ').replace(/\s+/g, ' ').slice(0, 200);
+    log(`[betano-json] playwright err: ${e.message}${e.circuitOpen ? ' · circuit OPEN' : ''} · ${stackLine}`);
   } finally {
     if (ctx) try { await ctx.close(); } catch {}
   }
@@ -167,5 +168,10 @@ async function scrape() {
   log(`[betano-json] no data · 0 events`);
   return [];
 }
+
+// Exponemos AMBOS breakers para que /api/breakers refleje el estado real.
+// `direct` cubre native HTTPS (vulnerable a Cloudflare TLS fingerprint);
+// `playwright` cubre el fallback con browser real.
+scrape.breakers = { direct: directBreaker, playwright: playwrightBreaker };
 
 module.exports = scrape;

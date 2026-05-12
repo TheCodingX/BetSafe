@@ -107,6 +107,20 @@ app.get('/api/quota', (req, res) => res.json(orchestrator.quota()));
 // fail counts). Útil para debug cuando Cloudflare empieza a banear.
 app.get('/api/breakers', (req, res) => res.json(orchestrator.breakers ? orchestrator.breakers() : {}));
 
+// Reset manual de breakers. Si está seteado DEBUG_KEY hay que pasar ?key=
+// para evitar que cualquiera resetee desde la internet pública.
+//   POST /api/breakers/reset                       → resetea todos
+//   POST /api/breakers/reset?name=scraper:betano   → solo ese scraper (incluye sub-breakers)
+//   POST /api/breakers/reset?name=scraper:betano:playwright → solo ese sub-breaker
+app.post('/api/breakers/reset', (req, res) => {
+  if (process.env.DEBUG_KEY && req.query.key !== process.env.DEBUG_KEY) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+  const name = req.query.name ? String(req.query.name) : null;
+  const reset = orchestrator.resetBreakers ? orchestrator.resetBreakers(name) : [];
+  res.json({ reset, count: reset.length });
+});
+
 // Brier score tracker: snapshot del estado de calibración del ensemble.
 const brierTracker = require('./engines/brier-tracker');
 app.get('/api/brier', (req, res) => {
