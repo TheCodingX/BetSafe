@@ -48,7 +48,11 @@ class ScraperSource extends SourceBase {
     const events = await this.scrape({ sports });
     if (!Array.isArray(events)) return [];
 
-    // Envolver: cada evento agrega su mercado bajo this.bookKey
+    // Normalizar a la forma que el orchestrator espera:
+    //   markets: { <marketName>: { <bookKey>: { ...marketFields } } }
+    // Los scrapers ACTUALES (bplay, betano, betwarrior, codere) ya devuelven
+    // los markets envueltos en `{[this.bookKey]: data}`. Si llega así, lo
+    // dejamos pasar. Si llega "crudo" (sin la capa bookKey) lo envolvemos.
     return events.map(ev => {
       if (!ev) return null;
       const wrapped = {
@@ -62,8 +66,20 @@ class ScraperSource extends SourceBase {
       };
       if (ev.markets) {
         for (const [marketName, marketData] of Object.entries(ev.markets)) {
-          if (!wrapped.markets[marketName]) wrapped.markets[marketName] = {};
-          wrapped.markets[marketName][this.bookKey] = marketData;
+          if (!marketData || typeof marketData !== 'object') continue;
+          // Detectar si ya viene envuelto: { bookKey: {...} } donde la sub-key
+          // matchea con this.bookKey (o cualquier book conocido).
+          const wrappedAlready = marketData[this.bookKey]
+            && typeof marketData[this.bookKey] === 'object';
+          if (wrappedAlready) {
+            // Ya viene en formato esperado — pass-through
+            wrapped.markets[marketName] = wrapped.markets[marketName] || {};
+            wrapped.markets[marketName][this.bookKey] = marketData[this.bookKey];
+          } else {
+            // Forma cruda — envolver
+            wrapped.markets[marketName] = wrapped.markets[marketName] || {};
+            wrapped.markets[marketName][this.bookKey] = marketData;
+          }
         }
       }
       return wrapped;

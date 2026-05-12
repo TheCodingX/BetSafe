@@ -72,8 +72,13 @@ const SPORT_MAP = {
   'mma_mixed_martial_arts':        { sport: 'mma',        league: 'ufc',          name: 'UFC / MMA' }
 };
 
+/* Sports siempre presentes en cada ciclo (deportes "anchor" con flujo AR).
+ * El resto entra por round-robin para preservar quota.
+ */
+const ANCHOR_SPORTS = ['soccer_argentina_primera_division', 'soccer_epl', 'soccer_spain_la_liga'];
+
 class OddsApiSource extends SourceBase {
-  constructor({ apiKey, sportsKeys, region = 'eu', markets } = {}) {
+  constructor({ apiKey, sportsKeys, region = 'eu', markets, sportsPerCycle } = {}) {
     super({ name: 'oddsapi', priority: 1 });
     this.apiKey = apiKey;
     this.sportsKeys = sportsKeys || Object.keys(SPORT_MAP);
@@ -85,11 +90,52 @@ class OddsApiSource extends SourceBase {
     this.markets = markets && markets.length ? markets : ['h2h'];
     this.endpoint = 'https://api.the-odds-api.com/v4';
     this.quota = { remaining: null, used: null };
+    // Round-robin: por defecto 6 sports/ciclo. Con ciclo de 30s y 19 sports
+    // configurados, cada sport se actualiza ~cada 1.5 min (suficiente para
+    // prematch + arbs). Quota mensual estimada: 6 × 2880 ciclos/día × 30 días
+    // = ~520k/mes en el peor caso; con plan $30 (1M req/mes) sobra.
+    this.sportsPerCycle = Number(sportsPerCycle ?? process.env.ODDS_API_SPORTS_PER_CYCLE ?? 6);
+    // Sports que devolvieron 0 events recientemente: los penalizamos en el
+    // round-robin para no quemar quota en deportes fuera de calendario.
+    this._sportEmptyHits = new Map();
+    this._rrIndex = 0;
   }
 
   covers(sport) {
     // The Odds API cubre todos los deportes principales
     return ['soccer', 'basketball', 'amfootball', 'baseball', 'hockey', 'tennis', 'mma'].includes(sport);
+  }
+
+  /* Selecciona qué sports correr en este ciclo:
+   *   - ANCHORS siempre (si están configurados)
+   *   - Resto: round-robin saltando los marcados como "empty" recientemente
+   *   - Si la quota remaining es muy baja, recortar a anchors solamente
+   */
+  pickSportsForCycle() {
+    const want = this.sportsPerCycle;
+    const allKeys = this.sportsKeys.slice();
+
+    // Modo defensivo: si remaining < 100 y nos quedan 24h del mes, anchors only
+    if (Number.isFinite(this.quota.remaining) && this.quota.remaining < 100) {
+      return allKeys.filter(k => ANCHOR_SPORTS.includes(k)).slice(0, 3);
+    }
+
+    const anchors = allKeys.filter(k => ANCHOR_SPORTS.includes(k));
+    const rest = allKeys.filter(k => !ANCHOR_SPORTS.includes(k));
+
+    // Ordenar rest poniendo primero los que NO han sido marcados como vacíos
+    // y luego rotando por round-robin desde _rrIndex
+    rest.sort((a, b) => (this._sportEmptyHits.get(a) || 0) - (this._sportEmptyHits.get(b) || 0));
+    const idx = this._rrIndex % rest.length;
+    const rotated = rest.slice(idx).concat(rest.slice(0, idx));
+    this._rrIndex = (this._rrIndex + want) % Math.max(1, rest.length);
+
+    const chosen = [...anchors];
+    for (const k of rotated) {
+      if (chosen.length >= want) break;
+      chosen.push(k);
+    }
+    return chosen;
   }
 
   async fetch(/* sports */) {
@@ -98,14 +144,18 @@ class OddsApiSource extends SourceBase {
     }
 
     const allEvents = [];
-    // Pedimos cada sport por separado (la API es sport-by-sport).
-    // Con 19 sports y region=eu, son 19 requests por ciclo = ~1.1M/mes
-    // a 30s/ciclo. Con region=eu+uk = 2.2M (plan paid). Sin paid: bajar a
-    // 5-6 sports principales = 175k/mes (plan $30/mes alcanza).
-    for (const sportKey of this.sportsKeys) {
+    const cycleSports = this.pickSportsForCycle();
+    for (const sportKey of cycleSports) {
       try {
         const events = await this.fetchSport(sportKey);
         allEvents.push(...events);
+        // Trackear si el sport está "vacío" para penalizarlo en próximos ciclos.
+        if (!events.length) {
+          const n = (this._sportEmptyHits.get(sportKey) || 0) + 1;
+          this._sportEmptyHits.set(sportKey, Math.min(10, n));
+        } else {
+          this._sportEmptyHits.delete(sportKey);
+        }
       } catch (e) {
         log(`[oddsapi:${sportKey}] err ${e?.message}`);
         // Si hit quota, abortar resto del ciclo

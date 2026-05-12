@@ -150,7 +150,10 @@ function shinNoVig(odds) {
   const inv = odds.map(o => 1 / o);
   const sumInv = inv.reduce((s, x) => s + x, 0);
   if (!Number.isFinite(sumInv) || sumInv <= 0) return inv.map(() => 0);
-  if (sumInv <= 1) return inv;     // ya no hay vig (cuotas son surebet o fair)
+  // Si las cuotas ya están sin vig (sumInv≤1) Shin no aplica. Devolver las
+  // probas re-escaladas a sumar 1 (caso surebet matemática) en vez del raw
+  // `inv` que sumaría <1 y rompería todo cálculo aguas abajo.
+  if (sumInv <= 1) return inv.map(i => i / sumInv);
   // z inicial: heurística estable
   const maxOdd = Math.max(...odds);
   const denom = sumInv - inv.length / maxOdd;

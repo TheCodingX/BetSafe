@@ -122,8 +122,12 @@ class ArbitrageEngine {
     newSurebets.forEach(sb => this.enrich(sb, fresh));
 
     if (newSurebets.length) {
-      // Filtrar por ROI mínimo (ya con slippage descontado)
-      const filtered = newSurebets.filter(sb => sb.netRoi >= this.minRoi);
+      // Filtrar por ROI mínimo (ya con slippage descontado) y descartar
+      // anomalías de data: cualquier "arb" con netRoi > 25% es casi seguro
+      // odds stale o un side de un live que ya no es vendible. Los arbs
+      // reales en bookies regulados raras veces pasan del 5-8%.
+      const filtered = newSurebets.filter(sb =>
+        sb.netRoi >= this.minRoi && sb.grossRoi <= 0.25);
       filtered.sort((a, b) => b.confidence - a.confidence || b.netRoi - a.netRoi);
       this.detected = filtered.concat(this.detected).slice(0, 500);
       filtered.forEach(sb => this.emit('surebet', sb));
@@ -228,16 +232,17 @@ class ArbitrageEngine {
   detectAh(ev) {
     const ah = ev?.markets?.ah;
     if (!ah) return [];
-    // Buscamos por línea coincidente (típicamente 0.5)
-    const linesByBook = Object.entries(ah);
+    // Filtrar entries con marketData válido (puede llegar null tras sanitize)
+    const linesByBook = Object.entries(ah).filter(([, m]) => m && typeof m === 'object');
+    if (!linesByBook.length) return [];
     const lines = new Set();
-    linesByBook.forEach(([, b]) => { if (b.line != null) lines.add(b.line); });
+    linesByBook.forEach(([, b]) => { if (b?.line != null) lines.add(b.line); });
     const out = [];
     for (const line of lines) {
       let bestHomeMinus = { price: 0, book: null };
       let bestAwayPlus  = { price: 0, book: null };
       linesByBook.forEach(([book, m]) => {
-        if (m.line !== line) return;
+        if (!m || m.line !== line) return;
         if (m.home_minus && m.home_minus > bestHomeMinus.price) bestHomeMinus = { price: m.home_minus, book };
         if (m.away_plus && m.away_plus > bestAwayPlus.price) bestAwayPlus = { price: m.away_plus, book };
       });
@@ -252,35 +257,52 @@ class ArbitrageEngine {
     return out;
   }
 
-  // ── Cross-market: 1X2 home + DC X2 (draw_or_away) = lock matemático ──────
-  // Si gana home → cobramos h2h.home
-  // Si empata o gana away → cobramos dc.draw_or_away
-  // Sum(1/oH + 1/oXa) < 1 = arb garantizada
+  // ── Cross-market: combinaciones 1X2 × Doble Oportunidad ─────────────────
+  // Una apuesta en h2h.X (un resultado) + otra en DC que cubra los otros 2
+  // = lock matemático completo (cobertura mutuamente excluyente y total).
+  //
+  // Locks posibles para sport con empate:
+  //   A) h2h.home + dc.draw_or_away (X2)   ← gana = home  / cubre = empate ∨ away
+  //   B) h2h.away + dc.home_or_draw (1X)   ← gana = away  / cubre = home ∨ empate
+  //   C) h2h.draw + dc.home_or_away (12)   ← gana = draw  / cubre = home ∨ away
+  //
+  // IMPORTANTE: las dos legs DEBEN estar en books distintos. Si la misma
+  // casa ofrece ambas, no es surebet real — esa casa cerraría una de las
+  // dos al instante, o las cuotas están desactualizadas (snapshot stale).
+  // También exigimos que el "best" de cada side venga de un book distinto
+  // al "best" del otro side (no usar el mismo book).
   detect1x2VsDc(ev) {
     const h2h = ev?.markets?.h2h;
     const dc = ev?.markets?.dc;
     if (!h2h || !dc) return [];
-    const bestHome = bestBookSide(Object.entries(h2h), 'home');
-    const bestX2 = bestBookSide(Object.entries(dc), 'draw_or_away');
-    const bestAway = bestBookSide(Object.entries(h2h), 'away');
-    const best1X = bestBookSide(Object.entries(dc), 'home_or_draw');
+    const h2hEntries = Object.entries(h2h);
+    const dcEntries  = Object.entries(dc);
     const out = [];
-    // Variante A: home @ h2h + draw_or_away @ dc
-    if (bestHome && bestX2) {
-      const sum = 1 / bestHome.price + 1 / bestX2.price;
-      if (sum < 1) {
-        out.push(makeSurebet(ev, 'cross-1+X2', ['home', 'draw_or_away'],
-          [bestHome.price, bestX2.price], [bestHome.book, bestX2.book]));
+
+    const tryPair = (h2hSide, dcSide, type, outcomeNames) => {
+      // Buscamos las MEJORES cuotas en cada lado, pero exigiendo books
+      // distintos. Por eso iteramos manualmente en vez de usar bestBookSide.
+      let best = null;
+      for (const [bookA, ma] of h2hEntries) {
+        const pa = ma?.[h2hSide];
+        if (!Number.isFinite(pa) || pa <= 1.01) continue;
+        for (const [bookB, mb] of dcEntries) {
+          if (bookA === bookB) continue;             // legs de la misma casa = no arb real
+          const pb = mb?.[dcSide];
+          if (!Number.isFinite(pb) || pb <= 1.01) continue;
+          const sum = 1 / pa + 1 / pb;
+          if (sum >= 1) continue;
+          if (!best || sum < best.sum) best = { sum, pa, pb, bookA, bookB };
+        }
       }
-    }
-    // Variante B: away @ h2h + home_or_draw @ dc
-    if (bestAway && best1X) {
-      const sum = 1 / bestAway.price + 1 / best1X.price;
-      if (sum < 1) {
-        out.push(makeSurebet(ev, 'cross-2+1X', ['away', 'home_or_draw'],
-          [bestAway.price, best1X.price], [bestAway.book, best1X.book]));
+      if (best) {
+        out.push(makeSurebet(ev, type, outcomeNames,
+          [best.pa, best.pb], [best.bookA, best.bookB]));
       }
-    }
+    };
+    tryPair('home', 'draw_or_away', 'cross-1+X2', ['home', 'draw_or_away']);
+    tryPair('away', 'home_or_draw', 'cross-2+1X', ['away', 'home_or_draw']);
+    tryPair('draw', 'home_or_away', 'cross-X+12', ['draw', 'home_or_away']);
     return out;
   }
 
@@ -322,10 +344,23 @@ class ArbitrageEngine {
     // bookLimits con info por leg (preservando duplicados)
     sb.bookLimits = sb.books.map((b, i) => ({ book: b, limit: limits[i], stakeUsed: stakeByBook[b] }));
 
-    // Latency order: empezar por el book más lento (mayor riesgo de cierre)
+    // Latency order: empezar por el book más lento (mayor riesgo de cierre).
+    // bookStatus solo trackea scrapers; los books que vienen via Odds API
+    // no tienen `lastDurMs` propio. Fallback: usar slippage histórico como
+    // proxy de riesgo de cierre (libros más slippery cierran antes).
     const bookStatus = this.getBookStatus();
     sb.latencyOrder = sb.books
-      .map((b, i) => ({ book: b, dur: bookStatus[b]?.lastDurMs || 0, outcome: sb.outcomes[i], odd: sb.odds[i], stake: stakes[i] }))
+      .map((b, i) => {
+        const dur = bookStatus[b]?.lastDurMs;
+        const slipBased = Math.round(((BOOK_SLIPPAGE[b] || DEFAULT_SLIPPAGE) * 100000));
+        return {
+          book: b,
+          dur: dur || slipBased,
+          outcome: sb.outcomes[i],
+          odd: sb.odds[i],
+          stake: stakes[i]
+        };
+      })
       .sort((a, b) => b.dur - a.dur);
   }
 

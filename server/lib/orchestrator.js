@@ -64,8 +64,25 @@ function mergeEventFromSource(sourceName, ev, targetMap) {
   if (!ev?.home?.name || !ev?.away?.name) return;
   // Descartar eventos con start inválido (NaN propagaría a eventKey)
   if (ev.start != null && !Number.isFinite(ev.start)) ev.start = null;
-  const key = eventKey(ev.home.name, ev.away.name, ev.start);
+  // Dedup robusto: primero intentamos match exacto por start; si no encontramos
+  // y el event llega con start=null (typical de SofaScore/ESPN sin hora),
+  // re-intentamos contra un event existente con mismos teams y start≠null
+  // (asumimos que es el mismo partido y enriquecemos en lugar de duplicar).
+  let key = eventKey(ev.home.name, ev.away.name, ev.start);
   let existing = map.get(key);
+  if (!existing && ev.start == null) {
+    const teamHash = eventKey(ev.home.name, ev.away.name, null).split('|')[0];
+    for (const [k, v] of map) {
+      if (k.startsWith(teamHash) && v.start != null) {
+        // Aceptamos como mismo evento si el match es razonablemente único
+        // (mismo par de teams normalizados → probabilidad de colisión ínfima
+        // dentro de la ventana del scraping cycle).
+        key = k;
+        existing = v;
+        break;
+      }
+    }
+  }
   if (!existing) {
     existing = {
       id: makeEventId(ev.home.name, ev.away.name, ev.start),
@@ -139,15 +156,23 @@ function registerContributors(contribMap, sourceName, marketName, bookKey, marke
   }
 }
 
+/* Combina dos market data del MISMO book preservando el valor más fresco
+ * (asumimos que `b` es más reciente porque llegó después en el ciclo).
+ * En el caso de objetos anidados (totals.{line}) se hace merge recursivo
+ * shallow para no perder líneas que solo aparecen en una fuente.
+ */
 function mergeMarketData(a, b) {
-  // Combina dos market data preservando el primero por entrada
   if (!b) return a;
   if (!a) return b;
   const out = { ...a };
   for (const [k, v] of Object.entries(b)) {
-    if (out[k] == null && v != null) out[k] = v;
-    else if (typeof v === 'object' && typeof out[k] === 'object') {
-      out[k] = { ...v, ...out[k] };
+    if (v == null) continue;
+    if (typeof v === 'object' && typeof out[k] === 'object' && out[k] !== null) {
+      // Objetos anidados (e.g. totals[line] = {over, under, line}): merge profundo
+      out[k] = { ...out[k], ...v };
+    } else {
+      // Valores escalares: el más nuevo gana (B siempre prevalece)
+      out[k] = v;
     }
   }
   return out;
@@ -158,7 +183,35 @@ function sanitizeMarket(marketName, data) {
   if (marketName === 'btts') return sanitizeBtts(data);
   if (marketName === 'totals') return sanitizeTotals(data);
   if (marketName === 'dc') return sanitizeDc(data);
+  if (marketName === 'ah') return sanitizeAh(data);
   return data;
+}
+
+/* AH puede llegar en dos formatos:
+ *   1. Plano: { line, home_minus, away_plus }                         (Kambi, Codere)
+ *   2. Por línea: { "-1.5": { line, home_minus, away_plus }, ... }    (raro)
+ * Normalizamos a formato 1 (única línea principal por book) preservando solo
+ * datos finitos. Si llegan varias líneas se preserva la primera válida.
+ */
+function sanitizeAh(o) {
+  if (!o || typeof o !== 'object') return null;
+  // Formato 1
+  if ('line' in o || 'home_minus' in o || 'away_plus' in o) {
+    const out = {};
+    if (Number.isFinite(o.line)) out.line = o.line;
+    if (isFinite2(o.home_minus)) out.home_minus = round2(o.home_minus);
+    if (isFinite2(o.away_plus))  out.away_plus  = round2(o.away_plus);
+    return (out.home_minus || out.away_plus) ? out : null;
+  }
+  // Formato 2: tomar la primera línea con ambas patas válidas
+  for (const [line, sides] of Object.entries(o)) {
+    const n = Number(line);
+    if (!Number.isFinite(n) || !sides) continue;
+    if (isFinite2(sides.home_minus) && isFinite2(sides.away_plus)) {
+      return { line: n, home_minus: round2(sides.home_minus), away_plus: round2(sides.away_plus) };
+    }
+  }
+  return null;
 }
 function sanitizeH2h(o) {
   const out = {};
@@ -391,6 +444,22 @@ async function cycle() {
   // mientras los scrapers todavía corren.
   let progressiveSwapDone = false;
 
+  // Debounce de `odds-update`: en lugar de emitir por cada source que termina
+  // (4–5 broadcasts/ciclo de payload pesado → flood al WS), agrupamos en una
+  // ventana de 1.2s. Si llegan más sources la programación se renueva.
+  let oddsUpdateTimer = null;
+  const scheduleOddsUpdate = () => {
+    if (oddsUpdateTimer) return;
+    oddsUpdateTimer = setTimeout(() => {
+      oddsUpdateTimer = null;
+      try {
+        bus.emit('odds-update', { events: events({ sport: 'all' }), ts: Date.now() });
+      } catch (e) {
+        log(`[orchestrator] odds-update emit err: ${e.message?.slice(0, 80)}`);
+      }
+    }, 1200);
+  };
+
   await Promise.allSettled(state.sources.map(src =>
     limit(async () => {
       const t = Date.now();
@@ -415,11 +484,10 @@ async function cycle() {
         state.events = newEvents;
         progressiveSwapDone = true;
         computeBest(state.events.values());
-        bus.emit('odds-update', { events: events({ sport: 'all' }), ts: Date.now() });
+        scheduleOddsUpdate();
       } else if (evs.length > 0 && progressiveSwapDone) {
-        // Re-compute best odds para que cualquier nuevo book aporte
         computeBest(state.events.values());
-        bus.emit('odds-update', { events: events({ sport: 'all' }), ts: Date.now() });
+        scheduleOddsUpdate();
       }
 
       if (src.name === 'oddsapi' && src.quota) {
@@ -427,6 +495,13 @@ async function cycle() {
       }
     })
   ));
+
+  // Flush final del debounce si hubo algo pendiente (garantiza un broadcast
+  // siempre que el ciclo aporte data).
+  if (oddsUpdateTimer) {
+    clearTimeout(oddsUpdateTimer);
+    bus.emit('odds-update', { events: events({ sport: 'all' }), ts: Date.now() });
+  }
 
   // Si NINGUNA source devolvió events, igual hacemos el swap para que el
   // estado refleje "ciclo terminado".

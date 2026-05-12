@@ -138,10 +138,12 @@ function poissonModel(f) {
   let lambdaH = muTotal * Math.max(0.35, Math.min(0.75, homeShare));
   let lambdaA = muTotal - lambdaH;
 
-  // Ajuste por lesiones del local: λ_home -= 10% si severityScore.home > 0.5
+  // Ajuste por lesiones: si el plantel del local tiene baja crítica, λH baja.
+  // `severityScore` viene de factors/injuries.js (0=sano, 1=catastrófico).
+  const sev = f?.injuries?.severityScore;
   if (sev) {
-    if (sev.home > 0.4) lambdaH *= (1 - 0.15 * sev.home);
-    if (sev.away > 0.4) lambdaA *= (1 - 0.15 * sev.away);
+    if (Number.isFinite(sev.home) && sev.home > 0.4) lambdaH *= (1 - 0.15 * sev.home);
+    if (Number.isFinite(sev.away) && sev.away > 0.4) lambdaA *= (1 - 0.15 * sev.away);
   }
 
   // P(BTTS yes) ≈ (1 - e^-λH)(1 - e^-λA)
@@ -264,7 +266,55 @@ async function fetchWithTimeout(url, init, timeoutMs = LLM_TIMEOUT_MS) {
 
 function safeJsonParse(text, defaultValue = {}) {
   if (typeof text !== 'string') return defaultValue;
-  try { return JSON.parse(text); } catch { return defaultValue; }
+  try {
+    const parsed = JSON.parse(text);
+    return validateLlmOutput(parsed);
+  } catch { return defaultValue; }
+}
+
+/* Valida + sanea la salida del LLM contra el schema esperado:
+ *   { selections: Array<{market,outcome,line?,modelProb,confidence?,reasoning?}>,
+ *     synthesis?: string }
+ * Cualquier item malformado se descarta sin abortar el resto.
+ * Los rangos de probabilidad se clampean a [0,1] y los strings se truncan.
+ */
+function validateLlmOutput(j) {
+  if (!j || typeof j !== 'object') return {};
+  const out = { selections: [], synthesis: null };
+  if (typeof j.synthesis === 'string') out.synthesis = j.synthesis.slice(0, 800);
+  if (!Array.isArray(j.selections)) return out;
+  const VALID_MARKETS = new Set(['h2h', 'totals', 'btts', 'dc', 'ah']);
+  const VALID_OUTCOMES = new Set([
+    'home', 'draw', 'away',
+    'over', 'under',
+    'yes', 'no',
+    'home_or_draw', 'home_or_away', 'draw_or_away',
+    'home_minus', 'away_plus'
+  ]);
+  for (const s of j.selections) {
+    if (!s || typeof s !== 'object') continue;
+    if (!VALID_MARKETS.has(s.market)) continue;
+    if (!VALID_OUTCOMES.has(s.outcome)) continue;
+    const item = { market: s.market, outcome: s.outcome };
+    // line: numérico opcional (totals/ah)
+    if (s.line != null) {
+      const ln = Number(s.line);
+      if (Number.isFinite(ln)) item.line = ln;
+    }
+    // modelProb: requerido, clamped 0-1
+    const mp = Number(s.modelProb);
+    if (!Number.isFinite(mp) || mp < 0 || mp > 1) continue;
+    item.modelProb = mp;
+    // confidence opcional
+    if (s.confidence != null) {
+      const c = Number(s.confidence);
+      if (Number.isFinite(c) && c >= 0 && c <= 1) item.confidence = c;
+    }
+    if (typeof s.reasoning === 'string') item.reasoning = s.reasoning.slice(0, 400);
+    if (typeof s.type === 'string' && ['cons', 'eq', 'agg'].includes(s.type)) item.type = s.type;
+    out.selections.push(item);
+  }
+  return out;
 }
 
 async function groqJson(system, user) {
@@ -332,19 +382,48 @@ function mergeSelections(event, factors, quant, poisson, elo, llm) {
 
   const out = [];
 
-  // 1X2 (cons / eq / agg)
+  // 1X2 (cons / eq / agg).
+  // Para sports con empate (soccer) fair[]=[pH, pD, pA] (3 entradas).
+  // Para sports sin empate (basketball, NFL, MLB, tennis) fair[]=[pH, pA] (2 entradas).
+  // El draw outcome se ignora cuando h2h.draw es null.
+  const hasDraw = Number.isFinite(h2h.draw);
+  const idxHome = 0;
+  const idxDraw = hasDraw ? 1 : null;
+  const idxAway = hasDraw ? 2 : 1;
   const variants = [
-    { type: 'cons', outcome: 'home',  odd: h2h.home, book: h2h.homeBook, fairProb: quant.fairProbs?.[0], poissonProb: poisson.pHomeWin, eloProb: elo.pHomeWin, ev: quant.ev?.[0], kelly: quant.kellyHalf?.[0] },
-    { type: 'eq',   outcome: 'draw',  odd: h2h.draw, book: h2h.drawBook, fairProb: quant.fairProbs?.[1], poissonProb: poisson.pDraw,    eloProb: elo.pDraw,    ev: quant.ev?.[1], kelly: quant.kellyHalf?.[1] },
-    { type: 'agg',  outcome: 'away',  odd: h2h.away, book: h2h.awayBook, fairProb: quant.fairProbs?.[2], poissonProb: poisson.pAwayWin, eloProb: elo.pAwayWin, ev: quant.ev?.[2], kelly: quant.kellyHalf?.[2] }
+    { type: 'cons', outcome: 'home',  odd: h2h.home, book: h2h.homeBook, fairProb: quant.fairProbs?.[idxHome], poissonProb: poisson.pHomeWin, eloProb: elo.pHomeWin, ev: quant.ev?.[idxHome], kelly: quant.kellyHalf?.[idxHome] },
+    { type: 'eq',   outcome: 'draw',  odd: h2h.draw, book: h2h.drawBook, fairProb: hasDraw ? quant.fairProbs?.[idxDraw] : null, poissonProb: poisson.pDraw, eloProb: elo.pDraw, ev: hasDraw ? quant.ev?.[idxDraw] : null, kelly: hasDraw ? quant.kellyHalf?.[idxDraw] : null },
+    { type: 'agg',  outcome: 'away',  odd: h2h.away, book: h2h.awayBook, fairProb: quant.fairProbs?.[idxAway], poissonProb: poisson.pAwayWin, eloProb: elo.pAwayWin, ev: quant.ev?.[idxAway], kelly: quant.kellyHalf?.[idxAway] }
   ];
 
   variants.forEach(v => {
     if (!v.odd) return;
     const llmS = llmSelections['h2h:' + v.outcome];
-    const probs = [v.fairProb, v.poissonProb, v.eloProb, llmS?.modelProb].filter(p => p != null);
-    const consensus = probs.length ? probs.reduce((s, p) => s + p, 0) / probs.length : null;
-    const stdev = probs.length > 1 ? Math.sqrt(probs.reduce((s, p) => s + (p - consensus) ** 2, 0) / probs.length) : 0;
+    // Weighted ensemble: cada modelo aporta con un peso fijo basado en cuán
+    // confiable es históricamente la señal:
+    //   - fairProb (cuotas implícitas Shin no-vig): peso 1.5 → es la línea
+    //     calibrada por el mercado, base más estable.
+    //   - poissonProb: 1.0 → modelo paramétrico, bueno para totals/btts.
+    //   - eloProb: 0.8 → señal histórica, lag en cambios de plantilla.
+    //   - llmProb: 0.7 → narrativa + factores cualitativos, ruido alto.
+    // Si un modelo está unavailable (null), se omite y se renormalizan pesos.
+    const W = { fair: 1.5, poisson: 1.0, elo: 0.8, llm: 0.7 };
+    const entries = [
+      { k: 'fair',    p: v.fairProb,    w: W.fair },
+      { k: 'poisson', p: v.poissonProb, w: W.poisson },
+      { k: 'elo',     p: v.eloProb,     w: W.elo },
+      { k: 'llm',     p: llmS?.modelProb, w: W.llm }
+    ].filter(x => Number.isFinite(x.p) && x.p >= 0 && x.p <= 1);
+    const sumW = entries.reduce((s, x) => s + x.w, 0);
+    const consensus = sumW > 0
+      ? entries.reduce((s, x) => s + x.p * x.w, 0) / sumW
+      : null;
+    // Stdev no-weighted para detectar disagreement (sigue siendo informativo).
+    const probsOnly = entries.map(x => x.p);
+    const meanP = probsOnly.length ? probsOnly.reduce((s, p) => s + p, 0) / probsOnly.length : 0;
+    const stdev = probsOnly.length > 1
+      ? Math.sqrt(probsOnly.reduce((s, p) => s + (p - meanP) ** 2, 0) / probsOnly.length)
+      : 0;
 
     // Confidence: alta consistencia entre modelos = alto. Sharp money y factores también suman.
     let confidence = 1 - Math.min(1, stdev * 4);

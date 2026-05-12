@@ -43,6 +43,7 @@ const { WebSocketServer } = require('ws');
 const path = require('path');
 
 const { browserPool, sleep, normalizeTeam, log } = require('./lib');
+const pLimit = require('p-limit').default;
 const orchestrator = require('./lib/orchestrator');
 const { ArbitrageEngine } = require('./engines/arbitrage');
 const { analyzeMatch } = require('./engines/ai-pipeline');
@@ -237,16 +238,15 @@ app.get('/api/picks', async (req, res) => {
   const steam = orchestrator.steamMoves();
   const surebets = arbEngine.snapshot().detected;
 
-  // Análisis en paralelo (limit 3 simultáneos para no saturar al LLM)
-  const out = [];
-  for (let i = 0; i < events.length; i += 3) {
-    const batch = events.slice(i, i + 3);
-    const results = await Promise.allSettled(batch.map(ev =>
-      analyzeMatch(ev, { steamMoves: steam, surebets })
-    ));
-    results.forEach(r => { if (r.status === 'fulfilled' && r.value) out.push(r.value); });
-    if (out.length >= limit) break;
-  }
+  // Análisis concurrente con cap fijo. analyzeMatch hace 1 llamada al LLM
+  // por partido (timeout 20s); con 5 paralelos = 5 partidos cada ~20s,
+  // así un limit=12 termina en ~50s en peor caso. El cliente espera el
+  // response porque iguales necesitamos las 12 picks de una.
+  const analyzeLimit = pLimit(Number(process.env.PICKS_CONCURRENCY || 5));
+  const settled = await Promise.allSettled(
+    events.map(ev => analyzeLimit(() => analyzeMatch(ev, { steamMoves: steam, surebets })))
+  );
+  const out = settled.flatMap(r => r.status === 'fulfilled' && r.value ? [r.value] : []);
 
   // Aplicar filtros sobre el output enriquecido
   const filtered = out.filter(pick => {
@@ -280,13 +280,12 @@ app.post('/api/generator', express.json(), async (req, res) => {
   const steam = orchestrator.steamMoves();
   const surebets = arbEngine.snapshot().detected;
 
-  // Analizar
-  const analyzed = [];
-  for (let i = 0; i < events.length; i += 3) {
-    const batch = events.slice(i, i + 3);
-    const results = await Promise.allSettled(batch.map(ev => analyzeMatch(ev, { steamMoves: steam, surebets })));
-    results.forEach(r => { if (r.status === 'fulfilled' && r.value) analyzed.push(r.value); });
-  }
+  // Analizar con concurrencia controlada (compartimos cap con /api/picks)
+  const analyzeLimit = pLimit(Number(process.env.PICKS_CONCURRENCY || 5));
+  const settled = await Promise.allSettled(
+    events.map(ev => analyzeLimit(() => analyzeMatch(ev, { steamMoves: steam, surebets })))
+  );
+  const analyzed = settled.flatMap(r => r.status === 'fulfilled' && r.value ? [r.value] : []);
 
   // Filtros
   const passing = analyzed.filter(a => {
@@ -426,12 +425,20 @@ setInterval(() => {
   });
 }, 30000);
 
+// Threshold: ~512 KB buffered = cliente lento. Por encima de eso droppeamos
+// el frame para no acumular memoria (los frames odds-update son ~150 KB en
+// snapshots grandes, así que cada cliente puede atrasarse 3 frames antes de
+// que lo skipeemos).
+const WS_BACKPRESSURE_BYTES = 512 * 1024;
+
 function broadcast(type, data) {
   const msg = JSON.stringify({ type, data, ts: Date.now() });
   clients.forEach(ws => {
-    if (ws.readyState === 1) {
-      try { ws.send(msg); } catch {}
-    }
+    if (ws.readyState !== 1) return;
+    // Backpressure: si el cliente está atrasado, drop. Mejor frame nuevo
+    // que cola creciendo + OOM.
+    if (typeof ws.bufferedAmount === 'number' && ws.bufferedAmount > WS_BACKPRESSURE_BYTES) return;
+    try { ws.send(msg); } catch { /* socket cerrándose */ }
   });
 }
 
