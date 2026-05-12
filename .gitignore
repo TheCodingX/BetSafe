@@ -46,3 +46,7 @@ sw-cache.json
 
 # Worktrees temporales de Claude Code
 .claude/worktrees/
+
+# Backend runtime data (brier log, caches) — persistido por el server,
+# nunca commiteado.
+server/data/

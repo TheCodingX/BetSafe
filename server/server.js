@@ -103,6 +103,31 @@ app.get('/api/health', (req, res) => {
 app.get('/api/books', (req, res) => res.json(orchestrator.bookStatus()));
 app.get('/api/sources', (req, res) => res.json(orchestrator.sourceStatus()));
 app.get('/api/quota', (req, res) => res.json(orchestrator.quota()));
+// Estado de los circuit breakers de cada scraper (CLOSED/OPEN/HALF_OPEN +
+// fail counts). Útil para debug cuando Cloudflare empieza a banear.
+app.get('/api/breakers', (req, res) => res.json(orchestrator.breakers ? orchestrator.breakers() : {}));
+
+// Brier score tracker: snapshot del estado de calibración del ensemble.
+const brierTracker = require('./engines/brier-tracker');
+app.get('/api/brier', (req, res) => {
+  try { res.json(brierTracker.snapshot()); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Registrar el outcome real de un evento finalizado. Permite calibrar el
+// ensemble del AI pipeline con histórico de aciertos. Requiere DEBUG_KEY
+// para evitar pollución de data desde clientes públicos.
+app.post('/api/results', express.json(), (req, res) => {
+  if (process.env.DEBUG_KEY && req.query.key !== process.env.DEBUG_KEY) {
+    return res.status(403).json({ error: 'forbidden' });
+  }
+  const { eventId, market, outcome } = req.body || {};
+  if (!eventId || !market || !outcome) {
+    return res.status(400).json({ error: 'eventId, market y outcome son requeridos' });
+  }
+  brierTracker.recordOutcome(eventId, market, outcome);
+  res.json({ ok: true });
+});
 
 // Listar deportes presentes en el snapshot actual (útil para popular filtros UI).
 app.get('/api/sports', (req, res) => {

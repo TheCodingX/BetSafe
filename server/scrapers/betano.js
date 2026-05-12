@@ -17,6 +17,14 @@
 
 const { httpJsonNative, browserPool, log, sleep } = require('../lib');
 const { parseBetanoJson } = require('../lib/betanoJson');
+const { withRetry, CircuitBreaker } = require('../lib/retry');
+
+// Breaker para el path nativo de Betano (vulnerable a Cloudflare).
+// failThreshold bajo → cuando empieza a banear, paramos rápido y caemos
+// a Playwright que tiene su propio breaker.
+const directBreaker = new CircuitBreaker({ name: 'betano:direct', failThreshold: 3, cooldownMs: 90_000 });
+// Playwright breaker independiente — más conservador (es caro abrirlo).
+const playwrightBreaker = new CircuitBreaker({ name: 'betano:playwright', failThreshold: 3, cooldownMs: 120_000 });
 
 const ENDPOINTS = [
   'https://www.betano.bet.ar/danae-webapi/api/live/overview/latest?includeVirtuals=true&queryLanguageId=8&queryOperatorId=19',
@@ -41,14 +49,25 @@ const HEADERS = {
 let cachedEvents = [];
 let cachedAt = 0;
 
-/* Fast path: native HTTPS directo a los endpoints JSON. */
+/* Fast path: native HTTPS directo a los endpoints JSON.
+ * Si el breaker está OPEN (Cloudflare nos baneó), salimos sin esfuerzo
+ * y dejamos que el caller caiga a Playwright. */
 async function tryDirect() {
+  if (directBreaker.state === 'OPEN') {
+    directBreaker._maybeReset();
+    if (directBreaker.state === 'OPEN') return [];
+  }
   const seen = new Set();
   const out = [];
+  let anyOk = false;
   for (const url of ENDPOINTS) {
     try {
-      const json = await httpJsonNative(url, { headers: HEADERS, timeout: 12000 });
+      const json = await directBreaker.exec(() => withRetry(
+        () => httpJsonNative(url, { headers: HEADERS, timeout: 12000 }),
+        { maxAttempts: 2, baseMs: 600 }
+      ));
       if (!json) continue;
+      anyOk = true;
       const events = parseBetanoJson(json);
       for (const ev of events) {
         const key = `${ev.home?.name}|${ev.away?.name}|${ev.start}`.toLowerCase();
@@ -57,6 +76,7 @@ async function tryDirect() {
         out.push(ev);
       }
     } catch (e) {
+      if (e?.circuitOpen) break;   // breaker abierto → no insistir
       // Cloudflare 403 esperado si la IP fue marcada — fallback abajo
     }
   }
@@ -64,36 +84,44 @@ async function tryDirect() {
 }
 
 /* Slow path: navegamos a la home con Playwright y interceptamos los JSON
- * que la propia SPA pide. Bypass natural de Cloudflare. */
+ * que la propia SPA pide. Bypass natural de Cloudflare.
+ * Si el breaker está OPEN no intentamos (Playwright es CPU-pesado). */
 async function tryPlaywright() {
+  if (playwrightBreaker.state === 'OPEN') {
+    playwrightBreaker._maybeReset();
+    if (playwrightBreaker.state === 'OPEN') return [];
+  }
   const captured = [];
   let ctx = null;
   try {
-    const handle = await browserPool.newPage({ blockResources: true });
-    ctx = handle.ctx;
-    const page = handle.page;
-    page.on('response', async (res) => {
-      const url = res.url();
-      const isBetanoApi =
-        /\/danae-webapi\/api\/live\/overview\/latest/.test(url) ||
-        /\/api\/home\/top-events(-v2)?/.test(url);
-      if (!isBetanoApi) return;
-      try {
-        if (res.status() !== 200) return;
-        const ct = res.headers()['content-type'] || '';
-        if (!ct.includes('json')) return;
-        const json = await res.json().catch(() => null);
-        if (json) captured.push({ url, json });
-      } catch (_) {}
+    await playwrightBreaker.exec(async () => {
+      const handle = await browserPool.newPage({ blockResources: true });
+      ctx = handle.ctx;
+      const page = handle.page;
+      page.on('response', async (res) => {
+        const url = res.url();
+        const isBetanoApi =
+          /\/danae-webapi\/api\/live\/overview\/latest/.test(url) ||
+          /\/api\/home\/top-events(-v2)?/.test(url);
+        if (!isBetanoApi) return;
+        try {
+          if (res.status() !== 200) return;
+          const ct = res.headers()['content-type'] || '';
+          if (!ct.includes('json')) return;
+          const json = await res.json().catch(() => null);
+          if (json) captured.push({ url, json });
+        } catch (_) {}
+      });
+      await page.goto('https://www.betano.bet.ar/', { waitUntil: 'domcontentloaded', timeout: 25000 }).catch(() => {});
+      await sleep(3500);
+      // Visitar sección live para forzar la llamada al endpoint live-overview
+      await page.goto('https://www.betano.bet.ar/live/', { waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => {});
+      await sleep(3000);
+      // Si no capturamos nada, lo contamos como fallo
+      if (!captured.length) throw new Error('no-json-captured');
     });
-
-    await page.goto('https://www.betano.bet.ar/', { waitUntil: 'domcontentloaded', timeout: 25000 }).catch(() => {});
-    await sleep(3500);
-    // Visitar sección live para forzar la llamada al endpoint live-overview
-    await page.goto('https://www.betano.bet.ar/live/', { waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => {});
-    await sleep(3000);
   } catch (e) {
-    log(`[betano-json] playwright err: ${e.message?.slice(0, 80)}`);
+    log(`[betano-json] playwright err: ${e.message?.slice(0, 80)}${e.circuitOpen ? ' · circuit OPEN' : ''}`);
   } finally {
     if (ctx) try { await ctx.close(); } catch {}
   }

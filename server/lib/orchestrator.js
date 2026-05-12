@@ -633,10 +633,24 @@ function stop() {
   state.timer = null;
 }
 
+/* Estado de los circuit breakers de cada scraper.
+ * El módulo de scraper expone `scrape.breaker` (si lo definió). Permite a
+ * /api/breakers ver si Cloudflare nos baneó y cuándo va a reintentar. */
+function breakers() {
+  const out = {};
+  for (const src of state.sources) {
+    const scraper = src.scrape;
+    if (scraper?.breaker && typeof scraper.breaker.status === 'function') {
+      out[src.name] = scraper.breaker.status();
+    }
+  }
+  return out;
+}
+
 module.exports = {
   start, stop,
   events, findEvent,
-  surebets, steamMoves, bookStatus, sourceStatus, discrepancies, quota, health,
+  surebets, steamMoves, bookStatus, sourceStatus, discrepancies, quota, health, breakers,
   on: bus.on.bind(bus),
   off: bus.off.bind(bus),
   _mergeEventFromSource: mergeEventFromSource

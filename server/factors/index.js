@@ -24,6 +24,7 @@ const { log } = require('../lib');
 const { getWeather } = require('./weather');
 const { getInjuries } = require('./injuries');
 const { getHistorical } = require('./historical');
+const { fetchLineups } = require('./lineups');
 
 const cache = new LRUCache({ max: 300, ttl: 10 * 60 * 1000 });   // 10min cache
 
@@ -34,7 +35,7 @@ async function buildFactors(event, { steamMoves = [], surebets = [] } = {}) {
   if (cached) return cached;
 
   // Ejecutar todas las fuentes en paralelo
-  const [weather, injuries, historical] = await Promise.allSettled([
+  const [weather, injuries, historical, lineups] = await Promise.allSettled([
     getWeather({
       venue: event.venue || event.stadium,
       city: event.city,
@@ -49,7 +50,8 @@ async function buildFactors(event, { steamMoves = [], surebets = [] } = {}) {
       homeName: event.home?.name,
       awayName: event.away?.name,
       leagueKey: event.league
-    })
+    }),
+    fetchLineups(event)
   ]);
 
   // Sharp money signal: steam moves de ESTE evento + público
@@ -79,6 +81,7 @@ async function buildFactors(event, { steamMoves = [], surebets = [] } = {}) {
     weather:    weather.status === 'fulfilled' ? weather.value : { unavailable: true },
     injuries:   injuries.status === 'fulfilled' ? injuries.value : { unavailable: true },
     historical: historical.status === 'fulfilled' ? historical.value : { unavailable: true },
+    lineups:    lineups.status === 'fulfilled' ? lineups.value : { unavailable: true },
     sharp: {
       steamMoves: evSteam,
       score: sharpScore,

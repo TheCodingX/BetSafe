@@ -30,6 +30,7 @@ const { LRUCache } = require('lru-cache');
 const { log } = require('../lib');
 const { buildFactors } = require('../factors');
 const { shinNoVig } = require('../factors');
+const brierTracker = require('./brier-tracker');
 
 const cache = new LRUCache({ max: 200, ttl: 5 * 60 * 1000 });
 
@@ -380,6 +381,10 @@ function mergeSelections(event, factors, quant, poisson, elo, llm) {
     return acc;
   }, {});
 
+  // Pesos del ensemble: por default hardcoded; si Brier tracker tiene
+  // suficiente histórico para este sport, usa los pesos calibrados.
+  const W = brierTracker.computeWeights({ sport: event?.sport || null }).weights;
+
   const out = [];
 
   // 1X2 (cons / eq / agg).
@@ -399,15 +404,9 @@ function mergeSelections(event, factors, quant, poisson, elo, llm) {
   variants.forEach(v => {
     if (!v.odd) return;
     const llmS = llmSelections['h2h:' + v.outcome];
-    // Weighted ensemble: cada modelo aporta con un peso fijo basado en cuán
-    // confiable es históricamente la señal:
-    //   - fairProb (cuotas implícitas Shin no-vig): peso 1.5 → es la línea
-    //     calibrada por el mercado, base más estable.
-    //   - poissonProb: 1.0 → modelo paramétrico, bueno para totals/btts.
-    //   - eloProb: 0.8 → señal histórica, lag en cambios de plantilla.
-    //   - llmProb: 0.7 → narrativa + factores cualitativos, ruido alto.
+    // Weighted ensemble: pesos provienen del Brier tracker (calibrados con
+     // outcomes históricos). Defaults: fair:1.5, poisson:1.0, elo:0.8, llm:0.7.
     // Si un modelo está unavailable (null), se omite y se renormalizan pesos.
-    const W = { fair: 1.5, poisson: 1.0, elo: 0.8, llm: 0.7 };
     const entries = [
       { k: 'fair',    p: v.fairProb,    w: W.fair },
       { k: 'poisson', p: v.poissonProb, w: W.poisson },
@@ -449,6 +448,21 @@ function mergeSelections(event, factors, quant, poisson, elo, llm) {
       warnings:    llmS?.warnings || [],
       rationale:   llmS?.rationale || null,
       factors: buildFactorList(v, factors)
+    });
+    // Persistir predicción para Brier (fire-and-forget, no bloquea).
+    brierTracker.recordPrediction({
+      id: event?.id,
+      sport: event?.sport,
+      market: 'h2h',
+      outcome_pick: v.outcome,
+      odd: v.odd,
+      preds: {
+        ...(Number.isFinite(v.fairProb)    ? { fair:    v.fairProb }    : {}),
+        ...(Number.isFinite(v.poissonProb) ? { poisson: v.poissonProb } : {}),
+        ...(Number.isFinite(v.eloProb)     ? { elo:     v.eloProb }     : {}),
+        ...(Number.isFinite(llmS?.modelProb) ? { llm: llmS.modelProb } : {}),
+        ...(Number.isFinite(consensus) ? { consensus } : {})
+      }
     });
   });
 
@@ -561,6 +575,21 @@ function applyFactorPenalties(confidence, variant, factors) {
       // Bonificar la dirección opuesta
       if (variant.outcome === 'over' && gm > 1.05) confidence += 0.05;
       if (variant.outcome === 'under' && gm < 0.95) confidence += 0.05;
+    }
+  }
+  // Lineup confirmation: si AMBOS lineups están confirmados, subimos
+  // confidence (señal pre-match más nítida). Si uno solo está confirmado
+  // y el outcome aplica a ese lado, sube; al lado contrario baja.
+  const lu = factors.lineups;
+  if (lu && !lu.unavailable) {
+    const homeConf = !!lu.home?.confirmed;
+    const awayConf = !!lu.away?.confirmed;
+    if (homeConf && awayConf) confidence += 0.08;
+    else if (homeConf && variant.outcome === 'home') confidence += 0.04;
+    else if (awayConf && variant.outcome === 'away') confidence += 0.04;
+    // Impact alto (e.g. portero ausente) baja confidence del lado afectado
+    if (lu.impact?.side && lu.impact.magnitude >= 0.3 && lu.impact.side === variant.outcome) {
+      confidence -= 0.10;
     }
   }
   return Math.max(0, Math.min(1, confidence));

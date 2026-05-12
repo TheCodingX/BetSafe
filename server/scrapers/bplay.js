@@ -16,12 +16,17 @@
 
 const { httpGet, log } = require('../lib');
 const { parseXmlFeed } = require('../lib/bplayXml');
+const { withRetry, CircuitBreaker } = require('../lib/retry');
 
 const FEED_URL = 'https://deportespba.bplay.bet.ar/oddsfeeds/odds.xml';
 
 let lastModified = null;
 let cachedEvents = [];
 let cachedAt = 0;
+
+// Breaker dedicado a Bplay XML feed. failThreshold alto porque el CDN
+// raramente falla; si lo hace, esperamos 1 min antes de reintentar.
+const breaker = new CircuitBreaker({ name: 'bplay', failThreshold: 5, cooldownMs: 60_000 });
 
 async function scrape() {
   const t0 = Date.now();
@@ -33,7 +38,10 @@ async function scrape() {
     };
     if (lastModified) headers['If-Modified-Since'] = lastModified;
 
-    const xml = await httpGet(FEED_URL, { headers, accept: 'application/xml', timeout: 15000 });
+    const xml = await breaker.exec(() => withRetry(
+      () => httpGet(FEED_URL, { headers, accept: 'application/xml', timeout: 15000 }),
+      { maxAttempts: 3, baseMs: 500 }
+    ));
 
     if (!xml || xml.length < 200) {
       // Devolver cache si tenemos
@@ -46,11 +54,12 @@ async function scrape() {
     log(`[bplay-xml] ${events.length} eventos · ${Date.now() - t0}ms · ${xml.length} bytes`);
     return events;
   } catch (e) {
-    log(`[bplay-xml] err ${e.message?.slice(0, 100)}`);
-    // Si tenemos cache reciente (<5 min), devolverlo
+    log(`[bplay-xml] err ${e.message?.slice(0, 100)}${e.circuitOpen ? ' · circuit OPEN' : ''}`);
     if (cachedEvents.length && Date.now() - cachedAt < 5 * 60_000) return cachedEvents;
     return [];
   }
 }
+
+scrape.breaker = breaker;
 
 module.exports = scrape;

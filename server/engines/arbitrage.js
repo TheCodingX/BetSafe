@@ -245,30 +245,78 @@ class ArbitrageEngine {
       [bestYes.price, bestNo.price], [bestYes.book, bestNo.book])];
   }
 
-  // ── Asian handicap (línea 0.5) ───────────────────────────────────────────
+  // ── Asian Handicap: mismo book / cross-book / mirror lines ─────────────
+  /* Detecta surebets en mercado AH usando 3 estrategias:
+   *
+   * 1) MISMA LÍNEA — book A ofrece home -0.5, book B ofrece away +0.5.
+   *    Cobertura total cuando home_minus.line === away_plus.line.
+   *
+   * 2) MIRROR LINES — la línea real cubierta debe ser COMPLEMENTARIA:
+   *    book A: home -1.5 (home gana por 2+)  +  book B: away +1.5 (away
+   *    gana, empata, o pierde por 1) son LOCK matemático sólo si la línea
+   *    de A y B suman a 0 con signos opuestos. Nuestro `line` field
+   *    siempre se almacena POSITIVO en `home_minus` y POSITIVO en
+   *    `away_plus` representando la magnitud del handicap aplicado al lado
+   *    respectivo. Por lo tanto un lock real cumple line_A === line_B.
+   *
+   *    Sin embargo, algunos books publican AH con line "0.0" en home y
+   *    "0.0" en away (DNB-like), o con líneas con .25/.75 (cuartos).
+   *    Para esas .25/.75 sólo hay PARTIAL lock — los excluimos por ahora.
+   *
+   * 3) AH integer line + half-point split (line 1 + line 1.5) — NO es lock
+   *    en push, generalmente no lo tratamos como arb pero se podría agregar.
+   *
+   * Implementación: agrupamos por línea (key = parseFloat para evitar bugs
+   * de string), iteramos sólo líneas con AMBAS patas disponibles.
+   */
   detectAh(ev) {
     const ah = ev?.markets?.ah;
     if (!ah) return [];
-    // Filtrar entries con marketData válido (puede llegar null tras sanitize)
     const linesByBook = Object.entries(ah).filter(([, m]) => m && typeof m === 'object');
     if (!linesByBook.length) return [];
-    const lines = new Set();
-    linesByBook.forEach(([, b]) => { if (b?.line != null) lines.add(b.line); });
+
+    // Buckets por línea normalizada (Number con 2 decimales para tolerancia
+    // de strings/formatos).
+    const homeByLine = new Map();   // line → [{book, price}]
+    const awayByLine = new Map();
+    for (const [book, m] of linesByBook) {
+      if (m.line == null) continue;
+      const ln = Math.round(Number(m.line) * 100) / 100;
+      if (!Number.isFinite(ln)) continue;
+      if (Number.isFinite(m.home_minus) && m.home_minus > 1.01) {
+        if (!homeByLine.has(ln)) homeByLine.set(ln, []);
+        homeByLine.get(ln).push({ book, price: m.home_minus });
+      }
+      if (Number.isFinite(m.away_plus) && m.away_plus > 1.01) {
+        if (!awayByLine.has(ln)) awayByLine.set(ln, []);
+        awayByLine.get(ln).push({ book, price: m.away_plus });
+      }
+    }
+
     const out = [];
-    for (const line of lines) {
-      let bestHomeMinus = { price: 0, book: null };
-      let bestAwayPlus  = { price: 0, book: null };
-      linesByBook.forEach(([book, m]) => {
-        if (!m || m.line !== line) return;
-        if (m.home_minus && m.home_minus > bestHomeMinus.price) bestHomeMinus = { price: m.home_minus, book };
-        if (m.away_plus && m.away_plus > bestAwayPlus.price) bestAwayPlus = { price: m.away_plus, book };
-      });
-      if (bestHomeMinus.price && bestAwayPlus.price) {
-        const sum = 1 / bestHomeMinus.price + 1 / bestAwayPlus.price;
-        if (sum < 1) {
-          out.push(makeSurebet(ev, `ah-${line}`, ['home_minus', 'away_plus'],
-            [bestHomeMinus.price, bestAwayPlus.price], [bestHomeMinus.book, bestAwayPlus.book]));
+    // Sólo consideramos integer + half lines (no quarter-ball .25/.75 que
+    // son splits y rompen la lógica lock simple).
+    for (const line of homeByLine.keys()) {
+      if (!awayByLine.has(line)) continue;
+      // Half-lines o integer lines puros (multiplos de 0.5)
+      const isQuarter = Math.abs((line * 2) - Math.round(line * 2)) > 1e-6;
+      if (isQuarter) continue;
+
+      const homes = homeByLine.get(line);
+      const aways = awayByLine.get(line);
+      let best = null;
+      // Buscamos la combinación con MEJOR sum(1/oi) entre books DISTINTOS.
+      for (const h of homes) {
+        for (const a of aways) {
+          if (h.book === a.book) continue;
+          const sum = 1 / h.price + 1 / a.price;
+          if (sum >= 1) continue;
+          if (!best || sum < best.sum) best = { sum, h, a };
         }
+      }
+      if (best) {
+        out.push(makeSurebet(ev, `ah-${line}`, ['home_minus', 'away_plus'],
+          [best.h.price, best.a.price], [best.h.book, best.a.book]));
       }
     }
     return out;

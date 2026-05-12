@@ -24,6 +24,9 @@ const {
   buildEventFromMarquee,
   buildEventsFromLive
 } = require('../lib/codereJson');
+const { withRetry, CircuitBreaker } = require('../lib/retry');
+
+const breaker = new CircuitBreaker({ name: 'codere', failThreshold: 5, cooldownMs: 60_000 });
 
 const BASE = 'https://m.caba.codere.bet.ar/NavigationService';
 
@@ -113,7 +116,10 @@ let cachedLeagueNodeIds = null;
 let cachedLeagueNodeIdsAt = 0;
 
 async function get(path) {
-  return httpJsonNative(BASE + path, { headers: HEADERS, timeout: 12000 });
+  return breaker.exec(() => withRetry(
+    () => httpJsonNative(BASE + path, { headers: HEADERS, timeout: 12000 }),
+    { maxAttempts: 2, baseMs: 400 }
+  ));
 }
 
 /* Discover league NodeIds across sports (cached 30min). */

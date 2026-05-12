@@ -17,6 +17,9 @@
 
 const { httpJsonNative, log } = require('../lib');
 const { parseKambiListView, parseKambiBetoffers } = require('../lib/kambiJson');
+const { withRetry, CircuitBreaker } = require('../lib/retry');
+
+const breaker = new CircuitBreaker({ name: 'betwarrior', failThreshold: 5, cooldownMs: 60_000 });
 
 const OP = 'tecacargrl';
 const BASE = `https://us.offering-api.kambicdn.com/offering/v2018/${OP}`;
@@ -89,7 +92,10 @@ async function fetchAll(urls) {
   const out = [];
   await Promise.all(urls.map(async url => {
     try {
-      const j = await httpJsonNative(url, { headers: HEADERS, timeout: 12000 });
+      const j = await breaker.exec(() => withRetry(
+        () => httpJsonNative(url, { headers: HEADERS, timeout: 12000 }),
+        { maxAttempts: 2, baseMs: 400 }
+      ));
       if (j) out.push({ url, json: j });
     } catch (_) {}
   }));
