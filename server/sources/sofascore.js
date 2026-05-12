@@ -17,7 +17,13 @@
 'use strict';
 
 const { SourceBase } = require('./_adapter');
-const { httpJson, log, sleep } = require('../lib');
+const { httpJsonNative, log, sleep } = require('../lib');
+const { CircuitBreaker } = require('../lib/retry');
+
+// SofaScore Cloudflare es agresivo sobre IPs de cloud (Render). Si nos
+// devuelve 403 sostenidamente abrimos breaker para no quemar requests
+// (no aporta odds, solo fixtures — failure es tolerable).
+const breaker = new CircuitBreaker({ name: 'sofascore', failThreshold: 3, cooldownMs: 5 * 60_000, maxCooldownMs: 30 * 60_000 });
 
 class SofaScoreSource extends SourceBase {
   constructor() {
@@ -47,7 +53,9 @@ class SofaScoreSource extends SourceBase {
       // SofaScore tiene anti-abuse: requests rapid-fire dan 403 ~5 min.
       const url = `https://api.sofascore.com/api/v1/sport/${path}/scheduled-events/${today}`;
       try {
-        const data = await httpJson(url, {
+        // httpJsonNative usa el módulo `https` nativo (TLS fingerprint
+        // distinto de undici) → mejor chance de pasar Cloudflare en Render.
+        const data = await breaker.exec(() => httpJsonNative(url, {
           timeout: 12000,
           headers: {
             'Accept': 'application/json, text/plain, */*',
@@ -55,21 +63,25 @@ class SofaScoreSource extends SourceBase {
             'Referer': 'https://www.sofascore.com/',
             'Origin': 'https://www.sofascore.com',
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-            'sec-ch-ua': '"Chromium";v="131", "Not_A Brand";v="24"',
+            'sec-ch-ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
             'sec-ch-ua-mobile': '?0',
             'sec-ch-ua-platform': '"macOS"',
             'sec-fetch-dest': 'empty',
             'sec-fetch-mode': 'cors',
-            'sec-fetch-site': 'same-site'
+            'sec-fetch-site': 'same-site',
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
           }
-        });
+        }));
         const events = data?.events || [];
         for (const ev of events) {
           const mapped = this.normalize(ev, sp);
           if (mapped) out.push(mapped);
         }
       } catch (e) {
-        log(`[sofascore:${sp}] err ${e?.message?.slice(0, 80)}`);
+        // En modo OPEN del breaker no spammear logs
+        if (!e?.circuitOpen) log(`[sofascore:${sp}] err ${e?.message?.slice(0, 80)}`);
+        if (e?.circuitOpen) break;   // si breaker abrió, parar el loop entero
       }
       // Respiro entre sports para no triggear rate limit
       await sleep(800);

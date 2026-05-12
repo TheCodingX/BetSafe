@@ -31,7 +31,12 @@ services:
     # El runtime de Render Node viene con la mayoría de las libs C que Chromium
     # headless necesita. Si Chromium falla al arrancar por una lib específica
     # faltante, conviene migrar a un Dockerfile con FROM mcr.microsoft.com/playwright.
-    buildCommand: 'npm install && npx playwright install chromium && node ../build/inject-env.js'
+    #
+    # PLAYWRIGHT_BROWSERS_PATH fuerza que Chromium se instale dentro del
+    # project workspace (persiste entre build y runtime). Sin esto, el default
+    # `/opt/render/.cache/ms-playwright` se borra al pasar a runtime y
+    # browserType.launch() falla con "Executable doesn't exist".
+    buildCommand: 'PLAYWRIGHT_BROWSERS_PATH=/opt/render/project/src/.cache/ms-playwright npm install && PLAYWRIGHT_BROWSERS_PATH=/opt/render/project/src/.cache/ms-playwright npx playwright install chromium && node ../build/inject-env.js'
     startCommand: npm start
     healthCheckPath: /api/health
     pullRequestPreviewsEnabled: true
@@ -41,6 +46,10 @@ services:
         value: '20'
       - key: PORT
         value: '8787'
+      # Playwright debe encontrar Chromium en RUNTIME en el mismo path que el
+      # build install. /opt/render/project/src/ persiste entre fases.
+      - key: PLAYWRIGHT_BROWSERS_PATH
+        value: '/opt/render/project/src/.cache/ms-playwright'
       - key: SCRAPE_INTERVAL_MS
         value: '30000'
       - key: ARB_INTERVAL_MS
