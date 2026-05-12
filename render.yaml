@@ -26,7 +26,12 @@ services:
     region: oregon
     branch: main
     rootDir: server
-    buildCommand: 'npm install && npx playwright install chromium --with-deps && node ../build/inject-env.js'
+    # IMPORTANTE: NO usar `--with-deps` en Render — intenta `sudo apt-get` y
+    # Render no permite root durante el build (su: Authentication failure).
+    # El runtime de Render Node viene con la mayoría de las libs C que Chromium
+    # headless necesita. Si Chromium falla al arrancar por una lib específica
+    # faltante, conviene migrar a un Dockerfile con FROM mcr.microsoft.com/playwright.
+    buildCommand: 'npm install && npx playwright install chromium && node ../build/inject-env.js'
     startCommand: npm start
     healthCheckPath: /api/health
     pullRequestPreviewsEnabled: true
