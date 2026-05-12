@@ -391,6 +391,12 @@ async function deepCapture({
       wsMessages: wsMessages.length,
       detected: events.length
     },
+    // Para debugging: lista de URLs XHR capturadas + sample de su body
+    captures: jsonResponses.map(p => ({
+      url: p.url,
+      bodyKeys: Object.keys(p.json).slice(0, 10),
+      bodyPreview: JSON.stringify(p.json).slice(0, 300)
+    })).slice(0, 20),
     htmlBody  // disponible si el caller quiere parsing custom adicional
   };
 }

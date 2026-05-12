@@ -112,6 +112,40 @@ app.get('/api/discrepancies', (req, res) => {
   }));
 });
 
+// DEBUG: corre un scraper específico y devuelve TODOS los XHRs que capturó
+// con preview del body. Sirve para inspeccionar sin abrir DevTools manualmente.
+// Uso: GET /api/debug/scraper/bplay?url=https://www.bplay.com.ar/apuestas-deportivas
+app.get('/api/debug/scraper/:bookKey', async (req, res) => {
+  // Protección básica: requiere ?key=<DEBUG_KEY> si está configurada
+  if (process.env.DEBUG_KEY && req.query.key !== process.env.DEBUG_KEY) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+  try {
+    const { deepCapture } = require('./scrapers/_deepCapture');
+    const url = req.query.url;
+    if (!url) return res.status(400).json({ error: 'falta ?url=...' });
+    const t0 = Date.now();
+    const result = await deepCapture({
+      url,
+      bookKey: req.params.bookKey,
+      navTimeoutMs: 35000,
+      scrollPasses: 3,
+      settleMs: 2500
+    });
+    res.json({
+      dur: Date.now() - t0,
+      detected: result.events.length,
+      stats: result.stats,
+      // Lista de XHR URLs + bodyKeys (los TOP-level keys del JSON response)
+      // ESTO ES LO MÁS ÚTIL: mostrá qué endpoints respondieron con qué estructura
+      captures: result.captures,
+      sample: result.events.slice(0, 3)
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/api/odds', (req, res) => {
   const sport = String(req.query.sport || 'all');
   const league = req.query.league ? String(req.query.league) : null;
