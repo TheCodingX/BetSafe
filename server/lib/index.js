@@ -98,6 +98,64 @@ async function httpGet(url, opts = {}) {
 
 async function httpJson(url, opts = {}) { return httpGet(url, { ...opts, json: true }); }
 
+/* ── Native https GET (fallback para sitios con TLS fingerprinting) ──────────
+ * Algunos CDNs (Cloudflare en especial) detectan el TLS fingerprint de undici
+ * y devuelven 403/Splash en lugar de la respuesta real. Para esos casos
+ * usamos el módulo `https` nativo de Node, cuyo ClientHello coincide con
+ * el de un cliente legítimo.
+ */
+const httpsModule = require('https');
+const { URL } = require('url');
+
+function httpGetNative(url, opts = {}) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(url);
+    const timeout = Number(opts.timeout) || 12000;
+    const headers = {
+      'User-Agent': UA,
+      'Accept': opts.accept || 'application/json, text/html, */*',
+      'Accept-Language': ACCEPT_LANG,
+      'Cache-Control': 'no-cache',
+      ...(opts.headers || {})
+    };
+    const req = httpsModule.request({
+      hostname: u.hostname,
+      port: u.port || 443,
+      path: u.pathname + u.search,
+      method: 'GET',
+      headers
+    }, (res) => {
+      // Follow redirects (max 3)
+      if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location && (opts._redirects || 0) < 3) {
+        res.destroy();
+        const next = res.headers.location.startsWith('http') ? res.headers.location : `${u.protocol}//${u.host}${res.headers.location}`;
+        return httpGetNative(next, { ...opts, _redirects: (opts._redirects || 0) + 1 }).then(resolve, reject);
+      }
+      if (res.statusCode >= 400) {
+        let err = '';
+        res.on('data', d => { err += d; });
+        res.on('end', () => reject(new Error(`HTTP ${res.statusCode} for ${url} :: ${err.slice(0, 200)}`)));
+        return;
+      }
+      let buf = '';
+      res.on('data', d => { buf += d.toString('utf8'); });
+      res.on('end', () => {
+        clearTimeout(timer);
+        if (opts.json) {
+          try { resolve(JSON.parse(buf)); } catch (e) { reject(new Error(`JSON parse: ${e.message}`)); }
+        } else {
+          resolve(buf);
+        }
+      });
+    });
+    req.on('error', err => { clearTimeout(timer); reject(err); });
+    const timer = setTimeout(() => { req.destroy(new Error(`timeout ${timeout}ms`)); }, timeout);
+    req.end();
+  });
+}
+
+async function httpJsonNative(url, opts = {}) { return httpGetNative(url, { ...opts, json: true }); }
+
 // ── Browser pool (Playwright + stealth) ───────────────────────────────────
 // Estrategias de evasión aplicadas:
 //   - playwright-extra-stealth plugin (oculta webdriver, WebGL, plugins, etc.)
@@ -315,7 +373,7 @@ function eventKey(home, away, start) {
 function isFinite2(n) { return typeof n === 'number' && Number.isFinite(n) && n > 1.01 && n < 1000; }
 
 module.exports = {
-  log, sleep, httpGet, httpJson, browserPool,
+  log, sleep, httpGet, httpJson, httpGetNative, httpJsonNative, browserPool,
   normalizeTeam, parseDecimal, parseAmericanToDecimal, eventKey, isFinite2,
   UA, ACCEPT_LANG
 };
