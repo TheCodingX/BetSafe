@@ -172,10 +172,10 @@
     }
     refreshFavorites();
     const onLive = () => refreshFavorites();
-    window.addEventListener('bs:live-update', onLive);
+    // Solo snapshot — bs:live-update cada 1.2s genera flicker
     window.addEventListener('bs:live-snapshot', onLive);
     const prevCleanup = panel.__cleanup;
-    panel.__cleanup = () => { try { prevCleanup?.(); } catch{} window.removeEventListener('bs:live-update', onLive); window.removeEventListener('bs:live-snapshot', onLive); };
+    panel.__cleanup = () => { try { prevCleanup?.(); } catch{} window.removeEventListener('bs:live-snapshot', onLive); };
 
     // Top goleadores del Mundial: pendiente publicación oficial FIFA.
     // Por ahora mostramos disclaimer honesto.

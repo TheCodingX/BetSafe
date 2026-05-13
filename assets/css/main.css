@@ -10508,3 +10508,117 @@ body {
   .bsai-leg-alts { padding-left: 16px; }
   .bsai-combo-footer { flex-direction: column; align-items: flex-start; }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Comparador v2 — stats grid + gap pills
+   ───────────────────────────────────────────────────────────────────────── */
+.cmp-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+.cmp-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+.cmp-stat-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--text-tertiary);
+}
+.cmp-stat-value {
+  font-size: 1.4rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+.cmp-stat-value--success { color: var(--success); }
+
+/* Gap pill — solo aparece cuando hay valor real (≥1.5% gap) */
+.cmp-gap-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--success) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--success) 35%, transparent);
+  color: var(--success);
+  font-size: 0.66rem;
+  font-weight: 700;
+  margin-left: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Margin badge — distinto al gap pill */
+.cmp-margin-badge {
+  background: color-mix(in srgb, var(--text-tertiary) 12%, transparent) !important;
+  color: var(--text-secondary) !important;
+  border-color: var(--border) !important;
+}
+
+/* Detail modal grid */
+.cmp-detail-grid {
+  display: grid;
+  grid-template-columns: auto repeat(auto-fit, minmax(80px, 1fr));
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  font-size: 0.88rem;
+}
+.cmp-detail-head {
+  padding: 8px 10px;
+  background: var(--surface-2);
+  font-weight: 700;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+.cmp-detail-cell {
+  padding: 8px 10px;
+  background: var(--surface);
+}
+.cmp-detail-cell.num { font-variant-numeric: tabular-nums; font-weight: 600; }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Sidebar — Flagship item (BetSafe AI)
+   ───────────────────────────────────────────────────────────────────────── */
+.sidebar nav button.flagship-item {
+  position: relative;
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--gold-500) 10%, transparent),
+    color-mix(in srgb, var(--gold-500) 4%, transparent)
+  );
+  border: 1px solid color-mix(in srgb, var(--gold-500) 35%, transparent);
+}
+.sidebar nav button.flagship-item:hover {
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--gold-500) 18%, transparent),
+    color-mix(in srgb, var(--gold-500) 8%, transparent)
+  );
+  border-color: color-mix(in srgb, var(--gold-500) 55%, transparent);
+}
+.sidebar nav button.flagship-item .tab-icon {
+  color: var(--gold-700, #c49a1a);
+}
+.vip-tag--flagship {
+  background: linear-gradient(135deg, var(--gold-500), var(--gold-700, #c49a1a)) !important;
+  color: #1a1208 !important;
+  border: none !important;
+  font-weight: 800 !important;
+  letter-spacing: .04em;
+  box-shadow: 0 2px 8px -2px color-mix(in srgb, var(--gold-500) 55%, transparent);
+  animation: flagship-tag-pulse 3s ease-in-out infinite;
+}
+@keyframes flagship-tag-pulse {
+  0%, 100% { box-shadow: 0 2px 8px -2px color-mix(in srgb, var(--gold-500) 55%, transparent); }
+  50%      { box-shadow: 0 2px 14px -2px color-mix(in srgb, var(--gold-500) 90%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vip-tag--flagship { animation: none; }
+}

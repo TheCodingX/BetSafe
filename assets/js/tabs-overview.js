@@ -94,11 +94,10 @@
     // Render inicial + suscripción a updates en vivo
     renderNext(BSData.liveEvents({}));
     const onUpdate = () => renderNext(BSData.liveEvents({}));
+    // Solo snapshot — bs:live-update (cada 1.2s) re-renderiza la grilla → tiembla
     window.addEventListener('bs:live-snapshot', onUpdate);
-    window.addEventListener('bs:live-update', onUpdate);
     panel.__cleanup = () => {
       window.removeEventListener('bs:live-snapshot', onUpdate);
-      window.removeEventListener('bs:live-update', onUpdate);
     };
     // Esperar primer snapshot si todavía no tenemos data
     if (!BSData.liveReady()) await BSData.awaitLive({ timeoutMs: 10000 });

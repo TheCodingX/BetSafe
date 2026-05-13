@@ -1,9 +1,16 @@
-/* BetSafe — Comparator tab */
+/* BetSafe — Comparador de cuotas (v2 — útil de verdad)
+ * ============================================================================
+ * Objetivo: mostrar al user DÓNDE hay valor real comparando cuotas entre las
+ * 6 casas argentinas legales. Solo eventos con 2+ casas (donde la comparación
+ * tiene sentido). Ranking por OUTCOME, badge de "value gap" solo cuando es
+ * material (>1.5%), surebet detection inline.
+ * ============================================================================
+ */
 (function () {
   'use strict';
 
   async function render(panel) {
-    // Mostrar skeleton, luego cargar eventos en vivo del backend
+    // Skeleton
     panel.innerHTML = `<div class="card stack" style="min-height:280px"><div class="row between"><strong>Cargando cuotas en vivo…</strong><span class="muted tiny">conectando</span></div><div class="empty">Recibiendo cuotas de las casas argentinas legales.</div></div>`;
     let matches = await BSData.awaitLive({ timeoutMs: 12000 });
     if (!matches.length) {
@@ -12,302 +19,247 @@
       window.addEventListener('bs:live-snapshot', onSnap, { once: true });
       return;
     }
+
     panel.innerHTML = `
-      <div class="row between mb-3">
+      <div class="row between mb-3" style="flex-wrap:wrap;gap:14px">
         <div>
-          <h2 class="h3">Comparador en vivo · casas legales AR<a class="help-q" tabindex="0" data-tip="Mostramos las cuotas de las casas argentinas con licencia LOTBA/IPLyC en una sola vista. Resaltamos en verde la mejor cuota por outcome y calculamos la diferencia % entre la mejor y la peor — eso es valor que estás dejando si no comparás. Margen del libro = overround. Refresco cada 30s."></a></h2>
-          <p class="muted">Resaltamos la mejor cuota por outcome. Diferencia % entre la mejor y la peor. Refresco cada 30 s.</p>
+          <h2 class="h3">Comparador en vivo · casas legales AR</h2>
+          <p class="muted">Mostramos las casas que mejor pagan cada outcome. Solo eventos con 2+ casas comparables — para que el ranking sirva.</p>
         </div>
-        <div class="cluster">
-          <select class="select" id="cSport"><option value="all">Todos los deportes</option>${BSData.SPORTS.map(s=>`<option value="${s.key}">${s.name}</option>`).join('')}</select>
-          <select class="select" id="cLeague"><option value="all">Todas las ligas</option>${BSData.LEAGUES.map(l=>`<option value="${l.key}">${l.name}</option>`).join('')}</select>
+        <div class="cluster" style="gap:6px">
+          <select class="select" id="cSport"><option value="all">Todos los deportes</option>${BSData.SPORTS.map(s=>`<option value="${s.key}">${BSUI.esc(s.name)}</option>`).join('')}</select>
+          <select class="select" id="cValue">
+            <option value="all">Cualquier valor</option>
+            <option value="material">Con valor real (≥2% gap)</option>
+            <option value="surebet">Solo surebets</option>
+          </select>
           <button class="btn btn-outline btn-sm" id="cRefresh">${BSIcons.svg('refresh',{size:14})} Refrescar</button>
         </div>
       </div>
 
-      <div class="card stack mb-3">
-        <div class="risk-slider-block">
-          <div class="risk-slider-head">
-            <strong>Risk slider</strong>
-            <span class="muted tiny">· filtra por banda de cuota</span>
+      <div class="cmp-stats card stack mb-3">
+        <div class="cmp-stats-grid">
+          <div class="cmp-stat">
+            <span class="cmp-stat-label">Partidos comparables</span>
+            <strong class="cmp-stat-value" id="cStatCount">—</strong>
           </div>
-          <div class="risk-slider-row">
-            <span class="risk-slider-edge">10%</span>
-            <input type="range" class="slider slider-risk" id="cRisk" min="10" max="100" value="50" />
-            <span class="risk-slider-edge">100%</span>
-            <strong class="risk-slider-val num" id="cRiskVal">50%</strong>
+          <div class="cmp-stat">
+            <span class="cmp-stat-label">Casas activas</span>
+            <strong class="cmp-stat-value" id="cStatBooks">—</strong>
+          </div>
+          <div class="cmp-stat">
+            <span class="cmp-stat-label">Surebets ahora</span>
+            <strong class="cmp-stat-value cmp-stat-value--success" id="cStatArb">—</strong>
+          </div>
+          <div class="cmp-stat">
+            <span class="cmp-stat-label">Mejor gap detectado</span>
+            <strong class="cmp-stat-value" id="cStatGap">—</strong>
           </div>
         </div>
-        <div class="cluster" id="cBandPills"></div>
       </div>
 
       <div class="card stack">
         <div class="row between">
           <strong id="cCount">0 partidos</strong>
-          <span class="muted tiny" id="cTimer">Próximo refresh en 30 s</span>
+          <span class="muted tiny" id="cTimer">Última actualización ${BSData.liveFreshness()}</span>
         </div>
         <div id="cBody" class="stack"></div>
       </div>
-
-      <div id="arbBanner" class="card card-tinted mt-3" hidden>
-        <div class="row between">
-          <div><strong class="text-success">Surebet detectada</strong><div class="muted tiny" id="arbBannerText">—</div></div>
-          <a href="#arbitrage" class="btn btn-primary btn-sm">Ver detalle</a>
-        </div>
-      </div>
     `;
 
-    const bands = {
-      10: [1.10, 1.30], 25: [1.30, 1.60], 50: [1.60, 2.30],
-      75: [2.30, 3.50], 90: [3.50, 5.0], 100: [5.0, 99]
-    };
+    let activeSport = 'all';
+    let activeValueFilter = 'all';
 
-    // Distribuir pills a lo largo del slider (cada una en su porcentaje umbral)
-    const pillBox = panel.querySelector('#cBandPills');
-    pillBox.classList.remove('cluster');
-    pillBox.classList.add('risk-band-track');
-    const bandLabels = [
-      { label: 'Conservador',  range: '1.10-1.40', pct: 10,  cls: 'low'  },
-      { label: 'Cauteloso',    range: '1.30-1.60', pct: 25,  cls: 'low'  },
-      { label: 'Equilibrado',  range: '1.60-2.30', pct: 50,  cls: 'mid'  },
-      { label: 'Moderado',     range: '2.30-3.50', pct: 75,  cls: 'mid'  },
-      { label: 'Agresivo',     range: '3.50-5.00', pct: 90,  cls: 'high' },
-      { label: 'Longshot',     range: '5.00+',     pct: 100, cls: 'high' }
-    ];
-    pillBox.innerHTML = bandLabels.map(b => `
-      <span class="risk-band" data-pct="${b.pct}" style="--p:${b.pct}%">
-        <span class="risk-band-pin ${b.cls}"></span>
-        <span class="risk-band-pill ${b.cls}">${b.label}</span>
-        <span class="risk-band-range">${b.range}</span>
-      </span>`).join('');
+    function computeMatchValue(m) {
+      // Solo valoramos events con 2+ casas en h2h (sino no hay comparación real).
+      const books = Object.entries(m.markets?.h2h || {}).filter(([_, b]) =>
+        Number(b?.home) > 1.01 || Number(b?.away) > 1.01
+      );
+      if (books.length < 2) return null;
 
-    let activeSport = 'all', activeLeague = 'all', riskBand = 50;
+      // Para cada outcome (home/draw/away) calculamos mejor + peor cuota
+      const computeOutcome = (key) => {
+        const vals = books.map(([k, b]) => ({ book: k, price: Number(b?.[key]) }))
+          .filter(x => Number.isFinite(x.price) && x.price > 1.01);
+        if (vals.length < 2) return null;
+        vals.sort((a, b) => b.price - a.price);
+        const best = vals[0], worst = vals[vals.length - 1];
+        const gapPct = ((best.price - worst.price) / worst.price) * 100;
+        return { best, worst, vals, gapPct };
+      };
+
+      const outH = computeOutcome('home');
+      const outD = computeOutcome('draw');
+      const outA = computeOutcome('away');
+      if (!outH && !outA) return null;
+
+      // Surebet check: 1/best_home + 1/best_away (+ 1/best_draw si hay) < 1
+      const oddsForArb = [outH?.best.price, outD?.best.price, outA?.best.price].filter(Boolean);
+      const arbCheck = oddsForArb.length >= 2 ? BSMath.surebet(oddsForArb) : { isSure: false, roi: 0 };
+
+      // Mejor gap entre los 3 outcomes para el badge principal
+      const gaps = [outH?.gapPct, outD?.gapPct, outA?.gapPct].filter(Number.isFinite);
+      const maxGap = gaps.length ? Math.max(...gaps) : 0;
+
+      // Overround del libro (margen casa)
+      const margin = oddsForArb.length >= 2 ? (BSMath.overround(oddsForArb) - 1) * 100 : 0;
+
+      return { match: m, outH, outD, outA, maxGap, margin, arbCheck };
+    }
 
     function refresh() {
-      // Re-cargar siempre desde BSLive para que cada refresh use lo más fresco
       matches = BSData.liveEvents({});
-      const list = matches.filter(m =>
-        m.markets && m.markets.h2h && Object.keys(m.markets.h2h).length > 0 &&
-        (activeSport === 'all' || m.sport === activeSport) &&
-        (activeLeague === 'all' || m.league === activeLeague)
-      );
-      const tb = panel.querySelector('#cBody');
-      tb.innerHTML = list.map(m => row(m)).join('');
-      panel.querySelector('#cCount').textContent = list.length + ' partidos';
+      const scored = matches
+        .map(computeMatchValue)
+        .filter(Boolean);
 
-      // Detect arbitrage
-      const arb = list.find(m => isArb(m));
-      const banner = panel.querySelector('#arbBanner');
-      if (arb) {
-        banner.hidden = false;
-        const arbInfo = arbDetails(arb);
-        panel.querySelector('#arbBannerText').textContent = `${arb.home.name} vs ${arb.away.name} · ROI ${arbInfo.roi.toFixed(2)}%`;
-      } else { banner.hidden = true; }
+      let filtered = scored.filter(x => activeSport === 'all' || x.match.sport === activeSport);
+      if (activeValueFilter === 'material') filtered = filtered.filter(x => x.maxGap >= 2);
+      if (activeValueFilter === 'surebet')  filtered = filtered.filter(x => x.arbCheck.isSure);
+
+      // Ordenar: surebets primero, luego mayor gap, luego más casas
+      filtered.sort((a, b) => {
+        if (a.arbCheck.isSure !== b.arbCheck.isSure) return a.arbCheck.isSure ? -1 : 1;
+        if (Math.abs(a.maxGap - b.maxGap) > 0.2) return b.maxGap - a.maxGap;
+        return (b.outH?.vals.length || 0) - (a.outH?.vals.length || 0);
+      });
+
+      // Stats
+      const totalArb = scored.filter(x => x.arbCheck.isSure).length;
+      const uniqueBooks = new Set();
+      scored.forEach(x => x.outH?.vals.forEach(v => uniqueBooks.add(v.book)));
+      const maxGapEver = scored.reduce((max, x) => Math.max(max, x.maxGap || 0), 0);
+      panel.querySelector('#cStatCount').textContent = scored.length;
+      panel.querySelector('#cStatBooks').textContent = uniqueBooks.size;
+      panel.querySelector('#cStatArb').textContent = totalArb;
+      panel.querySelector('#cStatGap').textContent = maxGapEver > 0 ? `+${maxGapEver.toFixed(1)}%` : '—';
+
+      // Body
+      const tb = panel.querySelector('#cBody');
+      if (!filtered.length) {
+        tb.innerHTML = `<div class="empty" style="padding:32px;text-align:center">
+          <strong>Sin partidos que cumplan el filtro</strong>
+          <p class="muted tiny">${activeValueFilter === 'surebet' ? 'No hay surebets ahora. Cambian rápido — quedate mirando.' : activeValueFilter === 'material' ? 'Probá relajar el filtro de valor.' : 'Aguardando partidos con 2+ casas comparables.'}</p>
+        </div>`;
+      } else {
+        tb.innerHTML = filtered.slice(0, 30).map(row).join('');
+      }
+      panel.querySelector('#cCount').textContent = `${filtered.length} partidos`;
+      panel.querySelector('#cTimer').textContent = `Última actualización ${BSData.liveFreshness()}`;
 
       tb.querySelectorAll('[data-add]').forEach(b => b.addEventListener('click', () => BSDash.addToSlip(JSON.parse(b.dataset.add))));
       tb.querySelectorAll('[data-detail]').forEach(b => b.addEventListener('click', () => openDetail(matches.find(m=>m.id===b.dataset.detail))));
     }
 
-    /* Top-3 ranking helper: para cada outcome del 1X2, devuelve las 3 casas
-       que mejor pagan, ordenadas. Mismo mercado entre casas distintas. */
-    function top3(books, key) {
-      return books
-        .map(([k, b]) => ({ book: k, price: b[key] || 0 }))
-        .filter(x => x.price > 1)
-        .sort((a, b) => b.price - a.price)
-        .slice(0, 3);
-    }
-
-    function row(m) {
-      const books = Object.entries(m.markets.h2h);
-      const bestH = books.reduce((a, [k, b]) => b.home > a.v ? { v: b.home, book: k } : a, { v: 0, book: '' });
-      const bestD = books.reduce((a, [k, b]) => (b.draw || 0) > a.v ? { v: b.draw, book: k } : a, { v: 0, book: '' });
-      const bestA = books.reduce((a, [k, b]) => b.away > a.v ? { v: b.away, book: k } : a, { v: 0, book: '' });
-      const minH = Math.min(...books.map(([_, b]) => b.home).filter(Boolean));
-      const margin = BSMath.overround([bestH.v, bestD.v || 99, bestA.v]) * 100;
-      const delta = bestH.v / minH * 100 - 100;
+    function row(scored) {
+      const m = scored.match;
       const bn = (k) => BSData.ALL_BOOKS.find(b => b.key === k)?.name || k;
+      const homeLogo = window.BSLogos?.teamCrest ? BSLogos.teamCrest(m.home.id, { size: 26, name: m.home.name, sport: m.sport }) : BSIcons.teamLogo(m.home, { size: 26, sport: m.sport });
+      const awayLogo = window.BSLogos?.teamCrest ? BSLogos.teamCrest(m.away.id, { size: 26, name: m.away.name, sport: m.sport }) : BSIcons.teamLogo(m.away, { size: 26, sport: m.sport });
 
-      const top3H = top3(books, 'home');
-      const top3D = top3(books, 'draw');
-      const top3A = top3(books, 'away');
-
-      const renderCol = (label, code, list, m, side) => {
-        if (!list.length) return `<div class="cmp3-col"><div class="cmp3-col-head"><span class="label">${label}</span><span class="outcome">${code}</span></div><div class="muted tiny" style="padding:8px 10px">Sin cuota disponible</div></div>`;
+      const renderCol = (label, code, out, sideKey) => {
+        if (!out) return `<div class="cmp3-col"><div class="cmp3-col-head"><span class="label">${label}</span><span class="outcome">${code}</span></div><div class="muted tiny" style="padding:8px 10px">Sin cuota comparable</div></div>`;
+        const top3 = out.vals.slice(0, 3);
         return `
           <div class="cmp3-col">
             <div class="cmp3-col-head">
               <span class="label">${label}</span>
               <span class="outcome">${code}</span>
+              ${out.gapPct >= 1.5 ? `<span class="cmp-gap-pill">+${out.gapPct.toFixed(1)}% gap</span>` : ''}
             </div>
-            ${list.map((it, i) => {
-              const addPayload = JSON.stringify({ matchId: m.id, label, odd: it.price, book: it.book });
+            ${top3.map((it, i) => {
+              const addPayload = JSON.stringify({ matchId: m.id, eventId: m.id, label, odd: it.price, book: it.book, market: 'h2h', outcome: sideKey });
               return `<button class="cmp3-row${i===0?' is-best':''}" data-add='${addPayload}' aria-label="${BSUI.esc(bn(it.book))} paga ${it.price.toFixed(2)}">
-                <span class="rank">${i+1}</span>
-                <span class="book">${window.BSLogos ? BSLogos.bookLogo(it.book, { size: 22 }) : ''}<span style="margin-left:6px">${BSUI.esc(bn(it.book))}</span></span>
+                <span class="rank rank-book" data-book="${it.book}"></span>
+                <span class="book">${BSUI.esc(bn(it.book))}</span>
                 <span class="price">${it.price.toFixed(2)}</span>
               </button>`;
             }).join('')}
           </div>`;
       };
 
+      // Badges contextual: surebet en oro, gap material en verde, sin badge si no hay valor
+      const badges = [];
+      if (scored.arbCheck.isSure) {
+        badges.push(`<span class="badge badge-gold" title="Sumando cuotas máximas, total < 100% — ganancia garantizada">★ Surebet · ROI ${scored.arbCheck.roi.toFixed(2)}%</span>`);
+      } else if (scored.maxGap >= 2) {
+        badges.push(`<span class="badge badge-success">Mejor gap +${scored.maxGap.toFixed(1)}%</span>`);
+      }
+      if (scored.margin > 0 && scored.margin < 20) {
+        badges.push(`<span class="badge cmp-margin-badge">Margen casa ${scored.margin.toFixed(1)}%</span>`);
+      }
+
       const homeLbl = `Gana ${BSUI.esc(m.home.name)}`;
       const awayLbl = `Gana ${BSUI.esc(m.away.name)}`;
-      const drawLbl = 'Empate';
+      const hasDraw = !!scored.outD;
 
-      return `
-        <article class="card cmp-match" style="display:flex;flex-direction:column;gap:14px">
-          <header class="row between" style="flex-wrap:wrap;gap:12px">
+      const html = `
+        <article class="card cmp-match" style="display:flex;flex-direction:column;gap:12px">
+          <header class="row between" style="flex-wrap:wrap;gap:10px">
             <div class="cluster">
-              ${BSIcons.teamLogo(m.home,{size:24,sport:m.sport})}
+              ${homeLogo}
               <strong>${BSUI.esc(m.home.name)}</strong>
               <span class="dim">vs</span>
               <strong>${BSUI.esc(m.away.name)}</strong>
-              ${BSIcons.teamLogo(m.away,{size:24,sport:m.sport})}
+              ${awayLogo}
             </div>
-            <div class="cluster" style="gap:8px;flex-wrap:wrap">
-              <span class="muted tiny">${BSUI.esc(m.leagueName)} · ${BSUI.dt(m.start)}</span>
-              <span class="badge badge-success">+${delta.toFixed(2)}% Δ</span>
-              <span class="badge" style="background:rgba(212,160,23,0.10);color:var(--gold-700);border-color:rgba(212,160,23,0.30)">Margen ${margin.toFixed(2)}%</span>
+            <div class="cluster" style="gap:6px;flex-wrap:wrap">
+              <span class="muted tiny">${BSUI.esc(m.leagueName || '')} · ${BSUI.dt(m.start)}</span>
+              ${badges.join('')}
               <button class="btn-ghost btn-icon btn-sm" data-detail="${m.id}" aria-label="Ver todas las casas">${BSIcons.svg('eye',{size:16})}</button>
             </div>
           </header>
 
-          <div class="cmp3" style="${bestD.v ? '' : 'grid-template-columns:repeat(2,minmax(0,1fr))'}">
-            ${renderCol(homeLbl, '1', top3H, m, 'home')}
-            ${bestD.v ? renderCol(drawLbl, 'X', top3D, m, 'draw') : ''}
-            ${renderCol(awayLbl, '2', top3A, m, 'away')}
+          <div class="cmp3" style="${hasDraw ? '' : 'grid-template-columns:repeat(2,minmax(0,1fr))'}">
+            ${renderCol(homeLbl, '1', scored.outH, 'home')}
+            ${hasDraw ? renderCol('Empate', 'X', scored.outD, 'draw') : ''}
+            ${renderCol(awayLbl, '2', scored.outA, 'away')}
           </div>
         </article>`;
-    }
-
-    function isArb(m) {
-      const books = Object.values(m.markets.h2h);
-      const bestH = Math.max(...books.map(b=>b.home));
-      const bestA = Math.max(...books.map(b=>b.away));
-      const bestD = Math.max(...books.map(b=>b.draw||0));
-      const odds = bestD ? [bestH, bestD, bestA] : [bestH, bestA];
-      return BSMath.surebet(odds).isSure;
-    }
-    function arbDetails(m) {
-      const books = Object.values(m.markets.h2h);
-      const bestH = Math.max(...books.map(b=>b.home));
-      const bestA = Math.max(...books.map(b=>b.away));
-      const bestD = Math.max(...books.map(b=>b.draw||0));
-      const odds = bestD ? [bestH, bestD, bestA] : [bestH, bestA];
-      return BSMath.surebet(odds);
+      return html;
     }
 
     function openDetail(m) {
+      if (!m) return;
+      const books = Object.entries(m.markets?.h2h || {}).filter(([_, b]) =>
+        Number(b?.home) > 1.01 || Number(b?.away) > 1.01
+      );
+      const bn = (k) => BSData.ALL_BOOKS.find(b => b.key === k)?.name || k;
       const html = `
         <h3 class="h3 mb-2">${BSUI.esc(m.home.name)} vs ${BSUI.esc(m.away.name)}</h3>
-        <p class="muted tiny mb-3">${BSUI.esc(m.leagueName)} · ${BSUI.dt(m.start)}</p>
-        <div class="table-wrap">
-          <table class="table">
-            <thead><tr><th>Casa</th><th>1</th><th>X</th><th>2</th></tr></thead>
-            <tbody>
-              ${Object.entries(m.markets.h2h).map(([k, o]) => {
-                const b = BSData.ALL_BOOKS.find(x => x.key === k);
-                return `<tr><td><div class="cluster">${BSIcons.bookLogo(b||{name:k,color:'#666'},{size:18})} ${BSUI.esc(b?.name || k)} ${b?.license?'<span class="badge badge-success">'+b.license+'</span>':''}</div></td><td class="num">${o.home.toFixed(2)}</td><td class="num">${o.draw?o.draw.toFixed(2):'—'}</td><td class="num">${o.away.toFixed(2)}</td></tr>`;
-              }).join('')}
-            </tbody>
-          </table>
-        </div>
-        <div style="margin-top:16px">
-          <button class="btn btn-primary btn-sm" id="cmpAiAnalyzeBtn">${BSIcons.svg('bolt', { size: 14 })} Análisis IA profundo del partido</button>
-          <div id="cmpAiAnalysisModal" style="margin-top:12px"></div>
+        <p class="muted tiny mb-3">${BSUI.esc(m.leagueName || '')} · ${BSUI.dt(m.start)}</p>
+        <div class="cmp-detail-grid">
+          <div class="cmp-detail-head">Casa</div>
+          <div class="cmp-detail-head">Gana ${BSUI.esc(m.home.name)}</div>
+          ${books.some(([_, b]) => b.draw) ? '<div class="cmp-detail-head">Empate</div>' : ''}
+          <div class="cmp-detail-head">Gana ${BSUI.esc(m.away.name)}</div>
+          ${books.map(([k, b]) => `
+            <div class="cmp-detail-cell"><span class="cluster">${window.BSLogos?.bookLogo?.(k, {size:20}) || ''}<span>${BSUI.esc(bn(k))}</span></span></div>
+            <div class="cmp-detail-cell num">${Number.isFinite(b.home) && b.home > 1.01 ? b.home.toFixed(2) : '—'}</div>
+            ${books.some(([_, bb]) => bb.draw) ? `<div class="cmp-detail-cell num">${Number.isFinite(b.draw) && b.draw > 1.01 ? b.draw.toFixed(2) : '—'}</div>` : ''}
+            <div class="cmp-detail-cell num">${Number.isFinite(b.away) && b.away > 1.01 ? b.away.toFixed(2) : '—'}</div>
+          `).join('')}
         </div>`;
       BSUI.openModal(html, { large: true });
-
-      // AI deep-analysis del partido (Groq → factores + Poisson + Elo + LLM)
-      setTimeout(() => {
-        const btn = document.getElementById('cmpAiAnalyzeBtn');
-        const host = document.getElementById('cmpAiAnalysisModal');
-        if (!btn || !host) return;
-        btn.addEventListener('click', async () => {
-          btn.disabled = true;
-          btn.innerHTML = `${BSIcons.svg('bolt', { size: 14 })} <span class="shimmer-text">Analizando con IA...</span>`;
-          host.innerHTML = `<div class="card card-tinted card-pad-sm"><span class="muted tiny">IA procesando clima, lesiones, movimientos del mercado y análisis táctico...</span><div style="height:3px;background:linear-gradient(90deg,var(--brand-500),transparent,var(--brand-500));background-size:200% 100%;animation:shimmer 1.2s infinite;margin-top:6px;border-radius:2px"></div></div>`;
-          try {
-            const r = await BSLive.deepAnalysis(m.id);
-            renderMatchDeepAnalysis(host, r);
-            btn.style.display = 'none';
-          } catch (e) {
-            host.innerHTML = `<div class="card card-pad-sm card-tinted"><strong class="text-danger tiny">Error</strong><p class="muted tiny">${BSUI.esc(e?.message || 'no disponible')}</p></div>`;
-            btn.disabled = false;
-            btn.innerHTML = `${BSIcons.svg('bolt', { size: 14 })} Reintentar`;
-          }
-        });
-      }, 80);
-    }
-
-    function renderMatchDeepAnalysis(host, r) {
-      if (!r) return;
-      const f = r.factors || {};
-      const sel = (r.selections || []).slice(0, 3);
-      const providerBadge = r.llmProvider !== 'offline'
-        ? `<span class="badge badge-success tiny">Análisis IA</span>`
-        : `<span class="badge tiny">Análisis</span>`;
-      const factorChips = [];
-      if (f.weather && !f.weather.unavailable) factorChips.push(`<span class="badge tiny">🌡 ${f.weather.tempC?.toFixed?.(0)}°C${f.weather.rainMm > 1 ? ' · ☔ ' + f.weather.rainMm.toFixed(1) + 'mm' : ''}${f.weather.windKmh > 0 ? ' · 💨 ' + f.weather.windKmh + 'km/h' : ''}</span>`);
-      if (f.injuries && (f.injuries.severityScore?.home > 0 || f.injuries.severityScore?.away > 0)) factorChips.push(`<span class="badge badge-warning tiny">🩹 Bajas Local:${(f.injuries.severityScore?.home*100|0)}% Visitante:${(f.injuries.severityScore?.away*100|0)}%</span>`);
-      if (f.sharp && f.sharp.score > 0) factorChips.push(`<span class="badge tiny">💰 Movimiento mercado ${(f.sharp.score*100|0)}%</span>`);
-      if (f.poisson) factorChips.push(`<span class="badge tiny">Goles esp. ${f.poisson.lambdaHome?.toFixed?.(2) || f.poisson.lambdaH?.toFixed?.(2)} / ${f.poisson.lambdaAway?.toFixed?.(2) || f.poisson.lambdaA?.toFixed?.(2)}</span>`);
-      host.innerHTML = `
-        <div class="card card-tinted card-pad-sm" style="border-left:3px solid var(--brand-500)">
-          <div class="row between" style="align-items:center"><strong>Análisis IA profundo</strong>${providerBadge}</div>
-          ${factorChips.length ? `<div class="cluster" style="margin-top:8px;gap:4px;flex-wrap:wrap">${factorChips.join('')}</div>` : ''}
-          ${r.llmKeyFactor ? `<p class="tiny" style="margin-top:10px;padding:8px;background:rgba(var(--brand-500-rgb,30,75,200),0.06);border-radius:6px"><strong>Factor clave:</strong> ${BSUI.esc(r.llmKeyFactor)}</p>` : ''}
-          ${r.llmSynthesis ? `<p class="muted tiny" style="margin-top:8px;line-height:1.5">${BSUI.esc(r.llmSynthesis)}</p>` : ''}
-          ${sel.length ? `<div style="margin-top:10px">
-            <strong class="tiny">Picks recomendados</strong>
-            <div class="stack-sm" style="margin-top:6px">
-              ${sel.map(s => `
-                <div class="card card-pad-sm" style="background:var(--surface-2)">
-                  <div class="row between"><strong>${BSUI.esc(s.label || s.outcome || '')}</strong><span class="num">${s.odd?.toFixed?.(2) || '—'}</span></div>
-                  ${s.rationale ? `<p class="muted tiny" style="margin-top:4px;line-height:1.45">${BSUI.esc(s.rationale)}</p>` : ''}
-                  ${s.tacticalNotes ? `<p class="tiny" style="margin-top:4px;line-height:1.45;font-style:italic">${BSUI.esc(s.tacticalNotes)}</p>` : ''}
-                  ${(s.warnings || []).length ? `<div class="cluster" style="gap:4px;flex-wrap:wrap;margin-top:4px">${s.warnings.map(w => `<span class="badge badge-warning tiny">⚠ ${BSUI.esc(w)}</span>`).join('')}</div>` : ''}
-                </div>
-              `).join('')}
-            </div>
-          </div>` : ''}
-        </div>`;
     }
 
     panel.querySelector('#cSport').addEventListener('change', e => { activeSport = e.target.value; refresh(); });
-    panel.querySelector('#cLeague').addEventListener('change', e => { activeLeague = e.target.value; refresh(); });
-    panel.querySelector('#cRefresh').addEventListener('click', () => { refresh(); BSUI.toast({ title:'Cuotas actualizadas', type:'success' }); });
-    panel.querySelector('#cRisk').addEventListener('input', e => { riskBand = +e.target.value; panel.querySelector('#cRiskVal').textContent = riskBand+'%'; });
+    panel.querySelector('#cValue').addEventListener('change', e => { activeValueFilter = e.target.value; refresh(); });
+    panel.querySelector('#cRefresh').addEventListener('click', () => { refresh(); BSUI.toast?.({ title: 'Cuotas actualizadas', type: 'success' }); });
 
     refresh();
 
-    // Auto-refresh: cada vez que el backend pushea, actualizamos al toque
+    // Auto-refresh solo en snapshot (~30s). No bs:live-update (1.2s = flicker).
     const onLive = () => refresh();
-    window.addEventListener('bs:live-update', onLive);
     window.addEventListener('bs:live-snapshot', onLive);
-
-    // Tick visual para el timer
-    let timer = 30, tickerEl = panel.querySelector('#cTimer');
-    const interval = setInterval(() => {
-      timer--;
-      if (timer <= 0) timer = 30;
-      const ms = BSLive?.timeSinceUpdate?.();
-      tickerEl.textContent = ms != null
-        ? `Última actualización ${BSData.liveFreshness()} · conectado`
-        : `Próximo refresh en ${timer} s`;
-    }, 1000);
     panel.__cleanup = () => {
-      clearInterval(interval);
-      window.removeEventListener('bs:live-update', onLive);
       window.removeEventListener('bs:live-snapshot', onLive);
     };
   }
 
-    function doRegister() {
-    if (typeof window.BSDash !== 'undefined') BSDash.register('comparator', render);
-    else document.addEventListener('DOMContentLoaded', () => BSDash.register('comparator', render));
+  function doRegister() {
+    if (window.BSDash?.register) BSDash.register('comparator', render);
+    else setTimeout(doRegister, 50);
   }
   doRegister();
-  window.__bsComparatorRender = render;
 })();

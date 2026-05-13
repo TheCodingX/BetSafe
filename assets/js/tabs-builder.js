@@ -386,8 +386,9 @@
       matches.length = 0; Array.prototype.push.apply(matches, fresh);
       renderMatches(); renderSlip();
     };
-    window.addEventListener('bs:live-update', onUpdate);
-    panel.__cleanup = () => window.removeEventListener('bs:live-update', onUpdate);
+    // Solo snapshot (~30s) — bs:live-update cada 1.2s genera flicker
+    window.addEventListener('bs:live-snapshot', onUpdate);
+    panel.__cleanup = () => window.removeEventListener('bs:live-snapshot', onUpdate);
   }
 
   function renderEmpty(err) {

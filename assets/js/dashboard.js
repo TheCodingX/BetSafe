@@ -57,12 +57,17 @@
     const renderBtn = (t, isPrimary) => {
       const isVipItem = t.vipOnly;
       const locked = isVipItem && !isVip;
+      const isFlagship = t.flagshipVip === true;
       const cls = [
         locked ? 'lock' : '',
         isVipItem ? 'vip-item' : '',
-        isPrimary ? 'is-primary' : ''
+        isPrimary ? 'is-primary' : '',
+        isFlagship ? 'flagship-item' : ''
       ].filter(Boolean).join(' ');
       const meta = t.desc ? `<span class="tab-desc">${t.desc}</span>` : '';
+      const tagHtml = isFlagship
+        ? `<span class="vip-tag vip-tag--flagship">${locked ? 'VIP' : 'NUEVO'}</span>`
+        : (isVipItem ? `<span class="vip-tag">VIP</span>` : '');
       return `
         <button data-tab="${t.id}" class="${cls}">
           <span class="tab-icon">${BSIcons.svg(t.icon, { size: isPrimary ? 20 : 18 })}</span>
@@ -72,7 +77,7 @@
           </span>
           ${locked ? `<span class="tab-lock" aria-hidden="true">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
-          </span>` : (isVipItem ? `<span class="vip-tag">VIP</span>` : '')}
+          </span>` : tagHtml}
         </button>`;
     };
 
