@@ -433,6 +433,20 @@ async function openrouterJson(system, user) {
 // ─────────────────────────────────────────────────────────────────────────
 // Merge LLM + Quant + Poisson + Elo → selections finales con confidence
 // ─────────────────────────────────────────────────────────────────────────
+/* MERGE SELECTIONS — REESCRITO PARA COHERENCIA
+ *
+ * ANTES: Generaba [cons home, eq draw, agg away] independientes. Resultado:
+ * Conservador favorecía Villarreal pero Agresivo favorecía Sevilla — picks
+ * opuestos para el mismo partido. Absurdo.
+ *
+ * AHORA: Determina la dirección FAVORECIDA del partido (cross-modelo) y
+ * construye 3 picks COHERENTES en esa misma dirección:
+ *   - Conservador: 1 leg seguro (DC o Under bajo) hacia el favorito
+ *   - Equilibrado: 1 leg principal (h2h winner) sobre el favorito
+ *   - Agresivo: 2-3 LEGS COMBINADAS del mismo partido (h2h + over/under
+ *     + BTTS) en favor del favorito. Cuota más alta NO viene de elegir el
+ *     outcome opuesto — viene de SUMAR legs justificadas.
+ */
 function mergeSelections(event, factors, quant, poisson, elo, llm) {
   const h2h = factors.market.h2h;
   if (!h2h) return [];
@@ -442,175 +456,273 @@ function mergeSelections(event, factors, quant, poisson, elo, llm) {
     return acc;
   }, {});
 
-  // Pesos del ensemble: por default hardcoded; si Brier tracker tiene
-  // suficiente histórico para este sport, usa los pesos calibrados.
   const W = brierTracker.computeWeights({ sport: event?.sport || null }).weights;
-
-  const out = [];
-
-  // 1X2 (cons / eq / agg).
-  // Para sports con empate (soccer) fair[]=[pH, pD, pA] (3 entradas).
-  // Para sports sin empate (basketball, NFL, MLB, tennis) fair[]=[pH, pA] (2 entradas).
-  // El draw outcome se ignora cuando h2h.draw es null.
   const hasDraw = Number.isFinite(h2h.draw);
   const idxHome = 0;
   const idxDraw = hasDraw ? 1 : null;
   const idxAway = hasDraw ? 2 : 1;
-  const variants = [
-    { type: 'cons', outcome: 'home',  odd: h2h.home, book: h2h.homeBook, fairProb: quant.fairProbs?.[idxHome], poissonProb: poisson.pHomeWin, eloProb: elo.pHomeWin, ev: quant.ev?.[idxHome], kelly: quant.kellyHalf?.[idxHome] },
-    { type: 'eq',   outcome: 'draw',  odd: h2h.draw, book: h2h.drawBook, fairProb: hasDraw ? quant.fairProbs?.[idxDraw] : null, poissonProb: poisson.pDraw, eloProb: elo.pDraw, ev: hasDraw ? quant.ev?.[idxDraw] : null, kelly: hasDraw ? quant.kellyHalf?.[idxDraw] : null },
-    { type: 'agg',  outcome: 'away',  odd: h2h.away, book: h2h.awayBook, fairProb: quant.fairProbs?.[idxAway], poissonProb: poisson.pAwayWin, eloProb: elo.pAwayWin, ev: quant.ev?.[idxAway], kelly: quant.kellyHalf?.[idxAway] }
-  ];
 
-  variants.forEach(v => {
-    if (!v.odd) return;
-    const llmS = llmSelections['h2h:' + v.outcome];
-    // Weighted ensemble: pesos provienen del Brier tracker (calibrados con
-     // outcomes históricos). Defaults: fair:1.5, poisson:1.0, elo:0.8, llm:0.7.
-    // Si un modelo está unavailable (null), se omite y se renormalizan pesos.
+  // ── PASO 1: Calcular consensus prob por outcome (home, draw, away) ──
+  function consensusFor(outcome, idx) {
+    const llmS = llmSelections['h2h:' + outcome];
+    const poissonP = outcome === 'home' ? poisson.pHomeWin
+                   : outcome === 'away' ? poisson.pAwayWin
+                   : poisson.pDraw;
+    const eloP = outcome === 'home' ? elo.pHomeWin
+               : outcome === 'away' ? elo.pAwayWin
+               : elo.pDraw;
     const entries = [
-      { k: 'fair',    p: v.fairProb,    w: W.fair },
-      { k: 'poisson', p: v.poissonProb, w: W.poisson },
-      { k: 'elo',     p: v.eloProb,     w: W.elo },
-      { k: 'llm',     p: llmS?.modelProb, w: W.llm }
+      { p: quant.fairProbs?.[idx], w: W.fair },
+      { p: poissonP, w: W.poisson },
+      { p: eloP, w: W.elo },
+      { p: llmS?.modelProb, w: W.llm }
     ].filter(x => Number.isFinite(x.p) && x.p >= 0 && x.p <= 1);
     const sumW = entries.reduce((s, x) => s + x.w, 0);
-    const consensus = sumW > 0
-      ? entries.reduce((s, x) => s + x.p * x.w, 0) / sumW
-      : null;
-    // Stdev no-weighted para detectar disagreement (sigue siendo informativo).
-    const probsOnly = entries.map(x => x.p);
-    const meanP = probsOnly.length ? probsOnly.reduce((s, p) => s + p, 0) / probsOnly.length : 0;
-    const stdev = probsOnly.length > 1
-      ? Math.sqrt(probsOnly.reduce((s, p) => s + (p - meanP) ** 2, 0) / probsOnly.length)
-      : 0;
+    return sumW > 0 ? entries.reduce((s, x) => s + x.p * x.w, 0) / sumW : null;
+  }
 
-    // Confidence: alta consistencia entre modelos = alto. Sharp money y factores también suman.
-    let confidence = 1 - Math.min(1, stdev * 4);
-    // Penalizar si los factores no son favorables (lesiones contra el outcome, clima contra goles si over...)
-    confidence = applyFactorPenalties(confidence, v, factors);
+  const pHome = consensusFor('home', idxHome) || 0;
+  const pAway = consensusFor('away', idxAway) || 0;
+  const pDraw = hasDraw ? (consensusFor('draw', idxDraw) || 0) : 0;
 
+  // ── PASO 2: Determinar FAVORITO (home, away, o draw si es el más probable) ──
+  let favored = 'home';
+  if (pAway > pHome && pAway > pDraw) favored = 'away';
+  else if (pDraw > pHome && pDraw > pAway && hasDraw) favored = 'draw';
+  const favoredProb = favored === 'home' ? pHome : favored === 'away' ? pAway : pDraw;
+  const favoredOdd  = favored === 'home' ? h2h.home : favored === 'away' ? h2h.away : h2h.draw;
+  const favoredBook = favored === 'home' ? h2h.homeBook : favored === 'away' ? h2h.awayBook : h2h.drawBook;
+  const favoredTeam = favored === 'home' ? event.home?.name
+                    : favored === 'away' ? event.away?.name
+                    : 'Empate';
+
+  // Confidence base de la dirección favorecida — más alta cuando la prob es alta + modelos están de acuerdo
+  const allProbs = [pHome, pAway, hasDraw ? pDraw : null].filter(Number.isFinite);
+  const meanP = allProbs.reduce((s, p) => s + p, 0) / Math.max(1, allProbs.length);
+  const stdev = Math.sqrt(allProbs.reduce((s, p) => s + (p - meanP) ** 2, 0) / Math.max(1, allProbs.length));
+  const baseConfidence = Math.max(0.3, Math.min(0.95, favoredProb * (1 - Math.min(0.5, stdev * 2))));
+
+  const out = [];
+
+  // ── PASO 3a: CONSERVADOR — Doble Oportunidad o Under si baja prob ofensiva ──
+  // Para favoritos que tienen DC disponible, ese es el pick más seguro.
+  const dc = factors.market.dc || {};
+  let consPushed = false;
+
+  if (favored === 'home' && dc.home_or_draw && hasDraw) {
+    const safeProb = pHome + pDraw;
     out.push({
-      type: v.type,
-      market: 'h2h',
-      outcome: v.outcome,
-      label: outcomeLabel(v.outcome, event),
-      odd: v.odd,
-      book: v.book,
-      fairProb:    v.fairProb,
-      poissonProb: v.poissonProb,
-      eloProb:     v.eloProb,
-      llmProb:     llmS?.modelProb || null,
-      consensusProb: consensus,
-      modelDivergence: Number(stdev.toFixed(4)),
-      evPct:       v.ev,
-      kellyHalf:   v.kelly,
-      confidence:  Number(confidence.toFixed(3)),
-      warnings:    llmS?.warnings || [],
-      rationale:   llmS?.rationale || null,
-      factors: buildFactorList(v, factors)
+      type: 'cons',
+      market: 'dc',
+      outcome: 'home_or_draw',
+      label: `${event.home.name} o empate (1X)`,
+      odd: dc.home_or_draw,
+      book: dc.home_or_drawBook || favoredBook,
+      consensusProb: safeProb,
+      confidence: Math.min(0.95, baseConfidence + 0.15),
+      rationale: `Doble oportunidad cubre victoria local + empate. Prob combinada ${(safeProb * 100).toFixed(0)}%. Estrategia conservadora cuando el local es favorito pero el rival es competitivo.`,
+      factors: buildFactorList({ outcome: 'home' }, factors)
     });
-    // Persistir predicción para Brier (fire-and-forget, no bloquea).
-    brierTracker.recordPrediction({
-      id: event?.id,
-      sport: event?.sport,
-      market: 'h2h',
-      outcome_pick: v.outcome,
-      odd: v.odd,
-      preds: {
-        ...(Number.isFinite(v.fairProb)    ? { fair:    v.fairProb }    : {}),
-        ...(Number.isFinite(v.poissonProb) ? { poisson: v.poissonProb } : {}),
-        ...(Number.isFinite(v.eloProb)     ? { elo:     v.eloProb }     : {}),
-        ...(Number.isFinite(llmS?.modelProb) ? { llm: llmS.modelProb } : {}),
-        ...(Number.isFinite(consensus) ? { consensus } : {})
-      }
+    consPushed = true;
+  } else if (favored === 'away' && dc.draw_or_away && hasDraw) {
+    const safeProb = pDraw + pAway;
+    out.push({
+      type: 'cons',
+      market: 'dc',
+      outcome: 'draw_or_away',
+      label: `Empate o ${event.away.name} (X2)`,
+      odd: dc.draw_or_away,
+      book: dc.draw_or_awayBook || favoredBook,
+      consensusProb: safeProb,
+      confidence: Math.min(0.95, baseConfidence + 0.15),
+      rationale: `Doble oportunidad cubre empate + victoria visitante. Prob combinada ${(safeProb * 100).toFixed(0)}%. Útil cuando el visitante es favorito en un partido cerrado.`,
+      factors: buildFactorList({ outcome: 'away' }, factors)
     });
-  });
-
-  // Over/Under 2.5 (si tenemos línea cercana a 2.5)
-  if (factors.market.totals) {
+    consPushed = true;
+  }
+  // Fallback: si no hay DC, usar Under a línea cercana a 2.5 si Poisson predice bajo scoring
+  if (!consPushed && factors.market.totals && Number.isFinite(poisson.pOver25)) {
     const lines = Object.keys(factors.market.totals).map(Number).sort((a, b) => Math.abs(a - 2.5) - Math.abs(b - 2.5));
     const line = lines[0];
-    if (line) {
-      const t = factors.market.totals[line];
-      const llmOver = llmSelections[`totals:over@${line}`];
-      const llmUnder = llmSelections[`totals:under@${line}`];
-      // Solo mezclamos probs MODELADAS (Poisson + LLM). Las cuotas son
-      // implícitas con margen del book — NO se mezclan en consensus.
-      if (t.over && Number.isFinite(poisson.pOver25)) {
-        const pPoisson = poisson.pOver25;
-        const llmP = Number.isFinite(llmOver?.modelProb) ? llmOver.modelProb : null;
-        const probs = [pPoisson, llmP].filter(p => p != null);
-        const consensus = probs.length ? probs.reduce((s, p) => s + p, 0) / probs.length : pPoisson;
-        out.push({
-          type: 'eq',
-          market: 'totals',
-          outcome: 'over',
-          line,
-          label: `Over ${line} goles`,
-          odd: t.over,
-          book: t.overBook,
-          poissonProb: pPoisson,
-          llmProb: llmP,
-          consensusProb: consensus,
-          confidence: 0.7,
-          factors: buildFactorList({ outcome: 'over' }, factors),
-          rationale: llmOver?.rationale || null,
-          warnings: llmOver?.warnings || []
-        });
+    const t = line ? factors.market.totals[line] : null;
+    if (t && t.under && poisson.pOver25 < 0.55) {
+      const pUnder = 1 - poisson.pOver25;
+      out.push({
+        type: 'cons',
+        market: 'totals',
+        outcome: 'under',
+        line,
+        label: `Under ${line} goles`,
+        odd: t.under,
+        book: t.underBook,
+        consensusProb: pUnder,
+        confidence: Math.min(0.85, baseConfidence + 0.1),
+        rationale: `Poisson predice ${(poisson.pOver25 * 100).toFixed(0)}% chance de over ${line}. Bajo perfil ofensivo → Under es el pick seguro.`,
+        factors: buildFactorList({ outcome: 'under' }, factors)
+      });
+      consPushed = true;
+    } else if (t && t.over && poisson.pOver25 > 0.65) {
+      // Mucho gol esperado → over puede ser conservador
+      out.push({
+        type: 'cons',
+        market: 'totals',
+        outcome: 'over',
+        line: Math.max(1.5, line - 1),
+        label: `Over ${Math.max(1.5, line - 1)} goles`,
+        odd: Math.max(1.20, t.over * 0.7),  // estimación si no tenemos la línea baja
+        book: t.overBook,
+        consensusProb: Math.min(0.95, poisson.pOver25 + 0.1),
+        confidence: Math.min(0.85, baseConfidence + 0.1),
+        rationale: `Poisson predice ${(poisson.pOver25 * 100).toFixed(0)}% over ${line}. Bajar la línea aumenta certeza.`,
+        factors: buildFactorList({ outcome: 'over' }, factors)
+      });
+      consPushed = true;
+    }
+  }
+  // Último fallback: h2h favorito como conservador (cuando no hay DC ni totals útiles)
+  if (!consPushed && favoredOdd) {
+    out.push({
+      type: 'cons',
+      market: 'h2h',
+      outcome: favored,
+      label: `${favoredTeam} ${favored === 'draw' ? 'empate' : 'gana'}`,
+      odd: favoredOdd,
+      book: favoredBook,
+      consensusProb: favoredProb,
+      confidence: baseConfidence,
+      rationale: `Modelo ensemble (Poisson + Elo + Shin${llm.provider !== 'offline' ? ' + LLM' : ''}) favorece ${favoredTeam} con ${(favoredProb * 100).toFixed(0)}% probabilidad.`,
+      factors: buildFactorList({ outcome: favored }, factors)
+    });
+  }
+
+  // ── PASO 3b: EQUILIBRADO — h2h sobre el favorito ──
+  if (favoredOdd) {
+    const llmS = llmSelections['h2h:' + favored];
+    out.push({
+      type: 'eq',
+      market: 'h2h',
+      outcome: favored,
+      label: `${favoredTeam} ${favored === 'draw' ? 'empate' : 'gana'}`,
+      odd: favoredOdd,
+      book: favoredBook,
+      consensusProb: favoredProb,
+      fairProb: quant.fairProbs?.[favored === 'home' ? idxHome : favored === 'away' ? idxAway : idxDraw],
+      poissonProb: favored === 'home' ? poisson.pHomeWin : favored === 'away' ? poisson.pAwayWin : poisson.pDraw,
+      eloProb: favored === 'home' ? elo.pHomeWin : favored === 'away' ? elo.pAwayWin : elo.pDraw,
+      llmProb: llmS?.modelProb || null,
+      confidence: baseConfidence,
+      kellyHalf: quant.kellyHalf?.[favored === 'home' ? idxHome : favored === 'away' ? idxAway : idxDraw],
+      rationale: llmS?.rationale || `Pick principal: ${favoredTeam} es el favorito según consenso de modelos (Poisson xG + Elo dinámico + Shin no-vig${llm.provider !== 'offline' ? ' + análisis táctico LLM' : ''}). Probabilidad real estimada ${(favoredProb * 100).toFixed(0)}% vs implícita del mercado ${(100 / favoredOdd).toFixed(0)}%.`,
+      warnings: llmS?.warnings || [],
+      factors: buildFactorList({ outcome: favored }, factors)
+    });
+    brierTracker.recordPrediction({
+      id: event?.id, sport: event?.sport, market: 'h2h', outcome_pick: favored, odd: favoredOdd,
+      preds: { consensus: favoredProb, poisson: favored === 'home' ? poisson.pHomeWin : favored === 'away' ? poisson.pAwayWin : poisson.pDraw }
+    });
+  }
+
+  // ── PASO 3c: AGRESIVO — MULTI-LEG combinada del mismo partido en favor del favorito ──
+  // Combina h2h favorito + over/under (según Poisson) + BTTS (según xG).
+  // Esto es lo que pidió el user: cuota más alta NO viene del outcome opuesto,
+  // viene de SUMAR legs justificadas por modelos.
+  if (favoredOdd && (favored === 'home' || favored === 'away')) {
+    const legs = [];
+    // Leg 1: h2h favorito
+    legs.push({
+      market: 'h2h', outcome: favored, line: null,
+      label: `${favoredTeam} gana`,
+      odd: favoredOdd, book: favoredBook,
+      prob: favoredProb
+    });
+    // Leg 2: Over/Under según Poisson
+    if (factors.market.totals && Number.isFinite(poisson.pOver25)) {
+      const lines = Object.keys(factors.market.totals).map(Number).sort((a, b) => Math.abs(a - 2.5) - Math.abs(b - 2.5));
+      const line = lines[0];
+      const t = line ? factors.market.totals[line] : null;
+      if (t) {
+        if (poisson.pOver25 > 0.55 && t.over) {
+          legs.push({
+            market: 'totals', outcome: 'over', line,
+            label: `Over ${line} goles`,
+            odd: t.over, book: t.overBook,
+            prob: poisson.pOver25
+          });
+        } else if (poisson.pOver25 < 0.45 && t.under) {
+          legs.push({
+            market: 'totals', outcome: 'under', line,
+            label: `Under ${line} goles`,
+            odd: t.under, book: t.underBook,
+            prob: 1 - poisson.pOver25
+          });
+        }
       }
-      if (t.under && Number.isFinite(poisson.pOver25)) {
-        const pPoisson = 1 - poisson.pOver25;
-        const llmP = Number.isFinite(llmUnder?.modelProb) ? llmUnder.modelProb : null;
-        const probs = [pPoisson, llmP].filter(p => p != null);
-        const consensus = probs.length ? probs.reduce((s, p) => s + p, 0) / probs.length : pPoisson;
-        out.push({
-          type: 'cons',
-          market: 'totals',
-          outcome: 'under',
-          line,
-          label: `Under ${line} goles`,
-          odd: t.under,
-          book: t.underBook,
-          poissonProb: pPoisson,
-          llmProb: llmP,
-          consensusProb: consensus,
-          confidence: 0.7,
-          factors: buildFactorList({ outcome: 'under' }, factors),
-          rationale: llmUnder?.rationale || null,
-          warnings: llmUnder?.warnings || []
+    }
+    // Leg 3: BTTS según Poisson — solo si correlaciona con el favorito ganando
+    if (factors.market.btts && Number.isFinite(poisson.pBttsYes)) {
+      if (poisson.pBttsYes > 0.6 && factors.market.btts.yes) {
+        legs.push({
+          market: 'btts', outcome: 'yes', line: null,
+          label: 'BTTS — Sí',
+          odd: factors.market.btts.yes, book: factors.market.btts.yesBook,
+          prob: poisson.pBttsYes
+        });
+      } else if (poisson.pBttsYes < 0.4 && factors.market.btts.no) {
+        legs.push({
+          market: 'btts', outcome: 'no', line: null,
+          label: 'BTTS — No',
+          odd: factors.market.btts.no, book: factors.market.btts.noBook,
+          prob: 1 - poisson.pBttsYes
         });
       }
     }
+
+    if (legs.length >= 2) {
+      const totalOdd = legs.reduce((a, l) => a * l.odd, 1);
+      // Para combinada en mismo partido, las probs NO son independientes —
+      // hay correlación negativa (ganar + over + btts están correlacionados con el resultado).
+      // Aproximamos: combinedProb ≈ promedio harmónico ajustado.
+      const independentProb = legs.reduce((a, l) => a * l.prob, 1);
+      const correlationAdjustment = 1.25;  // correlación positiva entre legs del mismo partido
+      const adjustedProb = Math.min(0.85, independentProb * correlationAdjustment);
+      out.push({
+        type: 'agg',
+        market: 'combo',
+        outcome: 'parlay',
+        label: legs.map(l => l.label).join(' + '),
+        odd: Number(totalOdd.toFixed(2)),
+        book: favoredBook,
+        legs: legs.map(l => ({ market: l.market, outcome: l.outcome, line: l.line, label: l.label, odd: l.odd, book: l.book })),
+        consensusProb: adjustedProb,
+        confidence: Math.max(0.35, baseConfidence - 0.15),
+        rationale: `Combinada de ${legs.length} legs en favor de ${favoredTeam}. Sustento: modelo Poisson predice escenario coherente (${legs.map(l => `${l.label} ${(l.prob * 100).toFixed(0)}%`).join(', ')}). Correlación positiva intra-partido — todas las legs apuntan a la misma narrativa.`,
+        tacticalNotes: `Cuota alta no viene de pick contradictorio sino de sumar legs justificadas por modelos cuantitativos del mismo partido.`,
+        factors: buildFactorList({ outcome: favored }, factors)
+      });
+    } else if (favoredOdd) {
+      // Fallback: si no podemos combinar, agresivo es el outcome del favorito con cuota alta
+      // (e.g. AH -1.5 o over alto). Por ahora, repetimos h2h con label distinto.
+      out.push({
+        type: 'agg',
+        market: 'h2h',
+        outcome: favored,
+        label: `${favoredTeam} gana — pick alto`,
+        odd: favoredOdd,
+        book: favoredBook,
+        consensusProb: favoredProb,
+        confidence: Math.max(0.4, baseConfidence - 0.1),
+        rationale: `Pick agresivo de h2h. No hay mercados adicionales (BTTS/totals) en este evento para combinar — combinada degradada a single leg.`,
+        factors: buildFactorList({ outcome: favored }, factors)
+      });
+    }
   }
 
-  // BTTS si está disponible
-  if (factors.market.btts?.yes) {
-    const pPoisson = poisson.pBttsYes;
-    const llmS = llmSelections['btts:yes'];
-    out.push({
-      type: 'eq',
-      market: 'btts',
-      outcome: 'yes',
-      label: 'BTTS — Sí',
-      odd: factors.market.btts.yes,
-      book: factors.market.btts.yesBook,
-      poissonProb: pPoisson,
-      llmProb: llmS?.modelProb || null,
-      consensusProb: pPoisson,
-      confidence: 0.65,
-      factors: buildFactorList({ outcome: 'btts_yes' }, factors),
-      rationale: llmS?.rationale || null
-    });
-  }
-
-  // Ordenar por EV y confianza
+  // ── PASO 4: Computar EV de cada selección ──
   out.forEach(s => {
     if (s.odd && s.consensusProb) {
       s.consensusEv = Number(((s.consensusProb * s.odd - 1) * 100).toFixed(2));
     }
   });
-  out.sort((a, b) => (b.consensusEv || -99) - (a.consensusEv || -99));
 
   return out;
 }

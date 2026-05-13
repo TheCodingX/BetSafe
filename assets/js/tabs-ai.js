@@ -200,7 +200,13 @@
   function pickAnalysisCard(analysis) {
     const ev = analysis.event;
     const f = analysis.factors || {};
-    const sel = (analysis.selections || []).slice(0, 3);
+    // Ordenar: cons → eq → agg (no por EV) para que el card siempre muestre
+    // la triada coherente: Conservador / Equilibrado / Agresivo.
+    const typeOrder = { cons: 0, eq: 1, agg: 2 };
+    const sel = (analysis.selections || [])
+      .slice()
+      .sort((a, b) => (typeOrder[a.type] ?? 9) - (typeOrder[b.type] ?? 9))
+      .slice(0, 3);
     const homeLogo = window.BSLogos?.teamCrest ? BSLogos.teamCrest(ev.home.id, { size: 28, name: ev.home.name, sport: ev.sport }) : BSIcons.teamLogo(ev.home, { size: 28, sport: ev.sport });
     const awayLogo = window.BSLogos?.teamCrest ? BSLogos.teamCrest(ev.away.id, { size: 28, name: ev.away.name, sport: ev.sport }) : BSIcons.teamLogo(ev.away, { size: 28, sport: ev.sport });
     const leagueLogo = window.BSLogos?.leagueLogo ? BSLogos.leagueLogo(ev.league, { size: 14 }) : '';
@@ -262,13 +268,26 @@
       market: s.market, outcome: s.outcome, line: s.line
     });
 
+    // Si es combo multi-leg (agresivo), renderizar legs por separado.
+    const isCombo = s.market === 'combo' && Array.isArray(s.legs) && s.legs.length > 1;
+    const legsHtml = isCombo ? `
+      <div class="ai-combo-legs" style="background:rgba(212,160,23,0.06);border-left:2px solid var(--gold-700,#c49a1a);padding:8px 10px;border-radius:6px;margin:6px 0">
+        <strong class="tiny" style="color:var(--gold-700,#c49a1a);display:block;margin-bottom:4px">⚡ Combinada ${s.legs.length} legs</strong>
+        ${s.legs.map((l, i) => `
+          <div class="row between tiny" style="padding:3px 0${i < s.legs.length - 1 ? ';border-bottom:1px dashed rgba(0,0,0,0.06)' : ''}">
+            <span><strong>${i + 1}.</strong> ${BSUI.esc(l.label)}</span>
+            <strong class="num">${l.odd?.toFixed?.(2) || '—'}</strong>
+          </div>
+        `).join('')}
+      </div>` : '';
+
     return `
-      <div class="ai-pick" data-type="${s.type}">
+      <div class="ai-pick" data-type="${s.type}"${isCombo ? ' data-combo="1"' : ''}>
         <div class="row between">
-          <span class="risk-pill ${typeClass}">${typeLabel}</span>
+          <span class="risk-pill ${typeClass}">${typeLabel}${isCombo ? ` · ${s.legs.length} legs` : ''}</span>
           <span class="badge badge-${confClass} tiny" title="Confidence basado en consistencia entre Shin/Poisson/Elo/IA">Conf ${(conf*100).toFixed(0)}%</span>
         </div>
-        <strong style="display:block;margin:8px 0">${BSUI.esc(s.label || s.outcome)}</strong>
+        ${isCombo ? legsHtml : `<strong style="display:block;margin:8px 0">${BSUI.esc(s.label || s.outcome)}</strong>`}
         <div class="cluster" style="justify-content:space-between;align-items:baseline">
           <strong class="num text-brand" style="font-size:1.4rem">${s.odd?.toFixed?.(2) || '—'}</strong>
           <span class="cluster tiny">${bookLogo}<span class="muted">${BSUI.esc(bookName(s.book))}</span></span>

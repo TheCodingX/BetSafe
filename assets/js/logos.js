@@ -135,9 +135,9 @@
       //  ita.1, ger.1, fra.1, por.1, ned.1, uefa.champions/europa).
       // Keys son nombres normalizados (sin acentos, sin spaces, lowercase).
       // Match flexible vía buildTeamLookup() en teamCrest().
-    1fcheidenheim1846: 'https://a.espncdn.com/i/teamlogos/soccer/500/6418.png',
-    1fcunionberlin: 'https://a.espncdn.com/i/teamlogos/soccer/500/598.png',
-    2demayo: 'https://a.espncdn.com/i/teamlogos/soccer/500/6097.png',
+    '1fcheidenheim1846': 'https://a.espncdn.com/i/teamlogos/soccer/500/6418.png',
+    '1fcunionberlin': 'https://a.espncdn.com/i/teamlogos/soccer/500/598.png',
+    '2demayo': 'https://a.espncdn.com/i/teamlogos/soccer/500/6097.png',
     abb: 'https://a.espncdn.com/i/teamlogos/soccer/500/130875.png',
     academiapuertocabello: 'https://a.espncdn.com/i/teamlogos/soccer/500/18995.png',
     acassuso: 'https://a.espncdn.com/i/teamlogos/soccer/500/10145.png',
