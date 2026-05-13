@@ -563,7 +563,7 @@ async function groqJson(system, user) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GROQ_KEY}` },
     body: JSON.stringify({
-      model: process.env.BS_GROQ_MODEL || 'llama-3.3-70b-versatile',
+      model: GROQ_MODEL,
       messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
       temperature: 0.4,
       response_format: { type: 'json_object' },
@@ -589,7 +589,7 @@ async function groqJsonGeneric(systemPrompt, userPrompt, opts = {}) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GROQ_KEY}` },
     body: JSON.stringify({
-      model: process.env.BS_GROQ_MODEL || 'llama-3.3-70b-versatile',
+      model: GROQ_MODEL,
       messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
       temperature: opts.temperature ?? 0.3,
       response_format: { type: 'json_object' },
