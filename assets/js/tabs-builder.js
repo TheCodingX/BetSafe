@@ -126,31 +126,46 @@
     }
 
     function matchCard(m) {
-      const books = Object.entries(m.markets.h2h);
-      const bestH = books.reduce((a, [k, b]) => b.home > a.v ? { v: b.home, book: k } : a, { v: 0, book: '' });
-      const bestD = books.reduce((a, [k, b]) => (b.draw || 0) > a.v ? { v: b.draw, book: k } : a, { v: 0, book: '' });
-      const bestA = books.reduce((a, [k, b]) => b.away > a.v ? { v: b.away, book: k } : a, { v: 0, book: '' });
-      const mkLeg = (label, odd) => JSON.stringify({ matchId: m.id, label, odd, home: m.home.name, away: m.away.name });
+      // Filtrar cuotas <= 1.01 (inválidas / no cargadas). Booklas con cuotas
+      // 0.00 no aparecen como opciones — el user pidió: 'si no carga, no la pongas'.
+      const books = Object.entries(m.markets.h2h || {})
+        .filter(([_, b]) => Number(b?.home) > 1.01 || Number(b?.away) > 1.01);
+      if (!books.length) return '';   // skip event sin cuotas válidas
+      const validHome = books.filter(([_, b]) => Number(b?.home) > 1.01);
+      const validDraw = books.filter(([_, b]) => Number(b?.draw) > 1.01);
+      const validAway = books.filter(([_, b]) => Number(b?.away) > 1.01);
+      const bestH = validHome.length ? validHome.reduce((a, [k, b]) => b.home > a.v ? { v: b.home, book: k } : a, { v: 0, book: '' }) : null;
+      const bestD = validDraw.length ? validDraw.reduce((a, [k, b]) => b.draw > a.v ? { v: b.draw, book: k } : a, { v: 0, book: '' }) : null;
+      const bestA = validAway.length ? validAway.reduce((a, [k, b]) => b.away > a.v ? { v: b.away, book: k } : a, { v: 0, book: '' }) : null;
+      // Si no hay ni home ni away válidos, no mostramos card
+      if (!bestH && !bestA) return '';
+      const mkLeg = (label, odd, market, outcome, book) => JSON.stringify({
+        matchId: m.id, eventId: m.id, label, odd,
+        home: m.home.name, away: m.away.name,
+        market: market || 'h2h', outcome, book
+      });
       const bookName = k => (BSData.ALL_BOOKS.find(b => b.key === k)?.name) || k;
+      const homeTeamLogo = window.BSLogos?.teamCrest ? BSLogos.teamCrest(m.home.id, { size: 22, name: m.home.name, sport: m.sport }) : BSIcons.teamLogo(m.home, { size: 22, sport: m.sport });
+      const awayTeamLogo = window.BSLogos?.teamCrest ? BSLogos.teamCrest(m.away.id, { size: 22, name: m.away.name, sport: m.sport }) : BSIcons.teamLogo(m.away, { size: 22, sport: m.sport });
       return `
         <div class="match">
           <div class="teams">
-            <div class="cluster">${BSIcons.teamLogo(m.home, { size: 22, sport: m.sport })}<strong class="name">${BSUI.esc(m.home.name)}</strong></div>
-            <div class="cluster">${BSIcons.teamLogo(m.away, { size: 22, sport: m.sport })}<strong class="name">${BSUI.esc(m.away.name)}</strong></div>
-            <div class="muted tiny">${BSUI.esc(m.leagueName)} · ${BSUI.dt(m.start)}</div>
+            <div class="cluster">${homeTeamLogo}<strong class="name">${BSUI.esc(m.home.name)}</strong></div>
+            <div class="cluster">${awayTeamLogo}<strong class="name">${BSUI.esc(m.away.name)}</strong></div>
+            <div class="muted tiny">${BSUI.esc(m.leagueName || '')} · ${BSUI.dt(m.start)}</div>
           </div>
-          <button class="odd best" data-add='${mkLeg(m.home.name + ' gana', bestH.v)}'>
+          ${bestH ? `<button class="odd best" data-add='${mkLeg(m.home.name + ' gana', bestH.v, 'h2h', 'home', bestH.book)}'>
             <span class="odd-num num">${bestH.v.toFixed(2)}</span>
             <span class="odd-book">${window.BSLogos?BSLogos.bookLogo(bestH.book,{size:14}):''}<span class="small">${BSUI.esc(bookName(bestH.book))}</span></span>
-          </button>
-          ${bestD.v ? `<button class="odd" data-add='${mkLeg('Empate', bestD.v)}'>
+          </button>` : ''}
+          ${bestD ? `<button class="odd" data-add='${mkLeg('Empate', bestD.v, 'h2h', 'draw', bestD.book)}'>
             <span class="odd-num num">${bestD.v.toFixed(2)}</span>
             <span class="odd-book">${window.BSLogos?BSLogos.bookLogo(bestD.book,{size:14}):''}<span class="small">${BSUI.esc(bookName(bestD.book))}</span></span>
           </button>` : ''}
-          <button class="odd" data-add='${mkLeg(m.away.name + ' gana', bestA.v)}'>
+          ${bestA ? `<button class="odd" data-add='${mkLeg(m.away.name + ' gana', bestA.v, 'h2h', 'away', bestA.book)}'>
             <span class="odd-num num">${bestA.v.toFixed(2)}</span>
             <span class="odd-book">${window.BSLogos?BSLogos.bookLogo(bestA.book,{size:14}):''}<span class="small">${BSUI.esc(bookName(bestA.book))}</span></span>
-          </button>
+          </button>` : ''}
         </div>`;
     }
 
@@ -185,37 +200,82 @@
         aiBtn.title = slip.legs.length < 2 ? 'Necesitás al menos 2 legs para analizar' : 'Análisis IA de la combinada';
       }
 
-      // Best book overall (sum of legs by book)
+      // Best book overall: ranking REAL de las 6 casas argentinas que cubren TODAS las legs
       const bestHost = panel.querySelector('#bBestBook');
       if (!slip.legs.length) { bestHost.innerHTML = '<span class="muted tiny">Mejor casa para tu combinada aparecerá acá.</span>'; return; }
-      const bestBook = computeBestBookForCombo(matches, slip.legs);
-      if (bestBook) {
-        bestHost.innerHTML = `<div class="row between"><div><strong>Mejor casa</strong><div class="muted tiny">paga la combinada total</div></div><div class="cluster">${BSIcons.bookLogo(bestBook.book, { size: 22 })}<strong>${bestBook.book.name}</strong><span class="badge badge-success num">${bestBook.totalOdd.toFixed(2)}</span></div></div>`;
-      } else {
-        bestHost.innerHTML = '<span class="muted tiny">Las cuotas de tus legs son externas al comparador.</span>';
+      const ranking = computeBestBookForCombo(matches, slip.legs);
+      if (!ranking.length) {
+        bestHost.innerHTML = '<span class="muted tiny">Ninguna casa argentina cubre todas las legs de esta combinada.</span>';
+        return;
       }
+      const winner = ranking[0];
+      const winnerLogo = window.BSLogos?.bookLogo ? BSLogos.bookLogo(winner.book.key, { size: 26 }) : '';
+      // Top 1 (winner) + hasta 2 más para comparar (Top 3)
+      const others = ranking.slice(1, 3).map(r => {
+        const lg = window.BSLogos?.bookLogo ? BSLogos.bookLogo(r.book.key, { size: 18 }) : '';
+        const diff = winner.totalOdd - r.totalOdd;
+        const diffPct = (diff / winner.totalOdd * 100);
+        return `<div class="bb-row">
+          <span class="cluster">${lg}<span>${BSUI.esc(r.book.name)}</span></span>
+          <span class="cluster"><strong class="num">${r.totalOdd.toFixed(2)}</strong><span class="muted tiny">−${diffPct.toFixed(1)}%</span></span>
+        </div>`;
+      }).join('');
+      bestHost.innerHTML = `
+        <div class="bb-winner">
+          <div class="bb-winner__head">
+            <div>
+              <span class="muted tiny">Mejor casa para esta combinada</span>
+              <div class="bb-winner__name">${winnerLogo}<strong>${BSUI.esc(winner.book.name)}</strong></div>
+            </div>
+            <div class="bb-winner__odd">
+              <span class="badge badge-success num">${winner.totalOdd.toFixed(2)}</span>
+              <span class="muted tiny">${winner.coveredLegs}/${slip.legs.length} legs cubiertas</span>
+            </div>
+          </div>
+          ${others ? `<div class="bb-others">${others}</div>` : ''}
+        </div>`;
     }
 
     function computeBestBookForCombo(matches, legs) {
-      // For each book, compute product of odds for each leg if available
-      const totals = {};
+      // Para cada casa AR, multiplicamos las cuotas reales de cada leg en ESA casa.
+      // Si la casa no cubre alguna leg (mercado no listado), contamos solo las cubiertas
+      // y reportamos coveredLegs para que el usuario sepa la cobertura.
+      const live = BSData.liveEvents({}) || [];
+      const ranking = [];
       BSData.BOOKS_AR.forEach(book => {
-        let prod = 1, valid = true;
+        let prod = 1, coveredLegs = 0;
         for (const l of legs) {
-          const m = matches.find(x => x.id === l.matchId);
-          if (!m) { valid = false; break; }
-          const o = m.markets.h2h[book.key];
-          if (!o) { valid = false; break; }
-          // Map label heuristically
-          const odd = l.label.includes(m.home.name) ? o.home : (l.label.includes(m.away.name) ? o.away : (o.draw || o.home));
-          prod *= odd;
+          // Buscar el evento en el live feed (fuente de verdad)
+          const ev = live.find(e => e.id === (l.matchId || l.eventId)) ||
+                     matches.find(x => x.id === (l.matchId || l.eventId));
+          if (!ev) continue;
+          const market = l.market || 'h2h';
+          const outcome = l.outcome || (l.label?.includes(ev.home?.name) ? 'home'
+                                     : l.label?.includes(ev.away?.name) ? 'away'
+                                     : l.label?.toLowerCase().includes('empate') ? 'draw' : null);
+          const marketData = ev.markets?.[market];
+          if (!marketData) continue;
+          const bookOdds = marketData[book.key];
+          if (!bookOdds) continue;
+          const odd = outcome === 'home' ? bookOdds.home
+                    : outcome === 'away' ? bookOdds.away
+                    : outcome === 'draw' ? bookOdds.draw
+                    : null;
+          if (Number.isFinite(odd) && odd > 1.01) {
+            prod *= odd;
+            coveredLegs++;
+          }
         }
-        if (valid) totals[book.key] = prod;
+        if (coveredLegs > 0) {
+          ranking.push({ book, totalOdd: prod, coveredLegs });
+        }
       });
-      const entries = Object.entries(totals);
-      if (!entries.length) return null;
-      const [bk, totalOdd] = entries.reduce((a, b) => a[1] > b[1] ? a : b);
-      return { book: BSData.BOOKS_AR.find(b => b.key === bk), totalOdd };
+      // Ordenar por cuota total DESC, priorizando los que cubren más legs
+      ranking.sort((a, b) => {
+        if (a.coveredLegs !== b.coveredLegs) return b.coveredLegs - a.coveredLegs;
+        return b.totalOdd - a.totalOdd;
+      });
+      return ranking;
     }
 
     panel.querySelector('#bSearch').addEventListener('input', e => { q = e.target.value; renderMatches(); });

@@ -32,11 +32,7 @@
     `;
 
     // ---- Próximos eventos ----
-    const SPORT_LABEL = {
-      soccer: 'Fútbol', basketball: 'Básquet', tennis: 'Tenis',
-      amfootball: 'NFL', hockey: 'Hockey', baseball: 'MLB',
-      mma: 'MMA', boxing: 'Boxeo'
-    };
+    const SPORT_LABEL = (key) => BSData.prettySport(key);
     function whenLabel(ts) {
       const diff = ts - Date.now();
       if (diff < 0) return 'en vivo';
@@ -64,7 +60,7 @@
       const homeCrest = window.BSLogos?.teamCrest ? BSLogos.teamCrest(m.home.id, { size: 28, name: m.home.name, sport: m.sport }) : BSIcons.teamLogo(m.home, { size: 28, sport: m.sport });
       const awayCrest = window.BSLogos?.teamCrest ? BSLogos.teamCrest(m.away.id, { size: 28, name: m.away.name, sport: m.sport }) : BSIcons.teamLogo(m.away, { size: 28, sport: m.sport });
       const leagueLogo = window.BSLogos?.leagueLogo ? BSLogos.leagueLogo(m.league || m.leagueName, { size: 14 }) : '';
-      const sportName = SPORT_LABEL[m.sport] || m.sport;
+      const sportName = SPORT_LABEL(m.sport);
       return `
         <button type="button" class="ov-event-row" style="--i:${i}" data-match-id="${m.id}">
           <div class="ov-event-meta">

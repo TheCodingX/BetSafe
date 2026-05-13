@@ -178,8 +178,8 @@
               <strong class="num" style="font-size:1.1rem">${v.odd.toFixed(2)}</strong>
               <span class="tiny">${BSUI.esc(v.label)}</span>
               <span class="tiny muted">EV: ${((v.odd * v.p - 1) * 100).toFixed(1)}%</span>
-              <span class="cluster" style="gap:3px;font-size:.62rem">
-                ${top3Books(v.odd).map(b => `<span style="display:inline-flex;align-items:center;gap:2px;padding:1px 5px;background:var(--surface);border:1px solid var(--border);border-radius:999px">${window.BSLogos?BSLogos.bookLogo(b.key,{size:12}):''}<span>${BSUI.esc(b.name)}</span></span>`).join('')}
+              <span class="cluster" style="gap:3px;font-size:.62rem;flex-wrap:wrap">
+                ${top3Books(p.match.id, 'h2h', vi===0 ? 'home' : vi===1 ? (p.match.markets?.h2h?.[Object.keys(p.match.markets?.h2h||{})[0]]?.draw ? 'draw' : 'away') : 'away').map(b => `<span style="display:inline-flex;align-items:center;gap:2px;padding:1px 5px;background:var(--surface);border:1px solid var(--border);border-radius:999px">${window.BSLogos?BSLogos.bookLogo(b.key,{size:12}):''}<span>${BSUI.esc(b.name)}</span>${b.odd?`<strong class="num">${b.odd.toFixed(2)}</strong>`:''}</span>`).join('')}
               </span>
               <span class="btn btn-primary btn-sm" style="margin-top:6px;justify-content:center">Apostar</span>
             </button>
@@ -294,10 +294,31 @@
     return ({ soccer:'Fútbol', basketball:'Básquet', tennis:'Tenis', amfootball:'NFL', hockey:'Hockey', baseball:'MLB', mma:'MMA', boxing:'Boxeo' }[s] || s);
   }
 
-  // Top-3 AR books que ofrecen este sport (sin rotación ficticia).
-  function top3Books(_oddIgnored) {
+  // Top-3 AR books REALES que mejor pagan ESTE pick específico.
+  // Si tenemos cuota live del partido para cada casa, ordenamos por la cuota
+  // de ese outcome y devolvemos las 3 mejores. Sin data live, devolvemos
+  // las primeras 3 AR books como fallback.
+  function top3Books(matchId, market, outcome) {
     const ar = (BSData.BOOKS_AR || []);
-    return ar.slice(0, 3);
+    if (!matchId || !outcome) return ar.slice(0, 3);
+    const live = (BSData.liveEvents({}) || []).find(e => e.id === matchId);
+    if (!live?.markets?.[market || 'h2h']) return ar.slice(0, 3);
+    const markets = live.markets[market || 'h2h'];
+    // Cargamos {book, odd} para cada AR book con cuota válida en este outcome
+    const ranked = ar.map(b => {
+      const bookOdds = markets[b.key];
+      if (!bookOdds) return null;
+      const odd = outcome === 'home' ? bookOdds.home
+                : outcome === 'away' ? bookOdds.away
+                : outcome === 'draw' ? bookOdds.draw : null;
+      if (!Number.isFinite(odd) || odd <= 1.01) return null;
+      return { ...b, odd };
+    }).filter(Boolean).sort((a, b) => b.odd - a.odd);
+    if (ranked.length >= 3) return ranked.slice(0, 3);
+    // Si hay menos de 3 reales, completamos con AR books estándar
+    const seen = new Set(ranked.map(r => r.key));
+    const fill = ar.filter(b => !seen.has(b.key)).slice(0, 3 - ranked.length);
+    return [...ranked, ...fill];
   }
 
   function drawEvolution(canvas, values) {

@@ -148,7 +148,9 @@
   }
 
   async function reload(panel, limit) {
-    limit = limit || (BSAuth.isVip() ? 20 : 6);
+    // VIP: hasta 20 picks. Standard: solo 3 (teaser para VIP).
+    const isVip = BSAuth.isVip();
+    limit = limit || (isVip ? 20 : 3);
     if (state.loading) return;
     state.loading = true;
     const host = panel.querySelector('#aiPicks');
@@ -199,7 +201,28 @@
         </div>`;
       return;
     }
-    host.innerHTML = state.picks.map(p => pickAnalysisCard(p)).join('');
+    const isVip = BSAuth.isVip();
+    let html = state.picks.map(p => pickAnalysisCard(p)).join('');
+    // Teaser VIP al final si no-VIP (limit 3) para tentarlo
+    if (!isVip) {
+      html += `
+        <div class="ai-vip-teaser" role="region" aria-label="Más picks para VIP">
+          <div class="ai-vip-teaser__shine" aria-hidden="true"></div>
+          <div class="ai-vip-teaser__content">
+            <span class="badge-vip" style="align-self:flex-start">VIP exclusivo</span>
+            <strong class="ai-vip-teaser__title">Te estás perdiendo <span class="num">17 picks</span> más</strong>
+            <p class="muted tiny" style="max-width:480px">Los miembros VIP ven análisis completo de hasta 20 partidos por día — fútbol europeo top, Libertadores, tenis Grand Slam, NBA y más. Cada pick con factores reales, edge calculado y combinada agresiva.</p>
+            <div class="ai-vip-teaser__features">
+              <span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Hasta 20 picks/día</span>
+              <span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Smart Money en vivo</span>
+              <span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Arbitraje 24/7</span>
+              <span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> BetSafe AI (NLP)</span>
+            </div>
+            <a href="pricing.html" class="btn btn-gold btn-lg mag" style="align-self:flex-start">Pasar a VIP →</a>
+          </div>
+        </div>`;
+    }
+    host.innerHTML = html;
     // Bind clicks de "Ver factores" / "Agregar a slip"
     host.querySelectorAll('[data-add-slip]').forEach(b => b.addEventListener('click', () => {
       const data = JSON.parse(b.dataset.addSlip);

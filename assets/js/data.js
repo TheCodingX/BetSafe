@@ -302,8 +302,60 @@
     CONFEDERATIONS, NATIONS, VENUES, TIMELINE,
     BOOK_MARKET_COVERAGE, TAX_RATES_AR,
 
-    // Datos en vivo (del backend de scraping)
+    // Datos en vivo
     liveEvents, liveReady, liveFreshness, awaitLive,
-    liveSurebets, liveSteam, liveBookStatus
+    liveSurebets, liveSteam, liveBookStatus,
+
+    // ── Helper global: nombres "pretty" para sports/markets/outcomes ──
+    // Reemplaza claves crudas (esports, tabletennis, amfootball, h2h, btts, dc...)
+    // por labels presentables al usuario en cualquier parte de la UI.
+    prettySport: (key) => {
+      const map = {
+        soccer: 'Fútbol', basketball: 'Básquet', tennis: 'Tenis',
+        esports: 'eSports', amfootball: 'Football Americano',
+        hockey: 'Hockey', baseball: 'Béisbol', mma: 'MMA',
+        boxing: 'Boxeo', rugby: 'Rugby', golf: 'Golf',
+        volleyball: 'Vóley', cricket: 'Cricket',
+        tabletennis: 'Tenis de Mesa', 'table-tennis': 'Tenis de Mesa',
+        handball: 'Handball', futsal: 'Futsal',
+        cycling: 'Ciclismo', motorsport: 'Automovilismo',
+        formula1: 'Fórmula 1', f1: 'Fórmula 1', motogp: 'MotoGP',
+        darts: 'Dardos', snooker: 'Snooker', poker: 'Poker',
+        all: 'Todos los deportes'
+      };
+      const k = String(key || '').toLowerCase();
+      return map[k] || (k ? (k.charAt(0).toUpperCase() + k.slice(1)) : '—');
+    },
+    prettyMarket: (key) => {
+      const map = {
+        h2h: 'Ganador del partido', '1x2': '1X2', moneyline: 'Ganador',
+        totals: 'Más / Menos goles', 'over-under': 'Más / Menos',
+        btts: 'Ambos marcan', 'both-teams-score': 'Ambos marcan',
+        dc: 'Doble oportunidad', 'double-chance': 'Doble oportunidad',
+        ah: 'Hándicap asiático', handicap: 'Hándicap', spread: 'Spread',
+        combo: 'Combinada', parlay: 'Combinada', cs: 'Resultado exacto',
+        corners: 'Tiros de esquina', cards: 'Tarjetas',
+        firstScorer: 'Primer goleador', anytime: 'Goleador del partido'
+      };
+      const k = String(key || '').toLowerCase();
+      return map[k] || (k ? (k.charAt(0).toUpperCase() + k.slice(1)) : '');
+    },
+    prettyOutcome: (key, ctx = {}) => {
+      const k = String(key || '').toLowerCase();
+      const home = ctx.home || 'Local', away = ctx.away || 'Visitante';
+      const map = {
+        home: `Gana ${home}`, away: `Gana ${away}`, draw: 'Empate',
+        over: 'Más goles', under: 'Menos goles',
+        yes: 'Sí', no: 'No',
+        home_or_draw: `${home} o empate`,
+        draw_or_away: `Empate o ${away}`,
+        home_or_away: `${home} o ${away} (sin empate)`,
+        home_minus: `${home} -hándicap`,
+        away_plus: `${away} +hándicap`,
+        parlay: 'Combinada',
+        '1': `Gana ${home}`, '2': `Gana ${away}`, 'x': 'Empate'
+      };
+      return map[k] || (k ? (k.charAt(0).toUpperCase() + k.slice(1)) : '');
+    }
   };
 })(window);

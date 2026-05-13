@@ -9796,3 +9796,119 @@ body {
 .sidebar-brand .brand-name {
   line-height: 1;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   AI Picks — Teaser VIP al final (cuando user es Standard)
+   ───────────────────────────────────────────────────────────────────────── */
+.ai-vip-teaser {
+  position: relative;
+  overflow: hidden;
+  border-radius: 18px;
+  padding: 32px;
+  background:
+    linear-gradient(135deg,
+      color-mix(in srgb, var(--gold-500) 10%, transparent),
+      color-mix(in srgb, var(--gold-700, #c49a1a) 6%, transparent)
+    ),
+    var(--surface);
+  border: 1px solid color-mix(in srgb, var(--gold-500) 35%, transparent);
+  margin-top: 8px;
+  box-shadow: 0 12px 32px -16px color-mix(in srgb, var(--gold-500) 50%, transparent);
+}
+.ai-vip-teaser__shine {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg, transparent 30%, color-mix(in srgb, var(--gold-300, #f6d977) 18%, transparent) 50%, transparent 70%);
+  transform: translateX(-100%);
+  animation: ai-vip-shine 6s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes ai-vip-shine {
+  0%, 25%   { transform: translateX(-100%); }
+  50%       { transform: translateX(100%); }
+  50.01%, 100% { transform: translateX(-100%); }
+}
+.ai-vip-teaser__content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.ai-vip-teaser__title {
+  font-size: 1.5rem;
+  letter-spacing: -.01em;
+  line-height: 1.2;
+}
+.ai-vip-teaser__title .num {
+  color: var(--gold-700, #c49a1a);
+  font-variant-numeric: tabular-nums;
+}
+.ai-vip-teaser__features {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 6px 12px;
+  margin: 8px 0 4px;
+  font-size: 0.85rem;
+}
+.ai-vip-teaser__features span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+.ai-vip-teaser__features svg {
+  color: var(--success, #16a34a);
+  flex-shrink: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ai-vip-teaser__shine { animation: none; }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Builder — Best book ranking widget (ganador + top 3 comparativos)
+   ───────────────────────────────────────────────────────────────────────── */
+.bb-winner {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.bb-winner__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--success) 10%, transparent), var(--surface-2));
+  border: 1px solid color-mix(in srgb, var(--success) 28%, transparent);
+  border-radius: 12px;
+}
+.bb-winner__name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 0.96rem;
+}
+.bb-winner__odd {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+.bb-others {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.bb-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  font-size: 0.85rem;
+}
+.bb-row .num { font-variant-numeric: tabular-nums; }
