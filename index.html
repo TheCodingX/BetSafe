@@ -97,12 +97,21 @@
               <span class="cmp-meta-item"><span class="dim">Última actualización:</span><strong id="heroLastUpdate">—</strong></span>
             </div>
           </div>
-          <div class="card card-tinted card-pad-sm" id="heroSurebetCard" style="display:none">
-            <div class="between">
-              <div class="cluster"><span class="dot" style="background:var(--gold-500)"></span><strong>Surebet detectada</strong></div>
-              <span class="badge badge-gold" id="heroSurebetBadge">—</span>
+          <div class="card card-tinted card-pad-sm hero-surebet-gate" id="heroSurebetCard" style="position:relative;overflow:hidden;cursor:pointer" role="button" tabindex="0" aria-label="Surebets VIP — clickear para conocer planes">
+            <div class="hsg-content">
+              <div class="between">
+                <div class="cluster"><span class="dot" style="background:var(--gold-500);animation:pulse-gold 2s ease-in-out infinite"></span><strong>Surebet detectada</strong></div>
+                <span class="badge badge-gold" id="heroSurebetBadge">VIP · +2.8% ROI</span>
+              </div>
+              <div class="dim tiny mt-2" id="heroSurebetDesc">Boca Juniors vs River Plate · Bplay vs Codere</div>
             </div>
-            <div class="dim tiny mt-2" id="heroSurebetDesc">—</div>
+            <div class="hsg-overlay" aria-hidden="true">
+              <div class="hsg-lock">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                <span>Surebets en vivo · VIP</span>
+              </div>
+              <span class="hsg-cta">Desbloquear →</span>
+            </div>
           </div>
         </div>
       </div>
@@ -417,7 +426,7 @@
     </div>
   </section>
 
-  <!-- AI PICK DEL DÍA (no login, server-side cache 30min) -->
+  <!-- AI PICK DEL DÍA -->
   <section id="ai-pick" class="section">
     <div class="container">
       <div class="row between mb-4">
@@ -536,15 +545,6 @@
             <a href="pricing.html" class="btn btn-premium mag">Pasar a VIP</a>
             <a href="features.html#vip" class="btn btn-outline">Ver todo lo VIP</a>
             <span data-ai-status></span>
-          </div>
-        </div>
-        <div class="tilt tilt-glow">
-          <div class="card card-pad-lg" style="background:rgba(255,255,255,.6);backdrop-filter:blur(6px)">
-            <div class="row between mb-3">
-              <strong>Surebets — última hora</strong>
-              <span class="badge badge-success" id="vipSurebetsCount">— detectadas</span>
-            </div>
-            <div class="stack-sm" id="vipSurebets"></div>
           </div>
         </div>
       </div>
@@ -760,6 +760,21 @@ document.addEventListener('DOMContentLoaded', () => {
     const lastUpd = document.getElementById('heroLastUpdate');
     const stateEl = document.getElementById('heroBackendState');
     const sbCard = document.getElementById('heroSurebetCard');
+    // Click handler una sola vez: scroll a sección VIP si no-VIP, dashboard si VIP
+    if (sbCard && !sbCard._gateBound) {
+      sbCard._gateBound = true;
+      sbCard.addEventListener('click', (e) => {
+        const isVip = window.BSAuth?.isVip?.() === true;
+        if (isVip) {
+          window.location.href = 'dashboard.html#arbitrage';
+        } else {
+          const vipSection = document.querySelector('.vip-band, [data-vip-section]') || document.querySelector('section.section .badge-vip')?.closest('section');
+          if (vipSection) vipSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          else window.location.href = 'pricing.html#vip';
+        }
+      });
+      sbCard.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); sbCard.click(); } });
+    }
     if (!card || !window.BSData) return;
     const matches = BSData.liveEvents({})
       .filter(m => m.markets?.h2h && Object.keys(m.markets.h2h).length >= 2)
@@ -817,14 +832,24 @@ document.addEventListener('DOMContentLoaded', () => {
     card.querySelectorAll('.rank-book[data-book]').forEach(el => {
       if (window.BSLogos?.bookLogo) el.innerHTML = BSLogos.bookLogo(el.dataset.book, { size: 26 });
     });
-    // Surebet del backend (si hay)
-    const sbs = BSData.liveSurebets ? BSData.liveSurebets() : [];
-    if (sbs.length && sbCard) {
-      sbCard.style.display = '';
-      sbCard.querySelector('#heroSurebetBadge').textContent = `VIP · ${sbs[0].roi.toFixed(2)}% ROI`;
-      sbCard.querySelector('#heroSurebetDesc').textContent = `${sbs[0].event} · ${(sbs[0].books||[]).join(' vs ')}`;
-    } else if (sbCard) {
-      sbCard.style.display = 'none';
+    // Surebet del backend — el card SIEMPRE está visible (gate blur cuando no-VIP).
+    // Si es VIP y hay surebets reales, populamos con data en vivo (sin blur).
+    if (sbCard) {
+      const isVip = window.BSAuth?.isVip?.() === true;
+      const sbs = BSData.liveSurebets ? BSData.liveSurebets() : [];
+      if (isVip) {
+        sbCard.classList.add('is-vip-mode');
+        if (sbs.length) {
+          sbCard.querySelector('#heroSurebetBadge').textContent = `VIP · +${sbs[0].roi.toFixed(2)}% ROI`;
+          sbCard.querySelector('#heroSurebetDesc').textContent = `${sbs[0].event} · ${(sbs[0].books||[]).join(' vs ')}`;
+        } else {
+          sbCard.querySelector('#heroSurebetBadge').textContent = `VIP · sin oportunidades`;
+          sbCard.querySelector('#heroSurebetDesc').textContent = `Buscando surebets en vivo…`;
+        }
+      } else {
+        // No VIP: mantener teaser blurreado con datos placeholder
+        sbCard.classList.remove('is-vip-mode');
+      }
     }
   }
   /* Throttle global para renders del landing — sin esto, cada bs:live-update
@@ -907,8 +932,6 @@ document.addEventListener('DOMContentLoaded', () => {
   // Builder demo
   buildBuilderDemo();
 
-  // VIP surebets stream
-  buildVipSurebets();
 
   // FAQ
   buildFaq();
@@ -1034,7 +1057,7 @@ async function buildAiPickDaily() {
       </details>` : ''}
 
       <div class="row between" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
-        <span class="muted tiny">Refresca cada 5min · server-side cache</span>
+        <span class="muted tiny">Actualizado en vivo</span>
         <a href="dashboard.html#ai" class="text-brand fw-600 tiny">Ver los ${picks.length} picks completos →</a>
       </div>
     `;
@@ -1155,36 +1178,6 @@ function buildBuilderDemo() {
   });
   document.getElementById('bdStake')?.addEventListener('input', render);
   render();
-}
-
-function buildVipSurebets() {
-  const host = document.getElementById('vipSurebets');
-  const countEl = document.getElementById('vipSurebetsCount');
-  if (!host) return;
-  function render() {
-    const sb = BSData.liveSurebets ? BSData.liveSurebets() : [];
-    if (countEl) {
-      countEl.textContent = sb.length === 0 ? '— detectadas' : `+${sb.length} detectada${sb.length === 1 ? '' : 's'}`;
-      countEl.style.opacity = sb.length === 0 ? 0.6 : 1;
-    }
-    if (!sb.length) {
-      host.innerHTML = `<div class="empty" style="padding:14px"><strong>Esperando surebets en vivo</strong><div class="muted tiny">Cruzamos todas las casas constantemente. Cuando aparece una oportunidad de arbitraje real, te aparece acá automáticamente.</div></div>`;
-      return;
-    }
-    host.innerHTML = sb.slice(0, 4).map(s => `
-      <div class="row between" style="padding:8px;border-bottom:1px solid var(--border)">
-        <div style="min-width:0;flex:1">
-          <strong style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${BSUI.esc(s.event)}</strong>
-          <div class="muted tiny">${(s.books || []).map(BSUI.esc).join(' vs ')}</div>
-        </div>
-        <span class="badge badge-success num" style="flex-shrink:0;margin-left:8px">+${s.roi.toFixed(2)}%</span>
-      </div>
-    `).join('');
-  }
-  render();
-  window.addEventListener('bs:live-surebet', render);
-  window.addEventListener('bs:live-snapshot', render);
-  window.addEventListener('bs:live-update', render);
 }
 
 function buildFaq() {

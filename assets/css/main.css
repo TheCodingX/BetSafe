@@ -6015,15 +6015,20 @@ body {
 .cmp3-row {
   display: grid;
   grid-template-columns: 30px minmax(0, 1fr) auto;
-  gap: 8px;
+  gap: 10px;
   align-items: center;
-  padding: 7px 10px;
+  padding: 8px 14px 8px 12px;        /* +4px de padding derecho para que la cuota no toque el borde */
   border-radius: 10px;
   background: var(--surface-2);
   border: 1px solid transparent;
   transition: background var(--d-fast), border-color var(--d-fast), transform var(--d-fast);
   position: relative;
   min-width: 0;
+}
+.cmp3-row .price {
+  padding-left: 4px;                  /* aire entre nombre y cuota */
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
 }
 .cmp3-row > * { min-width: 0; }
 .cmp3-row:hover { transform: none; border-color: var(--border); }
@@ -9570,4 +9575,90 @@ body {
   .ag-best-pay--prominent .ag-best-pay-wrap { grid-column:1 / -1; text-align:left; padding-top:8px; border-top:1px dashed color-mix(in srgb, var(--gold-500) 40%, transparent); }
   .ag-best-runner { grid-template-columns:auto 1fr auto; }
   .ag-best-runner .muted { display:none; }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Hero surebet gate — blurred preview for non-VIP, click → scroll a VIP CTA
+   ───────────────────────────────────────────────────────────────────────── */
+@keyframes pulse-gold {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(212, 160, 23, 0.6); transform: scale(1); }
+  50%      { box-shadow: 0 0 0 6px rgba(212, 160, 23, 0); transform: scale(1.15); }
+}
+
+.hero-surebet-gate {
+  position: relative;
+  border: 1px solid color-mix(in srgb, var(--gold-500) 32%, transparent);
+  transition: transform .25s cubic-bezier(.4,0,.2,1), box-shadow .25s;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--gold-500) 6%, var(--surface)), var(--surface-elev, var(--surface)));
+}
+.hero-surebet-gate:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 32px -8px color-mix(in srgb, var(--gold-500) 35%, transparent);
+}
+.hero-surebet-gate:focus-visible {
+  outline: 2px solid var(--gold-500);
+  outline-offset: 2px;
+}
+
+/* Contenido base: visible pero blurreado cuando no es VIP */
+.hsg-content {
+  filter: blur(7px) saturate(.7);
+  opacity: .65;
+  pointer-events: none;
+  user-select: none;
+  transition: filter .35s, opacity .35s;
+}
+/* Si el usuario es VIP, mostramos el contenido nítido */
+.is-vip .hero-surebet-gate .hsg-content,
+.hero-surebet-gate.is-vip-mode .hsg-content {
+  filter: none;
+  opacity: 1;
+  pointer-events: auto;
+  user-select: auto;
+}
+.is-vip .hero-surebet-gate .hsg-overlay,
+.hero-surebet-gate.is-vip-mode .hsg-overlay {
+  display: none;
+}
+
+/* Overlay con candado + CTA */
+.hsg-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: radial-gradient(circle at center, color-mix(in srgb, var(--surface) 65%, transparent) 0%, color-mix(in srgb, var(--surface) 92%, transparent) 75%);
+  z-index: 2;
+  text-align: center;
+  padding: 10px;
+}
+.hsg-lock {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--gold-500) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--gold-500) 40%, transparent);
+  color: var(--gold-700, #c49a1a);
+  font-weight: 700;
+  font-size: 0.82rem;
+}
+.hsg-lock svg {
+  color: var(--gold-700, #c49a1a);
+}
+.hsg-cta {
+  font-size: 0.72rem;
+  color: var(--gold-700, #c49a1a);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  opacity: 0.85;
+  transition: transform .25s;
+}
+.hero-surebet-gate:hover .hsg-cta {
+  transform: translateY(2px);
+  opacity: 1;
 }

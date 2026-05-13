@@ -88,11 +88,20 @@
     `;
 
     const leagueFilter = panel.querySelector('#bLeagueFilter');
-    const leagues = ['all', ...new Set(matches.map(m => m.league))].slice(0, 8);
-    leagueFilter.innerHTML = leagues.map((k, i) => {
-      const lg = BSData.LEAGUES.find(l => l.key === k);
-      const logo = (k !== 'all' && window.BSLogos?.leagueLogo) ? window.BSLogos.leagueLogo(k, { size: 16 }) : '';
-      const label = k === 'all' ? 'Todas' : (lg?.name || k);
+    // Construir lista de ligas únicas con nombre legible (cuando key=null, usar leagueName).
+    // Skip entries sin nombre — evitan el chip "null" en el filtro.
+    const leagueMap = new Map();
+    leagueMap.set('all', 'Todas');
+    for (const m of matches) {
+      const k = m.league;
+      const name = m.leagueName || (BSData.LEAGUES.find(l => l.key === k)?.name);
+      if (!name) continue;             // skip si no tenemos nombre
+      const id = k || name.toLowerCase().replace(/\s+/g, '-');
+      if (!leagueMap.has(id)) leagueMap.set(id, name);
+    }
+    const leagueEntries = [...leagueMap.entries()].slice(0, 8);
+    leagueFilter.innerHTML = leagueEntries.map(([k, label], i) => {
+      const logo = (k !== 'all' && window.BSLogos?.leagueLogo) ? window.BSLogos.leagueLogo(k === k.toLowerCase().replace(/\s+/g, '-') ? label : k, { size: 16 }) : '';
       return `<button class="league-chip ${i===0?'active':''}" data-lg="${k}">${logo}<span>${label}</span></button>`;
     }).join('');
 
@@ -101,8 +110,14 @@
 
     function renderMatches() {
       const filtered = matches
-        .filter(m => activeLeague === 'all' || m.league === activeLeague)
-        .filter(m => !q || (m.home.name + m.away.name + m.leagueName).toLowerCase().includes(q.toLowerCase()));
+        .filter(m => {
+          if (activeLeague === 'all') return true;
+          if (m.league === activeLeague) return true;
+          // Slugified fallback (cuando league key es null, usamos leagueName slug)
+          const slug = (m.leagueName || '').toLowerCase().replace(/\s+/g, '-');
+          return slug === activeLeague;
+        })
+        .filter(m => !q || (m.home.name + m.away.name + (m.leagueName || '')).toLowerCase().includes(q.toLowerCase()));
       panel.querySelector('#bMatches').innerHTML = filtered.map(m => matchCard(m)).join('') || '<div class="empty">Sin resultados</div>';
       panel.querySelectorAll('[data-add]').forEach(b => b.addEventListener('click', () => {
         const data = JSON.parse(b.dataset.add);
