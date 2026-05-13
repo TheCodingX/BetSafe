@@ -208,7 +208,34 @@
     /\bufc\b|\bmma\b|boxing|boxeo|world boxing/i,
     /euroleague|eurocup|acb\b/i,
     /liga nacional/i,    // basket AR
-    /mexico.*liga mx|mexico.*primera/i   // sólo liga MX top tier
+    /mexico.*liga mx|mexico.*primera/i,   // sólo liga MX top tier
+    // eSports — torneos top
+    /\b(csgo|cs2|cs:go|counter-?strike|iem|esl|blast|epl|major)\b/i,
+    /\b(league of legends|\blol\b|worlds|lec|lck|lcs|lpl|lla|lja)\b/i,
+    /\b(dota|the international|dpc)\b/i,
+    /\b(valorant|vct|vlr)\b/i,
+    /\b(esports?|e-sports?)\b/i,
+    /\b(efootball|fifa esports|king of glory)\b/i
+  ];
+
+  /* Patrones para detectar esports por NOMBRE de liga — usado para forzar
+   * la categoría 'esports' incluso si el scraper la clasificó mal como 'other'
+   * o 'soccer'. Sin esto, cuando user filtra Fútbol aparecen partidos como
+   * "M80 vs Team Liquid · IEM Atlanta" porque IEM Atlanta tiene `sport=other`. */
+  const ESPORTS_LEAGUE_PATTERNS = [
+    /\b(esports?|e-sports?|gaming)\b/i,
+    /\b(csgo|cs2|cs:go|counter-?strike)\b/i,
+    /\b(league of legends|\blol\b|worlds|lec|lck|lcs|lpl|lla|lja)\b/i,
+    /\b(dota ?2?|the international|dpc)\b/i,
+    /\b(valorant|vct|vlr)\b/i,
+    /\b(rocket league|rlcs)\b/i,
+    /\b(efootball|e-football|e-fútbol|efutbol|ebasket|fifa esports)\b/i,
+    /\b(overwatch|owl|ow2)\b/i,
+    /\b(call of duty|\bcod\b|cdl)\b/i,
+    /\b(starcraft|sc2)\b/i,
+    /\b(rainbow six|r6)\b/i,
+    /\b(king of glory|honor of kings)\b/i,
+    /\b(iem|esl|blast|epl|major)\b/i
   ];
 
   function isRelevantLeague(leagueName) {
@@ -216,17 +243,36 @@
     return RELEVANT_LEAGUE_PATTERNS.some(re => re.test(leagueName));
   }
 
+  function looksLikeEsports(leagueName) {
+    if (!leagueName) return false;
+    return ESPORTS_LEAGUE_PATTERNS.some(re => re.test(leagueName));
+  }
+
+  /* Devuelve el sport "efectivo" — si la liga grita esports, devuelve 'esports'
+   * sin importar lo que dijera el scraper. Garantiza que cuando user filtra
+   * 'soccer', nunca aparecen partidos con liga estilo "IEM Atlanta". */
+  function effectiveSport(ev) {
+    if (ev.sport !== 'esports' && looksLikeEsports(ev.leagueName)) return 'esports';
+    return ev.sport;
+  }
+
   /** Devuelve los eventos cacheados, opcionalmente filtrados. NO genera nada
    *  sintético: si no hay datos del backend, devuelve [].
    *
    *  Por DEFAULT filtra ligas obscuras (LMB mexicano, semipro, etc.) para que
    *  la UI muestre solo partidos relevantes para usuarios AR. Pasar
-   *  `{ all: true }` para bypass del filtro (debug / power user). */
+   *  `{ all: true }` para bypass del filtro (debug / power user).
+   *
+   *  Filtro por sport es ESTRICTO: si user pide 'soccer' nunca devuelve
+   *  eventos con liga estilo "IEM Atlanta" aunque el scraper haya clasificado
+   *  mal el evento. */
   function events(filter = {}) {
     const { sport, league, leagues, all } = filter;
     const filterLeague = !all;
-    return state.events.filter(ev =>
-      (!sport || sport === 'all' || ev.sport === sport) &&
+    return state.events.filter(ev => {
+      const evSport = effectiveSport(ev);
+      return (!sport || sport === 'all' || evSport === sport);
+    }).filter(ev =>
       (!league || ev.league === league) &&
       (!Array.isArray(leagues) || leagues.includes(ev.league)) &&
       (!filterLeague || isRelevantLeague(ev.leagueName))

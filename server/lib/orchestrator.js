@@ -424,7 +424,14 @@ const RELEVANT_LEAGUE_PATTERNS = [
   /\bufc\b|\bmma\b|boxing|boxeo|world boxing/i,
   /euroleague|eurocup|acb\b/i,
   /liga nacional/i,
-  /mexico.*liga mx|mexico.*primera/i
+  /mexico.*liga mx|mexico.*primera/i,
+  // eSports — torneos top que se ofertan en casas argentinas
+  /\b(csgo|cs2|cs:go|counter-?strike|iem|esl|blast|epl|major)\b/i,
+  /\b(league of legends|\blol\b|worlds|lec|lck|lcs|lpl|lla|lja)\b/i,
+  /\b(dota|the international|dpc)\b/i,
+  /\b(valorant|vct|vlr)\b/i,
+  /\b(esports?|e-sports?)\b/i,
+  /\b(efootball|fifa esports|king of glory)\b/i
 ];
 
 function isRelevantLeague(leagueName) {
@@ -432,10 +439,42 @@ function isRelevantLeague(leagueName) {
   return RELEVANT_LEAGUE_PATTERNS.some(re => re.test(leagueName));
 }
 
+/* Detección defensiva de esports — algunos scrapers podrían clasificar mal
+ * un partido de eFootball/eCricket/CS2/Valorant como 'soccer' u 'other' si
+ * no matchearon la regex específica. Acá lo detectamos por nombre de liga
+ * y FORZAMOS sport='esports' para que nunca contamine los filtros normales. */
+const ESPORTS_LEAGUE_PATTERNS = [
+  /\b(esports?|e-sports?|gaming)\b/i,
+  /\b(csgo|cs2|cs:go|counter-?strike)\b/i,
+  /\b(league of legends|\blol\b|worlds|lec|lck|lcs|lpl|lla|lja)\b/i,
+  /\b(dota ?2?|the international|dpc)\b/i,
+  /\b(valorant|vct|vlr)\b/i,
+  /\b(rocket league|rlcs)\b/i,
+  /\b(efootball|e-football|e-fútbol|efutbol|ebasket|fifa esports)\b/i,
+  /\b(overwatch|owl|ow2)\b/i,
+  /\b(call of duty|\bcod\b|cdl)\b/i,
+  /\b(starcraft|sc2)\b/i,
+  /\b(rainbow six|r6)\b/i,
+  /\b(king of glory|honor of kings)\b/i,
+  /\b(iem|esl|blast|epl|major)\b/i   // IEM Atlanta, ESL Pro League, BLAST etc.
+];
+
+function looksLikeEsports(leagueName) {
+  if (!leagueName) return false;
+  return ESPORTS_LEAGUE_PATTERNS.some(re => re.test(leagueName));
+}
+
+function effectiveSport(ev) {
+  // Si la liga grita "esports" pero el sport tag dice otra cosa → corregir.
+  if (ev.sport !== 'esports' && looksLikeEsports(ev.leagueName)) return 'esports';
+  return ev.sport;
+}
+
 function events({ sport = 'all', league = null, all = false } = {}) {
   const list = [];
   state.events.forEach(ev => {
-    if (sport !== 'all' && ev.sport !== sport) return;
+    const evSport = effectiveSport(ev);
+    if (sport !== 'all' && evSport !== sport) return;
     if (league && ev.league !== league) return;
     // Filtro de relevancia por default — descarta LMB mexicano, CIBACOPA,
     // semipro australiano, etc. Pasar `all: true` para incluirlos (debug).

@@ -1654,6 +1654,33 @@ body.vip-cursor *, body.vip-cursor *::before, body.vip-cursor *::after { cursor:
 .league-chip img, .league-chip .logo-img { width: 18px; height: 18px; flex-shrink: 0; }
 .league-chip .logo-img img { width: 100%; height: 100%; object-fit: contain; }
 
+/* eSports chip: estilo neon/gaming distintivo para que el usuario distinga
+ * inmediatamente que NO es un deporte tradicional. */
+.league-chip.is-esports {
+  background: linear-gradient(135deg, rgba(120,0,255,0.08), rgba(0,200,255,0.08));
+  border: 1px solid rgba(120,0,255,0.35);
+  color: #6a00b8;
+  position: relative;
+}
+[data-theme=dark] .league-chip.is-esports {
+  background: linear-gradient(135deg, rgba(160,80,255,0.18), rgba(0,220,255,0.14));
+  border-color: rgba(160,80,255,0.55);
+  color: #c4a8ff;
+}
+.league-chip.is-esports:hover {
+  background: linear-gradient(135deg, rgba(120,0,255,0.16), rgba(0,200,255,0.16));
+  border-color: rgba(120,0,255,0.55);
+  box-shadow: 0 0 0 2px rgba(120,0,255,0.15);
+  transform: translateY(-1px);
+}
+.league-chip.is-esports.active {
+  background: linear-gradient(135deg, #8b00ff, #00bfff);
+  color: #fff;
+  border-color: #8b00ff;
+  box-shadow: 0 4px 14px -2px rgba(120,0,255,0.45);
+}
+.league-chip.is-esports svg { color: currentColor; }
+
 /* Style native select with image-text — fallback for old browsers */
 .select-with-logo {
   display: inline-grid; grid-template-columns: auto 1fr;

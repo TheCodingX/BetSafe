@@ -1,5 +1,5 @@
 // BetSafe Service Worker — cache strategy: cache-first for assets, network-first for HTML/data
-const VERSION = 'betsafe-v3.3.0';   // bump to invalidate cache — 713 team logos baked in
+const VERSION = 'betsafe-v3.4.0';   // bump: esports independiente + about.html fix
 const STATIC_CACHE = `${VERSION}-static`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 

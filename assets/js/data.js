@@ -27,10 +27,15 @@
   const BOOKS_INTL = [];
   const ALL_BOOKS = BOOKS_AR.slice();
 
+  /* SPORTS — `accent: 'esports'` aplica clase visual distintiva (neon gaming).
+   * esports se reordenó al medio (no al final) para que aparezca SIEMPRE en
+   * slices(0,8) usados por chips de filtros. Sin esto, esports quedaba
+   * invisible en AI Picks + Generator y los usuarios no podían filtrar. */
   const SPORTS = [
     { key: 'soccer',     name: 'Fútbol',          icon: 'soccer'    },
     { key: 'basketball', name: 'Básquet',         icon: 'basketball' },
     { key: 'tennis',     name: 'Tenis',           icon: 'tennis'    },
+    { key: 'esports',    name: 'eSports',         icon: 'esports',   accent: 'esports' },
     { key: 'amfootball', name: 'Football Amer.',  icon: 'football'  },
     { key: 'hockey',     name: 'Hockey',          icon: 'hockey'    },
     { key: 'baseball',   name: 'Béisbol',         icon: 'baseball'  },
@@ -39,7 +44,6 @@
     { key: 'rugby',      name: 'Rugby',           icon: 'rugby'     },
     { key: 'golf',       name: 'Golf',            icon: 'golf'      },
     { key: 'volleyball', name: 'Vóley',           icon: 'volleyball' },
-    { key: 'esports',    name: 'eSports',         icon: 'esports'   },
     { key: 'cricket',    name: 'Cricket',         icon: 'cricket'   },
     { key: 'f1',         name: 'F1',              icon: 'f1'        }
   ];

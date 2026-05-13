@@ -55,7 +55,9 @@
   }
 
   function baseLayout(isVip, limit) {
-    const SPORTS = (BSData.SPORTS || []).slice(0, 7);
+    // Mostramos los 8 deportes principales incluyendo eSports (que es una
+    // categoría independiente: NO mezclar con fútbol).
+    const SPORTS = (BSData.SPORTS || []).slice(0, 8);
     return `
       <div class="row between mb-4">
         <div>
@@ -78,7 +80,7 @@
           <span class="muted tiny" style="display:block;margin-bottom:6px">Deporte</span>
           <div class="cluster" id="aiSportChips">
             <button class="league-chip active" data-sport="all">Todos</button>
-            ${SPORTS.map(s => `<button class="league-chip" data-sport="${s.key}">${BSIcons.svg(s.icon || 'soccer', {size:14})}<span>${s.name}</span></button>`).join('')}
+            ${SPORTS.map(s => `<button class="league-chip${s.accent ? ' is-' + s.accent : ''}" data-sport="${s.key}" title="${s.key === 'esports' ? 'Apuestas sobre videojuegos competitivos (CS:GO, LoL, Dota 2, Valorant)' : s.name}">${BSIcons.svg(s.icon || 'soccer', {size:14})}<span>${s.name}</span></button>`).join('')}
           </div>
         </div>
 
@@ -129,6 +131,9 @@
         panel.querySelectorAll('#aiSportChips button').forEach(x => x.classList.remove('active'));
         b.classList.add('active');
         state.filters.sport = b.dataset.sport;
+        // Auto-reload: antes el chip solo cambiaba state pero NO refrescaba los
+        // picks. Usuario clickeaba "Fútbol" y seguía viendo esports/otros.
+        reload(panel);
       });
     });
     const slider = panel.querySelector('#aiMinSharp');

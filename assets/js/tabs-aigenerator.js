@@ -37,7 +37,8 @@
       await BSData.awaitLive({ timeoutMs: 12000 });
     }
     const matches = BSData.liveEvents({});
-    const SPORTS = (BSData.SPORTS || []).slice(0, 8);
+    // 9 deportes — incluye eSports como categoría independiente.
+    const SPORTS = (BSData.SPORTS || []).slice(0, 9);
     const LEAGUES = BSData.LEAGUES || [];
     const COVER = BSData.BOOK_MARKET_COVERAGE || {};
     const M = { h2h:'1X2', dc:'Doble Oport.', totals:'Goles O/U', btts:'BTTS', ah:'Hándicap', corners:'Corners', cards:'Tarjetas' };
@@ -210,7 +211,7 @@
               <span class="field-label">Deporte</span>
               <div class="cluster agx-chip-row" id="agSportChips" style="margin-top:6px">
                 <button type="button" class="league-chip active" data-sport="all">${BSIcons.svg('soccer',{size:14})}<span>Todos</span></button>
-                ${SPORTS.map(s => `<button type="button" class="league-chip" data-sport="${s.key}">${BSIcons.svg(s.icon||'soccer',{size:14})}<span>${BSUI.esc(s.name)}</span></button>`).join('')}
+                ${SPORTS.map(s => `<button type="button" class="league-chip${s.accent ? ' is-' + s.accent : ''}" data-sport="${s.key}" title="${s.key === 'esports' ? 'Apuestas sobre videojuegos competitivos (CS2, LoL, Dota 2, Valorant)' : BSUI.esc(s.name)}">${BSIcons.svg(s.icon||'soccer',{size:14})}<span>${BSUI.esc(s.name)}</span></button>`).join('')}
               </div>
             </label>
           </div>
