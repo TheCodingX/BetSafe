@@ -540,7 +540,11 @@ app.post('/api/generator', express.json(), async (req, res) => {
     }));
 
     const corr = analyzeCombo(comboLegs);
-    if (skipCorrelated && !corr.ok && corr.warnings?.length) {
+    // Cuando el user pidió multi-leg-per-match, lo aceptamos sabiendo que la
+    // correlación va a saltar — es by design. Solo descartamos correlación
+    // si era 1-leg-per-match (donde sí, dos legs del mismo evento sería bug).
+    const skipCorrCheck = legsPerMatch > 1;
+    if (skipCorrelated && !skipCorrCheck && !corr.ok && corr.warnings?.length) {
       // Intentar reemplazar leg correlacionada con la siguiente mejor opción
       const corrIdx = corr.warnings[0]?.i ?? 0;
       const replacement = pool.find(p =>
@@ -883,19 +887,35 @@ async function resolveLogo(team, sport) {
   }
 
   const espnSport = sportToEspnType(sport);
+  // Multiple ESPN search endpoints — algunos hosts pueden estar bloqueados
+  // por Cloudflare/network desde Render.
   const queries = [
     `https://site.web.api.espn.com/apis/common/v3/search?query=${encodeURIComponent(team)}&limit=8&type=team`,
+    `https://site.api.espn.com/apis/common/v3/search?query=${encodeURIComponent(team)}&limit=8&type=team`
   ];
 
   for (const url of queries) {
     try {
       const ctrl = new AbortController();
-      setTimeout(() => ctrl.abort(), 7000);
-      const r = await fetch(url, { signal: ctrl.signal, headers: { 'User-Agent': 'Mozilla/5.0' } });
-      if (!r.ok) continue;
+      setTimeout(() => ctrl.abort(), 8000);
+      const r = await fetch(url, {
+        signal: ctrl.signal,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+          'Accept': 'application/json',
+          'Accept-Language': 'en-US,en;q=0.9'
+        }
+      });
+      if (!r.ok) {
+        log(`[logo:espn] HTTP ${r.status} for ${url.split('?')[0]}`);
+        continue;
+      }
       const data = await r.json();
       const items = (data?.items || []).filter(it => it?.type === 'team' && Array.isArray(it.logos) && it.logos.length);
-      if (!items.length) continue;
+      if (!items.length) {
+        log(`[logo:espn] no items for "${team}" via ${url.split('//')[1].split('/')[0]}`);
+        continue;
+      }
       // Priorizar match exacto + filtro de deporte
       const norm = normalizeLogoKey(team);
       const ranked = items.slice().sort((a, b) => {
@@ -936,15 +956,35 @@ async function resolveLogo(team, sport) {
 }
 
 /* GET /api/logo?team=X&sport=Y — devuelve URL de logo o 404.
- * Cliente lo llama async y reemplaza placeholder cuando llega. */
+ * Cliente lo llama async y reemplaza placeholder cuando llega.
+ * Pasar ?debug=1 para diagnóstico (devuelve la respuesta cruda de ESPN). */
 app.get('/api/logo', async (req, res) => {
   const team = String(req.query.team || '').trim();
   const sport = String(req.query.sport || '').trim();
   if (!team) return res.status(400).json({ error: 'missing team' });
+  // Debug mode — hace fetch directo y devuelve la respuesta de ESPN
+  if (req.query.debug === '1') {
+    try {
+      const url = `https://site.web.api.espn.com/apis/common/v3/search?query=${encodeURIComponent(team)}&limit=8&type=team`;
+      const ctrl = new AbortController();
+      setTimeout(() => ctrl.abort(), 8000);
+      const r = await fetch(url, {
+        signal: ctrl.signal,
+        headers: {
+          'User-Agent': 'Mozilla/5.0',
+          'Accept': 'application/json'
+        }
+      });
+      const text = await r.text();
+      return res.json({ status: r.status, body: text.slice(0, 2000), url });
+    } catch (e) {
+      return res.json({ error: e?.message, type: 'fetch-error' });
+    }
+  }
   try {
     const url = await resolveLogo(team, sport);
     if (!url) return res.status(404).json({ error: 'not-found' });
-    res.json({ url, source: 'thesportsdb' });
+    res.json({ url, source: 'espn' });
   } catch (e) {
     res.status(500).json({ error: e?.message });
   }
