@@ -1,5 +1,5 @@
 // BetSafe Service Worker — cache strategy: cache-first for assets, network-first for HTML/data
-const VERSION = 'betsafe-v4.4.0';   // UI clean: removed tech jargon (Gemini/Claude/Groq/Poisson/scraping)
+const VERSION = 'betsafe-v4.5.0';   // logos universales + gated steps + sidebar brand + performance
 const STATIC_CACHE = `${VERSION}-static`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 

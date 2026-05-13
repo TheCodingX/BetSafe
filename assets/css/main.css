@@ -493,7 +493,16 @@ body {
 .hero::before { content: ''; position: absolute; inset: -10%; background:
   radial-gradient(600px 600px at 15% 20%, color-mix(in srgb, var(--brand-500) 18%, transparent), transparent 70%),
   radial-gradient(500px 500px at 85% 70%, color-mix(in srgb, var(--brand-700) 12%, transparent), transparent 70%);
-  pointer-events: none; z-index: 0; filter: blur(40px); animation: float-bg 18s ease-in-out infinite alternate;
+  pointer-events: none; z-index: 0;
+  /* Blur menor + GPU compositing (will-change + translate3d) para evitar tartamudeo en scroll */
+  filter: blur(28px);
+  animation: float-bg 24s ease-in-out infinite alternate;
+  will-change: transform;
+  transform: translateZ(0);
+}
+/* Disable heavy animation when user prefers reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .hero::before { animation: none; }
 }
 .hero > * { position: relative; z-index: 1; }
 @keyframes float-bg {
@@ -8690,8 +8699,47 @@ body {
   border-color: var(--gold-500);
   color: #1a1208;
   box-shadow: 0 6px 14px -6px rgba(212,160,23,.5);
+  animation: agx-step-pulse 1.8s ease-in-out infinite;
 }
 .agx-step.is-active .agx-step__t { color: var(--text-primary); }
+@keyframes agx-step-pulse {
+  0%, 100% { box-shadow: 0 6px 14px -6px rgba(212,160,23,.5); }
+  50%      { box-shadow: 0 6px 22px -4px rgba(212,160,23,.85); }
+}
+/* Paso DONE (completado) */
+.agx-step.is-done .agx-step__n {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--success) 80%, transparent), var(--success));
+  border-color: var(--success);
+  color: #fff;
+  box-shadow: 0 4px 10px -4px color-mix(in srgb, var(--success) 60%, transparent);
+}
+.agx-step.is-done .agx-step__n::after {
+  /* checkmark overlay */
+  content: '✓';
+  font-weight: 900;
+}
+.agx-step.is-done .agx-step__n > * { display: none; }
+.agx-step.is-done .agx-step__t { color: var(--text-primary); opacity: .9; }
+.agx-step.is-done:not(:last-child)::after {
+  background: var(--success);
+  opacity: .55;
+}
+/* Paso LOCKED (no clickeable hasta que el anterior esté done) */
+.agx-step.is-locked {
+  opacity: .35;
+  pointer-events: none;
+  filter: grayscale(.4);
+  transition: opacity .3s, filter .3s;
+}
+.agx-step.is-locked .agx-step__n {
+  background: var(--surface-2);
+  border-style: dashed;
+}
+/* Smooth transitions cuando un paso pasa de locked → active */
+.agx-step,
+.agx-step__n {
+  transition: opacity .3s ease, filter .3s ease, background-color .3s ease, border-color .3s ease, transform .3s ease, box-shadow .3s ease;
+}
 @media (max-width: 720px) {
   .agx-hero { grid-template-columns: 1fr; }
   .agx-hero__steps { justify-content: space-between; }
@@ -9661,4 +9709,90 @@ body {
 .hero-surebet-gate:hover .hsg-cta {
   transform: translateY(2px);
   opacity: 1;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   AI Picks empty/error state — animación radar suave (no toscas)
+   ───────────────────────────────────────────────────────────────────────── */
+.ai-empty-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 40px 24px 32px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  box-shadow: var(--shadow-sm);
+}
+.ai-empty-card strong { font-size: 1.05rem; }
+.ai-empty-icon {
+  position: relative;
+  width: 84px;
+  height: 84px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--brand-500);
+  margin-bottom: 4px;
+}
+.ai-empty-icon svg {
+  position: relative;
+  z-index: 2;
+  opacity: 0.85;
+}
+.ai-empty-icon--err {
+  color: var(--danger, #dc2626);
+}
+.ai-empty-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1.5px solid color-mix(in srgb, var(--brand-500) 35%, transparent);
+  animation: ai-empty-pulse 2.4s ease-out infinite;
+  will-change: transform, opacity;
+}
+.ai-empty-ring--2 {
+  animation-delay: 1.2s;
+}
+@keyframes ai-empty-pulse {
+  0%   { transform: scale(0.45); opacity: 0.9; }
+  100% { transform: scale(1.4);  opacity: 0;   }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ai-empty-ring { animation: none; }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Sidebar brand — visible siempre, sticky en top del sidebar
+   ───────────────────────────────────────────────────────────────────────── */
+.sidebar-brand {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 6px 14px;
+  margin: -12px -6px 8px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  font-weight: 800;
+  font-size: 1.05rem;
+  letter-spacing: -.01em;
+  color: var(--text-primary);
+  text-decoration: none;
+  transition: opacity .2s;
+}
+.sidebar-brand:hover { opacity: 0.85; }
+.sidebar-brand .logo-mark {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.sidebar-brand .brand-name {
+  line-height: 1;
 }

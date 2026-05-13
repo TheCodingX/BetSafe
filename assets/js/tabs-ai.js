@@ -174,12 +174,29 @@
     if (meta && state.meta) meta.textContent = `${state.meta.filtered}/${state.meta.analyzed} pasaron filtros · ${state.picks.length} picks`;
 
     if (state.error) {
-      host.innerHTML = `<div class="card stack" style="padding:32px;text-align:center"><strong>Error al cargar análisis</strong><p class="muted tiny">${BSUI.esc(state.error)}</p><button class="btn btn-outline btn-sm" id="aiRetry">Reintentar</button></div>`;
+      host.innerHTML = `
+        <div class="ai-empty-card">
+          <div class="ai-empty-icon ai-empty-icon--err">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          </div>
+          <strong>No pudimos cargar el análisis</strong>
+          <p class="muted tiny">${BSUI.esc(state.error)}</p>
+          <button class="btn btn-primary btn-sm" id="aiRetry">Reintentar</button>
+        </div>`;
       panel.querySelector('#aiRetry')?.addEventListener('click', () => reload(panel));
       return;
     }
     if (!state.picks.length) {
-      host.innerHTML = `<div class="card stack" style="padding:32px;text-align:center"><strong>Sin picks que pasen los filtros</strong><p class="muted">Probá relajar filtros (bajar sharp mínimo, destildar "saltear lesiones") o cambiá de deporte.</p></div>`;
+      host.innerHTML = `
+        <div class="ai-empty-card">
+          <div class="ai-empty-icon">
+            <span class="ai-empty-ring"></span>
+            <span class="ai-empty-ring ai-empty-ring--2"></span>
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          </div>
+          <strong>Sin picks por ahora</strong>
+          <p class="muted tiny" style="max-width:380px;margin:0 auto">Estamos esperando partidos que cumplan tus filtros. Probá <em>bajar el sharp mínimo</em>, destildar <em>saltear lesiones</em>, o cambiar el deporte.</p>
+        </div>`;
       return;
     }
     host.innerHTML = state.picks.map(p => pickAnalysisCard(p)).join('');

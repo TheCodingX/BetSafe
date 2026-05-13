@@ -301,8 +301,8 @@
                     return `<div class="wc-mega__fav-row"><span class="wc-mega__fav-name">${BSUI.esc(n.name || code)}</span><span class="wc-mega__fav-odd">${odd.toFixed(2)}</span></div>`;
                   }).join('');
               }
+              // Solo re-render en snapshot (cada ~30s) — bs:live-update genera flicker
               window.addEventListener('bs:live-snapshot', render);
-              window.addEventListener('bs:live-update', render);
             })();
           </script>
         </div>
@@ -371,8 +371,8 @@
             </div>`;
           }).join('');
         }
+        // Solo re-render en snapshot
         window.addEventListener('bs:live-snapshot', render);
-        window.addEventListener('bs:live-update', render);
       })();
     </script>
   </section>
@@ -873,11 +873,13 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     };
   }
-  const renderHeroThrottled = throttle(renderHeroLive, 4000);
+  // Hero: solo re-render en snapshot (cada ~30s, nuevo ciclo).
+  // bs:live-update se dispara cada 1.2s — IGNORAMOS para evitar flicker.
+  // bs:live-surebet solo si user es VIP (cambia el card visible).
   renderHeroLive();
   window.addEventListener('bs:live-snapshot', renderHeroLive);
-  window.addEventListener('bs:live-update', renderHeroThrottled);
-  window.addEventListener('bs:live-surebet', renderHeroThrottled);
+  const renderHeroOnSurebet = throttle(renderHeroLive, 8000);
+  window.addEventListener('bs:live-surebet', renderHeroOnSurebet);
 
   // Live ticker — cuotas REALES del backend de scraping. Se rehidrata en
   // cuanto BSLive recibe el primer snapshot (y luego en cada update).
@@ -906,11 +908,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }).join('');
     ticker.innerHTML = items + items;
   }
-  const renderTickerThrottled = throttle(renderLiveTicker, 5000);
+  // Ticker: solo re-render en snapshot. Cada 30s actualiza. bs:live-update IGNORADO.
+  // El ticker visual sigue scrolleando con su propia animación CSS (no necesita re-render).
   renderLiveTicker();
   window.addEventListener('bs:live-snapshot', renderLiveTicker);
-  window.addEventListener('bs:live-update', renderTickerThrottled);
-  window.addEventListener('bs:live-update', renderLiveTicker);
 
   // Bookmark marquee — SOLO casas argentinas legales con LOGO REAL (CDN)
   const bm = document.getElementById('bookmarks');
@@ -1132,8 +1133,8 @@ function buildDemoComparator() {
     `;
   }
   render();
+  // Solo en snapshot (cada ~30s) para evitar flicker
   window.addEventListener('bs:live-snapshot', render);
-  window.addEventListener('bs:live-update', render);
 }
 
 function buildBuilderDemo() {

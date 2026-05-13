@@ -388,6 +388,39 @@
       // #agLeagueCount es opcional — algunos layouts no lo incluyen
       const lgCountEl = panel.querySelector('#agLeagueCount');
       if (lgCountEl) lgCountEl.textContent = activeLeagues.has('all') ? 'Todas' : `${activeLeagues.size} seleccionada${activeLeagues.size>1?'s':''}`;
+      // ── GATED PROGRESS: marcar pasos como done según el usuario va completando ──
+      updateStepProgress();
+    }
+
+    /* Actualiza el estado visual de los 4 pasos del header (CASINOS/MERCADOS/RIESGO/GENERAR).
+     * - Paso 1 (Casinos): done si hay al menos 1 casa marcada
+     * - Paso 2 (Mercados): done si hay al menos 1 mercado marcado + Paso 1 done
+     * - Paso 3 (Riesgo): siempre done (default 'eq') + Paso 2 done
+     * - Paso 4 (Generar): is-active cuando 1+2+3 done; is-disabled si no
+     * Bloquea visualmente steps siguientes con menos opacidad cuando los anteriores no se completaron.
+     */
+    function updateStepProgress() {
+      const steps = [...panel.querySelectorAll('.agx-step')];
+      if (!steps.length) return;
+      const hasBooks = panel.querySelectorAll('#agBooksFilter input[type=checkbox]:checked').length > 0;
+      const hasMarkets = panel.querySelectorAll('#agMarkets input[type=checkbox]:checked').length > 0;
+      const hasRisk = !!activeRisk;
+
+      const stepStates = [
+        hasBooks,                                  // step 1
+        hasBooks && hasMarkets,                    // step 2 requires step 1
+        hasBooks && hasMarkets && hasRisk,         // step 3 requires step 2
+        hasBooks && hasMarkets && hasRisk          // step 4 enabled when all done
+      ];
+      // El "current" step es el primero NO done
+      let current = stepStates.findIndex(s => !s);
+      if (current === -1) current = stepStates.length - 1;
+      steps.forEach((el, i) => {
+        el.classList.remove('is-active', 'is-done', 'is-locked');
+        if (stepStates[i] && i < current) el.classList.add('is-done');
+        else if (i === current) el.classList.add('is-active');
+        else if (!stepStates[i - 1]) el.classList.add('is-locked');
+      });
     }
 
     /* Books que COBREN todos los markets usados en la combinada.
@@ -594,7 +627,10 @@
       }
       const btn = panel.querySelector('#agGenerate');
       if (btn) btn.classList.toggle('is-disabled', n === 0);
+      updateStepProgress();
     }
+    // También trackear cambios en mercados para gatear paso 2
+    panel.querySelector('#agMarkets')?.addEventListener('change', () => updateStepProgress());
     // BUG previo: clickear la label hacía DOBLE TOGGLE (browser auto + manual)
     // y resultaba en "no pasa nada". Ahora escuchamos el `change` del checkbox
     // (que dispara una sola vez por click via browser default).
