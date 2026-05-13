@@ -1918,11 +1918,42 @@ server.listen(PORT, () => {
   });
   // Iniciar motor de arbitraje en su propio loop (más rápido)
   arbEngine.start();
+  // Pre-warm AI cache cada 4 min: analiza los top 12 events para que
+  // cuando el user llegue a AI Picks / Generator / BetSafe AI, los
+  // análisis YA estén cacheados (5min TTL) y se sirvan instant.
+  setTimeout(() => startAiPrewarm(), 30_000);   // espera 30s al primer ciclo de scraping
 });
+
+let aiPrewarmTimer = null;
+async function startAiPrewarm() {
+  async function prewarmOnce() {
+    try {
+      const events = orchestrator.events({ sport: 'all' }).slice(0, 12);
+      if (!events.length) { log('[ai-prewarm] no events yet'); return; }
+      const steam = orchestrator.steamMoves();
+      const surebets = arbEngine.snapshot().detected;
+      const limit = pLimit(1);   // sequential para no rate-limit-ear Groq
+      let okCount = 0;
+      for (const ev of events) {
+        try {
+          const r = await limit(() => analyzeMatch(ev, { steamMoves: steam, surebets }));
+          if (r?.llmProvider && r.llmProvider !== 'offline') okCount++;
+        } catch (_) {}
+      }
+      log(`[ai-prewarm] cached ${okCount}/${events.length} events with IA real`);
+    } catch (e) {
+      log(`[ai-prewarm] err: ${e?.message?.slice(0,100)}`);
+    }
+  }
+  // Primera corrida + loop cada 4 min
+  prewarmOnce();
+  aiPrewarmTimer = setInterval(prewarmOnce, 4 * 60_000);
+}
 
 // Graceful shutdown
 async function shutdown(sig) {
   log(`[server] ${sig} received, shutting down…`);
+  if (aiPrewarmTimer) clearInterval(aiPrewarmTimer);
   orchestrator.stop();
   arbEngine.stop();
   await browserPool.closeAll().catch(() => {});
