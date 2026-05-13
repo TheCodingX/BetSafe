@@ -14,18 +14,15 @@
  */
 'use strict';
 
-const { httpGet, log } = require('../lib');
+const { httpGet, httpGetNative, log } = require('../lib');
 const { parseXmlFeed } = require('../lib/bplayXml');
 const { withRetry, CircuitBreaker } = require('../lib/retry');
 
 const FEED_URL = 'https://deportespba.bplay.bet.ar/oddsfeeds/odds.xml';
 
-let lastModified = null;
 let cachedEvents = [];
 let cachedAt = 0;
 
-// Breaker dedicado a Bplay XML feed. failThreshold alto porque el CDN
-// raramente falla; si lo hace, esperamos 1 min antes de reintentar.
 const breaker = new CircuitBreaker({ name: 'bplay', failThreshold: 5, cooldownMs: 60_000 });
 
 async function scrape() {
@@ -34,18 +31,31 @@ async function scrape() {
     const headers = {
       'Accept': 'application/xml, text/xml, */*',
       'Origin': 'https://pba.bplay.bet.ar',
-      'Referer': 'https://pba.bplay.bet.ar/'
+      'Referer': 'https://pba.bplay.bet.ar/',
+      'Cache-Control': 'no-cache'
     };
-    if (lastModified) headers['If-Modified-Since'] = lastModified;
 
-    const xml = await breaker.exec(() => withRetry(
+    // Intentamos primero con undici (httpGet). Si devuelve <200 bytes,
+    // re-intentamos con httpGetNative (https module) que tiene TLS fingerprint
+    // distinto. A veces CDNs como Cloudflare devuelven splash a undici.
+    let xml = await breaker.exec(() => withRetry(
       () => httpGet(FEED_URL, { headers, accept: 'application/xml', timeout: 15000 }),
-      { maxAttempts: 3, baseMs: 500 }
-    ));
+      { maxAttempts: 2, baseMs: 500 }
+    )).catch(e => { log(`[bplay-xml] httpGet falló: ${e.message?.slice(0,100)}`); return null; });
 
-    if (!xml || xml.length < 200) {
-      // Devolver cache si tenemos
-      return cachedEvents;
+    if (!xml || xml.length < 1000) {
+      log(`[bplay-xml] respuesta corta (${xml?.length || 0} bytes), trying httpGetNative...`);
+      try {
+        xml = await httpGetNative(FEED_URL, { headers, timeout: 20000 });
+      } catch (e) {
+        log(`[bplay-xml] httpGetNative también falló: ${e.message?.slice(0,100)}`);
+      }
+    }
+
+    if (!xml || xml.length < 1000) {
+      log(`[bplay-xml] no XML válido recibido (last: ${xml?.length || 0} bytes)`);
+      if (cachedEvents.length && Date.now() - cachedAt < 5 * 60_000) return cachedEvents;
+      return [];
     }
 
     const events = parseXmlFeed(xml);
