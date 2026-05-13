@@ -439,6 +439,15 @@ async function scrape() {
     : baseCacheMs;
   if (cachedEvents.length && Date.now() - cachedAt < cacheTtl) return cachedEvents;
 
+  // GUARD: Betsson scraper quemaba ~3200 créditos SBee con 0 eventos.
+  // Hasta encontrar el Kambi operator key correcto o el HTML parser
+  // funcional, mantenemos OFF por default. Set ENABLE_BETSSON_SCRAPER=true
+  // para reactivar (asumir el costo + investigar el endpoint correcto).
+  if (process.env.ENABLE_BETSSON_SCRAPER !== 'true') {
+    log('[betsson] DESACTIVADO por default (ENABLE_BETSSON_SCRAPER=true para activar)');
+    return [];
+  }
+
   let events = null;
   let via = null;
 
