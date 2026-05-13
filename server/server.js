@@ -336,6 +336,61 @@ app.get('/api/debug/scrape-now/:name', async (req, res) => {
   }
 });
 
+// Diagnóstico profundo: chequea por qué analyzeMatch cae a offline aunque
+// algún provider esté OK. Devuelve traza del cascade + payload sample.
+app.get('/api/debug/llm-trace', async (req, res) => {
+  const out = { providers: {}, casks: [] };
+  try {
+    // 1) Test Groq con prompt mínimo
+    if (process.env.BS_GROQ_API_KEY || process.env.GROQ_API_KEY) {
+      try {
+        const r = await groqJsonGeneric('Sos un assistant que responde JSON.',
+          'Devolveme {"ok": true}.', { maxTokens: 50 });
+        out.providers.groq = { ok: true, response: r };
+      } catch (e) {
+        out.providers.groq = { ok: false, error: e?.message?.slice(0, 200) };
+      }
+    } else { out.providers.groq = { skipped: 'no-key' }; }
+
+    // 2) Test Gemini con prompt mínimo
+    if (process.env.BS_GEMINI_API_KEY || process.env.GEMINI_API_KEY) {
+      try {
+        const r = await geminiJsonGeneric('Sos un assistant que responde JSON.',
+          'Devolveme {"ok": true}.', { maxTokens: 50 });
+        out.providers.gemini = { ok: true, response: r };
+      } catch (e) {
+        out.providers.gemini = { ok: false, error: e?.message?.slice(0, 200) };
+      }
+    } else { out.providers.gemini = { skipped: 'no-key' }; }
+
+    // 3) Forzar re-análisis de un evento sin cache
+    const eventId = req.query.eventId;
+    if (eventId) {
+      const ev = orchestrator.findEvent(eventId);
+      if (ev) {
+        if (typeof analyzeMatch.clearCacheOffline === 'function') {
+          analyzeMatch.clearCacheOffline(ev.id);
+        }
+        const t0 = Date.now();
+        const r = await analyzeMatch(ev, { steamMoves: orchestrator.steamMoves(), surebets: arbEngine.snapshot().detected });
+        out.analyzeMatch = {
+          eventId: ev.id,
+          home: ev.home?.name,
+          away: ev.away?.name,
+          durMs: Date.now() - t0,
+          llmProvider: r?.llmProvider,
+          selectionsCount: r?.selections?.length,
+          synthesis: r?.llmSynthesis ? r.llmSynthesis.slice(0, 200) + '...' : null
+        };
+      }
+    }
+
+    res.json(out);
+  } catch (e) {
+    res.status(500).json({ error: e?.message, out });
+  }
+});
+
 app.get('/api/debug/scraper/:bookKey', async (req, res) => {
   // Protección básica: requiere ?key=<DEBUG_KEY> si está configurada
   if (process.env.DEBUG_KEY && req.query.key !== process.env.DEBUG_KEY) {
