@@ -161,7 +161,17 @@
       state.meta = res.meta;
       state.error = null;
     } catch (e) {
-      state.error = e?.message;
+      // Mensaje amigable según el tipo de error
+      const msg = e?.message || String(e);
+      if (msg.includes('aborted') || msg.includes('abort')) {
+        state.error = 'El análisis tardó más de lo esperado. Intentá de nuevo en unos segundos.';
+      } else if (msg.includes('HTTP 429')) {
+        state.error = 'Demasiadas solicitudes. Esperá un momento e intentá de nuevo.';
+      } else if (msg.includes('HTTP 5') || msg.includes('NetworkError') || msg.includes('Failed to fetch')) {
+        state.error = 'No pudimos conectar con el servidor. Verificá tu conexión.';
+      } else {
+        state.error = msg;
+      }
       state.picks = [];
     } finally {
       state.loading = false;

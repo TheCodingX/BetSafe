@@ -5987,18 +5987,19 @@ body {
 .cmp3 {
   display: grid;
   grid-template-columns: repeat(3, minmax(0,1fr));
-  gap: 12px;
+  gap: 14px;
 }
 .cmp3-col {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
-  padding: 12px;
+  padding: 14px 14px 12px;
   display: flex;
   flex-direction: column;
   gap: 8px;
   position: relative;
   transition: border-color var(--d-fast), box-shadow var(--d-fast);
+  min-width: 0;
 }
 .cmp3-col:hover { border-color: var(--brand-300); box-shadow: var(--shadow-md); }
 .cmp3-col-head {
@@ -6023,10 +6024,10 @@ body {
 }
 .cmp3-row {
   display: grid;
-  grid-template-columns: 30px minmax(0, 1fr) auto;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
-  padding: 8px 14px 8px 12px;        /* +4px de padding derecho para que la cuota no toque el borde */
+  padding: 9px 18px 9px 12px;        /* +18px padding derecho para que cuota no roce el borde */
   border-radius: 10px;
   background: var(--surface-2);
   border: 1px solid transparent;
@@ -6035,9 +6036,19 @@ body {
   min-width: 0;
 }
 .cmp3-row .price {
-  padding-left: 4px;                  /* aire entre nombre y cuota */
+  padding-left: 8px;                  /* más aire entre nombre y cuota */
+  padding-right: 2px;
   font-variant-numeric: tabular-nums;
-  font-weight: 700;
+  font-weight: 800;
+  font-size: 0.95rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.cmp3-row .book {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.85rem;
 }
 .cmp3-row > * { min-width: 0; }
 .cmp3-row:hover { transform: none; border-color: var(--border); }

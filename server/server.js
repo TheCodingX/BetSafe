@@ -414,7 +414,9 @@ app.get('/api/factors/:matchId', async (req, res) => {
 
 // Batch picks: top N partidos con análisis IA (para el AI Picks tab)
 app.get('/api/picks', async (req, res) => {
-  const limit = Math.min(24, Number(req.query.limit) || 8);
+  // Default 6 picks (era 8) — más rápido + el LRU cache pre-calienta para
+  // siguientes requests. Max 12.
+  const limit = Math.min(12, Number(req.query.limit) || 6);
   const sport = req.query.sport;
   const league = req.query.league;
   const minSharp = Number(req.query.minSharp || 0);
@@ -435,16 +437,18 @@ app.get('/api/picks', async (req, res) => {
     events = events.filter(e => e.sport !== 'esports' && !orchestrator.looksLikeEsports?.(e));
   }
 
-  events = events.slice(0, limit * 2);   // pedimos más para filtrar después
+  // Pedimos solo `limit + 2` para filtrar margen mínimo. Antes era `limit * 2`
+  // que analizaba 16 partidos para mostrar 8 — tardaba 80s+ y el cliente
+  // abortaba a los 12s. Con cache de 5min por partido, las siguientes requests
+  // son instantáneas.
+  events = events.slice(0, Math.min(limit + 2, 10));
 
   const steam = orchestrator.steamMoves();
   const surebets = arbEngine.snapshot().detected;
 
-  // Análisis concurrente con cap fijo. analyzeMatch hace 1 llamada al LLM
-  // por partido (timeout 30s).
-  // CRITICAL: Groq free tier = 14400 TPM ~ 30 RPM. Con prompts de ~3K tokens
-  // input + 2K output (~5K total) por request, 5 paralelos = 25K TPM → 429.
-  // Concurrency=2 mantiene ~10K TPM, sin rate limits. Pedimos limit=12 → ~60s.
+  // Análisis concurrente con cap. analyzeMatch hace 1 LLM call por partido
+  // (timeout 30s). Concurrency=2 + 10 events ≈ 5 batches × 8s = ~40s peor caso.
+  // El cache LRU de 5min hace que el siguiente request sea instant.
   const analyzeLimit = pLimit(Number(process.env.PICKS_CONCURRENCY || 2));
   const settled = await Promise.allSettled(
     events.map(ev => analyzeLimit(() => analyzeMatch(ev, { steamMoves: steam, surebets })))

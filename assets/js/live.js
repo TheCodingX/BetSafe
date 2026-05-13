@@ -70,9 +70,13 @@
   }
 
   // ── REST ────────────────────────────────────────────────────────────────
-  async function jget(path) {
+  async function jget(path, opts = {}) {
     const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 12000);
+    // Endpoints AI necesitan timeout largo (analizan N partidos con IA, 60-120s).
+    // El resto sigue con 12s (snapshot, sources, etc).
+    const isAiEndpoint = /\/api\/(picks|betsafe-ai|combo|daily-report|surebet\/.+\/explain|generator)/.test(path);
+    const timeoutMs = opts.timeoutMs || (isAiEndpoint ? 120000 : 12000);
+    const t = setTimeout(() => ctrl.abort(), timeoutMs);
     try {
       const res = await fetch(API_BASE + path, { signal: ctrl.signal, headers: { 'Accept': 'application/json' } });
       if (!res.ok) throw new Error('HTTP ' + res.status);
