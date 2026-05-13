@@ -1,5 +1,5 @@
 // BetSafe Service Worker — cache strategy: cache-first for assets, network-first for HTML/data
-const VERSION = 'betsafe-v4.8.0';   // ARBITRAJE: terminología 100% ES-AR + recálculo dinámico de banco + freshness real-time + active-only snapshot
+const VERSION = 'betsafe-v4.8.1';   // FIX URGENTE: Gemini activado real + filtro EV positivo en AI Picks + BetSafe AI con filtro books + aggressive legs dinámico (no hardcoded 3)
 const STATIC_CACHE = `${VERSION}-static`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 

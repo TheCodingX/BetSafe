@@ -46,7 +46,17 @@ const { browserPool, sleep, normalizeTeam, log } = require('./lib');
 const pLimit = require('p-limit').default;
 const orchestrator = require('./lib/orchestrator');
 const { ArbitrageEngine } = require('./engines/arbitrage');
-const { analyzeMatch, groqJsonGeneric } = require('./engines/ai-pipeline');
+const { analyzeMatch, groqJsonGeneric, geminiJsonGeneric } = require('./engines/ai-pipeline');
+
+// Helper: usa Gemini si está disponible, sino cae a Groq. Para parsers/explainers
+// donde queremos siempre la mejor calidad disponible sin tocar code de cada call.
+const HAS_GEMINI = !!(process.env.BS_GEMINI_API_KEY || process.env.GEMINI_API_KEY);
+async function preferredJson(systemPrompt, userPrompt, opts = {}) {
+  if (HAS_GEMINI) {
+    try { return await geminiJsonGeneric(systemPrompt, userPrompt, opts); } catch (_) {}
+  }
+  return groqJsonGeneric(systemPrompt, userPrompt, opts);
+}
 const { analyzeCombo, pairCorrelation } = require('./engines/correlation');
 const { buildFactors } = require('./factors');
 
@@ -531,20 +541,54 @@ app.get('/api/picks', async (req, res) => {
 
   // ── REGLA DE ORO: solo devolvemos picks con IA real. Sin fallback genérico ──
   // Si un pick no pasó por IA (offline tras retry), NO lo mostramos al usuario.
-  // Mejor mostrar 3 picks con IA real que 6 con la mitad genéricos.
   const aiVerified = filtered.filter(p => p.llmProvider && p.llmProvider !== 'offline');
+
+  // ── NUEVO: filtro por VALOR REAL ──
+  // Solo mostramos picks donde el modelo de consenso ve valor (EV o valueGap
+  // positivos). Picks con EV negativo significa que la casa cobra más de lo
+  // que el modelo cree que vale → mostrarlos es ruido y confunde al usuario.
+  // Default ON; se puede desactivar con ?onlyValue=false (debug/admin).
+  const onlyValue = req.query.onlyValue !== 'false';
+  const ranked = aiVerified
+    .map(p => {
+      // Score primario del pick: usamos el mejor type (eq por default).
+      const sel = (p.selections || []).find(s => s.type === 'eq')
+               || (p.selections || []).find(s => s.type === 'cons')
+               || p.selections?.[0];
+      const ev = sel?.consensusEv ?? null;
+      const vg = sel?.valueGap ?? null;
+      // Score compuesto: prioriza EV positivo, luego valueGap, luego confianza.
+      const score = (ev || 0) + (vg || 0) * 0.5 + (sel?.confidence || 0) * 30;
+      return { pick: p, sel, ev, vg, score };
+    })
+    .filter(r => {
+      if (!onlyValue) return true;
+      // Mantener solo picks con EV positivo o valueGap positivo (al menos uno)
+      const hasPositiveValue = (r.ev != null && r.ev > 0) || (r.vg != null && r.vg > 0);
+      return hasPositiveValue;
+    })
+    .sort((a, b) => b.score - a.score)
+    .map(r => r.pick);
+
   const aiCount = aiVerified.length;
+  const valueCount = ranked.length;
+  const rejectedByValue = aiCount - valueCount;
   const offlineCount = filtered.length - aiCount;
 
   res.json({
-    picks: aiVerified.slice(0, limit),
+    picks: ranked.slice(0, limit),
     meta: {
       analyzed: out.length,
       filtered: filtered.length,
       aiVerified: aiCount,
       aiPending: offlineCount,
+      valueFiltered: valueCount,
+      rejectedByValue,
+      onlyValue,
       // Si tiramos picks offline, avisamos al cliente:
-      hint: offlineCount > 0 ? `${offlineCount} análisis IA aún procesando — refrescá en unos segundos para verlos.` : null
+      hint: offlineCount > 0
+        ? `${offlineCount} análisis IA aún procesando — refrescá en unos segundos para verlos.`
+        : (rejectedByValue > 0 ? `${rejectedByValue} picks descartados por no tener valor positivo. Para ver todos: ?onlyValue=false` : null)
     }
   });
 });
@@ -1000,13 +1044,14 @@ app.post('/api/betsafe-ai/build', express.json(), async (req, res) => {
   if (!prompt) return res.status(400).json({ error: 'Necesitamos un prompt — escribí qué combinada querés' });
   if (prompt.length < 10) return res.status(400).json({ error: 'Prompt muy corto — explicanos qué combinada querés con un poco más de detalle' });
 
-  // 1) Parse con LLM: extraer filtros estructurados
-  const parserSystem = `Sos un asistente que extrae filtros estructurados de un pedido de combinada de apuestas.
+  // 1) Parse con LLM (Gemini-primero, Groq fallback): extraer filtros estructurados
+  const parserSystem = `Sos un asistente que extrae filtros estructurados de un pedido de combinada de apuestas en español argentino.
 Devolvés JSON estricto con este shape:
 {
   "legs": número de 2 a 8 (cuántos partidos quiere combinar),
   "sport": "soccer" | "basketball" | "tennis" | "esports" | "amfootball" | "all",
   "leagues": ["premier-league" | "la-liga" | "serie-a" | "bundesliga" | "ligue-1" | "ucl" | "uel" | "lpf" | "libertadores" | "sudamericana" | "brasileirao" | "liga-mx" | "mls" | "nba" | "ufc" | ...],
+  "books": ["betano" | "bplay" | "betsson" | "codere" | "betwarrior" | "casino-magic" | ...],
   "risk": "cons" (seguro) | "eq" (equilibrado) | "agg" (agresivo),
   "targetOdd": número o null (cuota total deseada),
   "minOddPerLeg": número o null,
@@ -1015,19 +1060,27 @@ Devolvés JSON estricto con este shape:
   "preferTopTeams": true|false,
   "userIntent": "<frase corta resumiendo qué quiere>"
 }
-Si el usuario no menciona algo, usá defaults razonables.`;
+REGLAS IMPORTANTES:
+- Si el usuario dice "para Betano" / "en Betano" / "en bplay" → llenar "books" con esa casa en minúscula.
+- Si el usuario dice "cuota más de 3" / "cuota mayor a 3" → poner "minOddPerLeg": 3.
+- Si el usuario dice "cuota menos de 5" → poner "maxOddPerLeg": 5.
+- Si dice "agresiva" / "arriesgada" → risk: "agg".
+- Si dice "segura" / "tranqui" → risk: "cons".
+- Si NO menciona cantidad de legs → "legs": null (la decide la IA después).
+- Si no menciona algo, usá defaults razonables o null.`;
 
   let parsed = null;
   try {
-    parsed = await groqJsonGeneric(parserSystem, prompt, { maxTokens: 600, temperature: 0.2 });
+    parsed = await preferredJson(parserSystem, prompt, { maxTokens: 700, temperature: 0.2 });
   } catch (e) {
     log(`[betsafe-ai] parse err: ${e?.message?.slice(0, 100)}`);
   }
   // Defaults si el parse falla
   const filters = {
-    legs: clamp(Number(parsed?.legs) || 4, 2, 8),
+    legs: Number.isFinite(Number(parsed?.legs)) ? clamp(Number(parsed.legs), 2, 8) : null,
     sport: typeof parsed?.sport === 'string' ? parsed.sport : 'all',
     leagues: Array.isArray(parsed?.leagues) ? parsed.leagues.map(String) : [],
+    books: Array.isArray(parsed?.books) ? parsed.books.map(b => String(b).toLowerCase().trim()) : [],
     risk: ['cons', 'eq', 'agg'].includes(parsed?.risk) ? parsed.risk : 'eq',
     targetOdd: Number.isFinite(Number(parsed?.targetOdd)) ? Number(parsed.targetOdd) : null,
     minOddPerLeg: Number.isFinite(Number(parsed?.minOddPerLeg)) ? Number(parsed.minOddPerLeg) : null,
@@ -1036,6 +1089,31 @@ Si el usuario no menciona algo, usá defaults razonables.`;
     preferTopTeams: parsed?.preferTopTeams !== false,
     userIntent: String(parsed?.userIntent || prompt).slice(0, 250)
   };
+
+  // ── REGEX FALLBACK para books si el LLM no los extrajo ──
+  if (!filters.books.length) {
+    const p = prompt.toLowerCase();
+    const BOOK_KW = {
+      'betano':       /\bbetano\b/i,
+      'bplay':        /\b(bplay|b\s*play)\b/i,
+      'betsson':      /\bbetsson\b/i,
+      'codere':       /\bcodere\b/i,
+      'betwarrior':   /\b(bet\s*warrior|betwarrior|warrior)\b/i,
+      'casino-magic': /\bcasino\s*magic\b/i
+    };
+    for (const [key, re] of Object.entries(BOOK_KW)) {
+      if (re.test(p)) filters.books.push(key);
+    }
+  }
+
+  // ── REGEX FALLBACK para minOddPerLeg ──
+  if (filters.minOddPerLeg == null) {
+    const m = prompt.match(/cuota\s*(?:mayor|m[áa]s)?\s*(?:de|a|que)?\s*(\d+(?:[.,]\d+)?)/i);
+    if (m) filters.minOddPerLeg = Number(m[1].replace(',', '.'));
+  }
+
+  // legs: si la IA no lo seteó, default 3 pero permitir que adapte abajo.
+  if (filters.legs == null) filters.legs = 3;
 
   // ── REGEX FALLBACK: si el LLM no extrajo leagues, hacemos detection manual
   // por keywords en el prompt. Esto es CRÍTICO porque a veces el parser falla
@@ -1094,49 +1172,119 @@ Si el usuario no menciona algo, usá defaults razonables.`;
   if (filters.preferTopTeams && filters.risk === 'cons') {
     candidates.sort((a, b) => (orchestrator.eventPriority?.(b) || 0) - (orchestrator.eventPriority?.(a) || 0));
   }
+
+  // ── NUEVO: filtro por casa ──
+  // Si el usuario pidió "para Betano" (o cualquier otra casa), filtramos
+  // candidates donde esa casa tenga cuotas para el evento. Sin esto, el motor
+  // analizaba el pool entero y muchas veces no había picks rescatables para
+  // la casa pedida.
+  if (filters.books.length) {
+    const requestedBooks = new Set(filters.books);
+    candidates = candidates.filter(e => {
+      const h2hBooks = Object.keys(e.markets?.h2h || {});
+      return h2hBooks.some(b => requestedBooks.has(b));
+    });
+    log(`[betsafe-ai] book filter ${[...requestedBooks].join(',')}: ${candidates.length} candidates`);
+  }
+
   if (!candidates.length) {
+    const bookList = filters.books.length ? ` en ${filters.books.join('/')}` : '';
     return res.json({
       ok: false,
       reason: 'no-events',
-      message: 'No encontramos partidos que cumplan tus filtros en la ventana de tiempo pedida. Probá ampliar las ligas o el periodo.',
+      message: `No encontramos partidos${bookList} que cumplan tus filtros en la ventana de tiempo pedida. Probá ampliar las ligas, el periodo o no especificar una casa.`,
       filters
     });
   }
 
   // 3) Analizar los top candidates con la pipeline.
   // TOP_N: pool de eventos a analizar antes de seleccionar las legs finales.
-  // Más alto = más opciones pero más tiempo. legs=4 → analizamos ~max(8, legs*2) = 8.
-  // legs=8 → analizamos 16. Cap a 14 para no exceder 30s total.
+  // Si hay filtros restrictivos (minOdd, books), ampliamos el pool para tener
+  // más opciones antes de rechazar por filtros.
   const steam = orchestrator.steamMoves();
   const surebets = arbEngine.snapshot().detected;
-  const TOP_N = Math.min(14, Math.max(8, filters.legs * 2), candidates.length);
+  const hasRestrictiveFilters = !!(filters.minOddPerLeg || filters.books.length);
+  const TOP_N = Math.min(
+    hasRestrictiveFilters ? 20 : 14,
+    Math.max(8, filters.legs * 2),
+    candidates.length
+  );
   const top = candidates.slice(0, TOP_N);
   const analyzeLimit = pLimit(2);
   const analyzed = await Promise.allSettled(
     top.map(ev => analyzeLimit(() => analyzeMatch(ev, { steamMoves: steam, surebets })))
   );
+
+  // Helper: si el user pidió una casa específica, intentamos REEMPLAZAR la cuota
+  // de la selection (que usa la mejor casa por default) con la de la casa pedida,
+  // si existe para ese mercado/outcome. Si no existe, el pick queda fuera.
+  function tryBookOverride(sel, event) {
+    if (!filters.books.length) return sel;
+    const requested = filters.books;
+    // Buscar la cuota en alguna de las casas pedidas para el mercado/outcome del sel
+    const mkt = sel.market;
+    const outcome = sel.outcome;
+    for (const book of requested) {
+      let odd = null;
+      if (mkt === 'h2h') {
+        odd = event.markets?.h2h?.[book]?.[outcome];
+      } else if (mkt === 'totals' && sel.line != null) {
+        odd = event.markets?.totals?.[book]?.[sel.line]?.[outcome];
+      } else if (mkt === 'btts') {
+        odd = event.markets?.btts?.[book]?.[outcome];
+      } else if (mkt === 'dc') {
+        odd = event.markets?.dc?.[book]?.[outcome];
+      } else if (mkt === 'ah' && sel.line != null) {
+        odd = event.markets?.ah?.[book]?.[sel.line]?.[outcome];
+      }
+      if (Number.isFinite(odd) && odd > 1.01) {
+        // Encontramos cuota en la casa pedida → usar esa
+        return { ...sel, odd: Number(odd), book };
+      }
+    }
+    return null; // ninguna casa pedida tiene esta combinación → descartar
+  }
+
   const pool = [];
   for (const r of analyzed) {
     if (r.status !== 'fulfilled' || !r.value) continue;
     const a = r.value;
     // Elegir el pick acorde al risk pedido
     const wantType = filters.risk;
-    const sel = (a.selections || []).find(s => s.type === wantType) ||
-                a.selections?.[0];
+    let sel = (a.selections || []).find(s => s.type === wantType) ||
+              a.selections?.[0];
     if (!sel || !sel.odd) continue;
-    // Validar minOdd/maxOdd por leg
+    // Si el user pidió casa específica, intentar override (puede descartar el sel)
+    if (filters.books.length) {
+      const overridden = tryBookOverride(sel, a.event);
+      if (!overridden) continue;
+      sel = overridden;
+    }
+    // Validar minOdd/maxOdd por leg DESPUÉS del override (con la cuota real de la casa)
     if (filters.minOddPerLeg && sel.odd < filters.minOddPerLeg) continue;
     if (filters.maxOddPerLeg && sel.odd > filters.maxOddPerLeg) continue;
     pool.push({ event: a.event, factors: a.factors, sel, llmKey: a.llmKeyFactor, llmSynth: a.llmSynthesis });
   }
 
   if (pool.length < filters.legs) {
-    return res.json({
-      ok: false,
-      reason: 'insufficient-pool',
-      message: `Pediste ${filters.legs} legs pero solo encontramos ${pool.length} picks que cumplan los criterios. Probá bajar el número de legs o relajar el riesgo.`,
-      filters, foundPicks: pool.length
-    });
+    // ── ADAPTACIÓN: si la IA pidió N legs pero solo conseguimos M < N picks
+    // válidos, devolvemos la combinada con M legs (no es generic, es "lo que
+    // hay disponible cumpliendo los criterios").
+    // Si M >= 2, hacemos la combinada con M en lugar de fallar.
+    if (pool.length >= 2) {
+      log(`[betsafe-ai] adaptando: pediste ${filters.legs} legs, devolvemos ${pool.length}`);
+      filters.legs = pool.length;
+      filters._adapted = true;
+    } else {
+      const bookHint = filters.books.length ? ` en ${filters.books.join('/')}` : '';
+      const oddHint = filters.minOddPerLeg ? ` con cuota ≥ ${filters.minOddPerLeg}` : '';
+      return res.json({
+        ok: false,
+        reason: 'insufficient-pool',
+        message: `Buscamos partidos${bookHint}${oddHint} pero solo encontramos ${pool.length} picks que cumplan los criterios. Probá relajar la cuota mínima, agregar más casas o ampliar el rango de tiempo.`,
+        filters, foundPicks: pool.length
+      });
+    }
   }
 
   // ══════════════════════════════════════════════════════════════════════════

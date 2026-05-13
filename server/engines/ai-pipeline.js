@@ -628,6 +628,31 @@ async function geminiJson(system, user) {
   return safeJsonParse(data.candidates?.[0]?.content?.parts?.[0]?.text);
 }
 
+/* Versión genérica de geminiJson con opciones (maxTokens, temperature).
+ * Reemplazo natural de groqJsonGeneric para parsers/explainers/etc. */
+async function geminiJsonGeneric(systemPrompt, userPrompt, opts = {}) {
+  if (!GEMINI_KEY) throw new Error('no-key');
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_KEY}`;
+  const res = await fetchWithTimeout(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ role: 'user', parts: [{ text: systemPrompt + '\n\n' + userPrompt + '\n\nRespondé estrictamente en JSON, sin markdown.' }] }],
+      generationConfig: {
+        temperature: opts.temperature ?? 0.3,
+        maxOutputTokens: opts.maxTokens || 1600,
+        responseMimeType: 'application/json'
+      }
+    })
+  });
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '');
+    throw new Error(`HTTP ${res.status}: ${txt.slice(0, 120)}`);
+  }
+  const data = await res.json();
+  return safeJsonParse(data.candidates?.[0]?.content?.parts?.[0]?.text);
+}
+
 /* Claude Sonnet 4.5 (Anthropic Messages API) — análisis premium para top picks.
  * Costo: $3 / $15 per 1M tokens. Calidad sportbook-research grade.
  * Reservado para matches "premium" (UCL, top teams, Argentina top). */
@@ -871,60 +896,101 @@ function mergeSelections(event, factors, quant, poisson, elo, llm) {
     });
   }
 
-  // ── PASO 3c: AGRESIVO — MULTI-LEG combinada del mismo partido en favor del favorito ──
-  // Combina h2h favorito + over/under (según DIRECCIÓN del Poisson, no umbral estricto)
-  // + BTTS (según DIRECCIÓN del xG). Esto garantiza que agg SIEMPRE sea distinto de eq.
-  // Si solo hay h2h, usamos AH como leg agresiva. Último recurso: el favorito + score correcto.
+  // ── PASO 3c: AGRESIVO — combinada DINÁMICA del mismo partido en favor del favorito ──
+  // Cantidad de legs NO está hardcoded a 3. El análisis decide cuántas legs tienen
+  // sentido según las señales reales:
+  //   - h2h favorito SOLO si hay una clara dirección Y la cuota tiene valor
+  //   - over/under solo si el Poisson señala dirección fuerte (>0.58 o <0.42)
+  //   - BTTS solo si el modelo señala dirección fuerte (>0.60 o <0.40)
+  //   - AH solo si el favorito es muy claro (favoredProb > 0.65)
+  //   - Cap de 5 legs MAX (más de eso destruye la cuota efectiva)
+  //   - Mínimo 2 legs (sino no es combinada, es single)
+  //
+  // El resultado es que para algunos partidos la "agresiva" puede ser 2 legs
+  // (cuando solo una dirección está clara), otros 3-4 (cuando hay múltiples
+  // señales fuertes), evitando que sea siempre el mismo template robotico.
   if (favoredOdd && (favored === 'home' || favored === 'away')) {
     const legs = [];
-    // Leg 1: h2h favorito (siempre presente)
+    const STRONG_DIR = 0.58;   // umbral para considerar una dirección "fuerte"
+    const VERY_STRONG_DIR = 0.65;
+
+    // Leg 1: h2h favorito SIEMPRE (es la spine de la combinada)
     legs.push({
       market: 'h2h', outcome: favored, line: null,
       label: `${favoredTeam} gana`,
       odd: favoredOdd, book: favoredBook,
-      prob: favoredProb
+      prob: favoredProb,
+      reason: `Favorito claro: ${(favoredProb*100).toFixed(0)}% prob real vs ${(100/favoredOdd).toFixed(0)}% implícita`
     });
-    // Leg 2: Over/Under según DIRECCIÓN del Poisson — sin umbral estricto.
-    // Si pOver25 > 0.5 → over; si < 0.5 → under. Línea más cercana a 2.5.
+
+    // Leg 2: Over/Under — incluir SOLO si hay dirección fuerte
     if (factors.market.totals && Number.isFinite(poisson.pOver25)) {
       const lines = Object.keys(factors.market.totals).map(Number).filter(l => l >= 1.5 && l <= 4.5)
         .sort((a, b) => Math.abs(a - 2.5) - Math.abs(b - 2.5));
       const line = lines[0];
       const t = line ? factors.market.totals[line] : null;
       if (t) {
-        if (poisson.pOver25 >= 0.5 && t.over) {
+        if (poisson.pOver25 >= STRONG_DIR && t.over) {
           legs.push({
             market: 'totals', outcome: 'over', line,
-            label: `Over ${line} goles`,
+            label: `Más de ${line} goles`,
             odd: t.over, book: t.overBook,
-            prob: poisson.pOver25
+            prob: poisson.pOver25,
+            reason: `Goles esperados ${(poisson.lambdaH + poisson.lambdaA).toFixed(2)} → señal fuerte a Más de ${line}`
           });
-        } else if (poisson.pOver25 < 0.5 && t.under) {
+        } else if (poisson.pOver25 <= (1 - STRONG_DIR) && t.under) {
           legs.push({
             market: 'totals', outcome: 'under', line,
-            label: `Under ${line} goles`,
+            label: `Menos de ${line} goles`,
             odd: t.under, book: t.underBook,
-            prob: 1 - poisson.pOver25
+            prob: 1 - poisson.pOver25,
+            reason: `Goles esperados ${(poisson.lambdaH + poisson.lambdaA).toFixed(2)} → señal fuerte a Menos de ${line}`
           });
         }
+        // Si está entre 0.42 y 0.58 → ambigüo, NO sumamos esta leg
       }
     }
-    // Leg 3: BTTS según DIRECCIÓN — sin umbral estricto.
+
+    // Leg 3: BTTS — incluir SOLO si hay dirección fuerte
     if (factors.market.btts && Number.isFinite(poisson.pBttsYes)) {
-      if (poisson.pBttsYes >= 0.5 && factors.market.btts.yes) {
+      if (poisson.pBttsYes >= VERY_STRONG_DIR && factors.market.btts.yes) {
         legs.push({
           market: 'btts', outcome: 'yes', line: null,
-          label: 'BTTS — Sí',
+          label: 'Ambos equipos marcan',
           odd: factors.market.btts.yes, book: factors.market.btts.yesBook,
-          prob: poisson.pBttsYes
+          prob: poisson.pBttsYes,
+          reason: `Probabilidad alta (${(poisson.pBttsYes*100).toFixed(0)}%) de que ambos marquen según xG`
         });
-      } else if (poisson.pBttsYes < 0.5 && factors.market.btts.no) {
+      } else if (poisson.pBttsYes <= (1 - VERY_STRONG_DIR) && factors.market.btts.no) {
         legs.push({
           market: 'btts', outcome: 'no', line: null,
-          label: 'BTTS — No',
+          label: 'No marcan ambos equipos',
           odd: factors.market.btts.no, book: factors.market.btts.noBook,
-          prob: 1 - poisson.pBttsYes
+          prob: 1 - poisson.pBttsYes,
+          reason: `Defensa pesada esperada: ${((1-poisson.pBttsYes)*100).toFixed(0)}% prob de que NO marquen ambos`
         });
+      }
+    }
+
+    // Leg 4 opcional: AH solo si el favorito es muy claro (>65% prob)
+    // Esto agrega upside sin destruir la cuota, porque "favorito -0.5/-1" es
+    // muy similar a h2h favorito pero con cuota un poco mejor.
+    if (favoredProb >= VERY_STRONG_DIR && factors.market.ah && legs.length < 4) {
+      const ahData = Object.values(factors.market.ah)[0];
+      if (ahData) {
+        const useHome = favored === 'home' && ahData.home_minus;
+        const useAway = favored === 'away' && ahData.away_minus;
+        const ahLine = ahData.line || 0.5;
+        const ahOdd = useHome ? ahData.home_minus : useAway ? ahData.away_minus : null;
+        if (ahOdd && ahOdd > 1.30) {
+          legs.push({
+            market: 'ah', outcome: useHome ? 'home_minus' : 'away_minus', line: ahLine,
+            label: `${favoredTeam} hándicap -${ahLine}`,
+            odd: ahOdd, book: favoredBook,
+            prob: favoredProb * 0.78,  // AH -0.5/-1 baja prob ~22%
+            reason: `Favorito muy claro (${(favoredProb*100).toFixed(0)}% prob) — premium AH`
+          });
+        }
       }
     }
 
@@ -945,8 +1011,8 @@ function mergeSelections(event, factors, quant, poisson, elo, llm) {
         legs: legs.map(l => ({ market: l.market, outcome: l.outcome, line: l.line, label: l.label, odd: l.odd, book: l.book })),
         consensusProb: adjustedProb,
         confidence: Math.max(0.35, baseConfidence - 0.15),
-        rationale: `Combinada de ${legs.length} apuestas en favor de ${favoredTeam}. Nuestro análisis indica un escenario coherente: ${legs.map(l => `${l.label} ${(l.prob * 100).toFixed(0)}%`).join(', ')}. Las tres apuestas apuntan a la misma narrativa del partido — alta correlación positiva.`,
-        tacticalNotes: `La cuota alta no viene de elegir el outcome contrario, sino de sumar varias apuestas justificadas del mismo partido.`,
+        rationale: `Combinada agresiva de ${legs.length} ${legs.length === 2 ? 'apuesta' : 'apuestas'} en favor de ${favoredTeam}. El análisis encontró ${legs.length} señales fuertes coherentes en este partido: ${legs.map(l => `${l.label} (${(l.prob * 100).toFixed(0)}%)`).join(', ')}. Por la correlación positiva intra-partido la probabilidad conjunta es mayor a la independiente — apuntan todas a la misma narrativa de juego.`,
+        tacticalNotes: `${legs.length} legs porque el análisis encontró ${legs.length} señales con dirección clara. No se forzaron legs débiles para inflar la cuota.`,
         factors: buildFactorList({ outcome: favored }, factors)
       });
     } else {
@@ -1110,4 +1176,4 @@ analyzeMatch.clearCacheOffline = (eventId) => {
   if (eventId) cache.delete(eventId);
 };
 
-module.exports = { analyzeMatch, groqJsonGeneric };
+module.exports = { analyzeMatch, groqJsonGeneric, geminiJsonGeneric };
