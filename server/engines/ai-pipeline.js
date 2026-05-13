@@ -405,31 +405,37 @@ IMPORTANTE: tu rationale debe leerse como un análisis profesional NATURAL. NO m
 Datos:
 ${userMsg}`;
 
-  // NEW CASCADA TIER STRATEGY:
-  // - Gemini 2.5 Flash es PRIMARY (más barato + 1M context window)
-  // - Claude Sonnet 4.5 PREMIUM: solo para top-league matches (análisis extremo
-  //   en partidos que importan — UCL, top teams, Argentina top)
-  // - Groq llama-3.1-8b: fallback ultra-rápido si los pagos fallan
-  // - OpenRouter: último recurso (free tier de llama/claude)
+  // ═══ CASCADA OPTIMIZADA: Gemini PRIMARY (gran rate limit) ════════════════
+  //
+  // El user pidió EXPLICITAMENTE que Gemini sea el motor principal y que
+  // pagar no sea limitación. Estrategia:
+  //   1) Gemini 2.5 Flash × 3 retries: tiene 1500 RPM (free) / 1000+ RPM
+  //      (paid) y 1M tokens TPM. Casi nunca falla por rate limit.
+  //   2) Claude Sonnet 4.5 para premium matches (UCL/Premier/top teams)
+  //   3) Groq llama-3.1-8b ÚLTIMO recurso (free tier 14400 TPM se llena rápido
+  //      con muchos requests paralelos — preferimos pagar Gemini que rate
+  //      limit Groq)
+  //   4) OpenRouter como red de seguridad
   const isPremium = isPremiumMatch(factors.event, factors);
   const providers2 = [];
 
+  if (GEMINI_KEY) {
+    // Gemini siempre primero: 3 attempts (free tier soporta 1500 RPM,
+    // paid tier ilimitado prácticamente).
+    providers2.push({ name: 'gemini', fn: () => geminiJson(SYSTEM_PROMPT, prompt) });
+    providers2.push({ name: 'gemini', fn: () => geminiJson(SYSTEM_PROMPT, prompt) });
+    providers2.push({ name: 'gemini', fn: () => geminiJson(SYSTEM_PROMPT, prompt) });
+  }
+  // Claude SOLO para premium matches — análisis sportbook-grade
   if (isPremium && ANTHROPIC_KEY) {
-    // Match PREMIUM: Claude PRIMERO (análisis extremo), Gemini fallback
     providers2.push({ name: 'claude', fn: () => anthropicJson(SYSTEM_PROMPT, prompt) });
-    providers2.push({ name: 'gemini', fn: () => geminiJson(SYSTEM_PROMPT, prompt) });
-  } else if (GEMINI_KEY) {
-    // Match normal: Gemini PRIMERO (barato), Claude fallback si premium key
-    providers2.push({ name: 'gemini', fn: () => geminiJson(SYSTEM_PROMPT, prompt) });
-    providers2.push({ name: 'gemini', fn: () => geminiJson(SYSTEM_PROMPT, prompt) });   // retry Gemini
-    if (ANTHROPIC_KEY) providers2.push({ name: 'claude', fn: () => anthropicJson(SYSTEM_PROMPT, prompt) });
-  } else if (ANTHROPIC_KEY) {
+  } else if (ANTHROPIC_KEY && !GEMINI_KEY) {
     // Si no hay Gemini, Claude pasa a primary
     providers2.push({ name: 'claude', fn: () => anthropicJson(SYSTEM_PROMPT, prompt) });
   }
-  // Fallbacks rápidos: Groq + OpenRouter
+  // Groq como ÚLTIMO recurso ahora (era 2do antes). El free tier de 14400 TPM
+  // se llena rápido cuando hacemos 10+ requests paralelos.
   if (GROQ_KEY) {
-    providers2.push({ name: 'groq', fn: () => groqJson(SYSTEM_PROMPT, prompt) });
     providers2.push({ name: 'groq', fn: () => groqJson(SYSTEM_PROMPT, prompt) });
   }
   if (OPENROUTER_KEY) providers2.push({ name: 'openrouter', fn: () => openrouterJson(SYSTEM_PROMPT, prompt) });
