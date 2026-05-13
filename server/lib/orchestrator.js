@@ -408,20 +408,20 @@ function detectSteam(prev, current) {
  * Pasar `{ all: true }` para bypass (debug). */
 const RELEVANT_LEAGUE_PATTERNS = [
   // Argentina + Sudamérica (LO MÁS RELEVANTE para audiencia AR)
-  /\b(liga profesional|primera nacional|primera division.*argent|copa argentina)\b/i,
+  /\b(liga profesional|primera nacional|primera division)\b/i,
   /\b(libertadores|sudamericana|recopa)\b/i,
-  /\b(brasileir.o|copa do brasil)\b/i,
-  /\b(chile.*primera|colombia.*primera|peru.*primera|ecuador.*primera|paraguay.*primera|uruguay.*primera|bolivia.*primera|venezuela.*primera)\b/i,
-  /\b(primera division.*chile|primera A.*colombia|liga betplay|liga ?pro.*ecuador|liga ?1.*peru|liga ?profesional.*par|primera division.*uru)\b/i,
+  /\b(brasileir.o|copa do brasil|serie b.*brasil)\b/i,
+  /\b(copa argentina|liga profesional argentina)\b/i,
+  /\b(liga betplay|liga ?pro|liga ?1|categoria primera)\b/i,
   /\b(copa america|copa mundial|world cup|mundial 2026)\b/i,
-  // Top 5 europeas — ESTRICTAS por país (excluye Egipto, Ucrania, etc)
-  /\b(english premier league|epl|fa cup|carabao cup)\b/i,
-  /\b(spanish la ?liga|laliga|spain.*primera|copa del rey)\b/i,
-  /\b(italian serie a|italy.*serie a|coppa italia)\b/i,
-  /\b(german bundesliga|germany.*bundesliga|dfb pokal)\b/i,
-  /\b(french ligue 1|france.*ligue|coupe de france)\b/i,
-  /\b(portuguese primeira|primeira liga.*portug|portugal.*primeira)\b/i,
-  /\b(dutch eredivisie|netherlands.*eredivisie)\b/i,
+  // Top 5 europeas — WHITELIST permisiva; el blocklist excluye Egipto/Ucrania/etc.
+  /\b(premier league|championship|fa cup|carabao cup|efl)\b/i,
+  /\b(la ?liga|primera division|copa del rey)\b/i,
+  /\b(serie a|serie b|coppa italia)\b/i,
+  /\b(bundesliga|dfb pokal|dfb-pokal)\b/i,
+  /\b(ligue 1|ligue 2|coupe de france)\b/i,
+  /\b(primeira liga|liga portuguesa|primeira divisao)\b/i,
+  /\b(eredivisie|netherlands|holanda)\b/i,
   // UEFA + selecciones
   /\b(champions league|uefa champions|europa league|uefa europa|conference league|uefa nations)\b/i,
   /\b(eurocopa|euro 2024|euro 2028|euro qualif|world cup qualif)\b/i,
@@ -925,6 +925,7 @@ module.exports = {
   start, stop,
   events, findEvent,
   surebets, steamMoves, bookStatus, sourceStatus, discrepancies, quota, health, breakers, resetBreakers, clearScraperCache,
+  looksLikeEsports, effectiveSport, isRelevantLeague, eventPriority,
   on: bus.on.bind(bus),
   off: bus.off.bind(bus),
   _mergeEventFromSource: mergeEventFromSource

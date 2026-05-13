@@ -367,11 +367,22 @@ app.get('/api/picks', async (req, res) => {
   const minSharp = Number(req.query.minSharp || 0);
   const skipInjured = req.query.skipInjured === 'true';
   const skipBadWeather = req.query.skipBadWeather === 'true';
+  const includeEsports = req.query.includeEsports === 'true' || sport === 'esports';
 
-  const events = orchestrator.events({ sport: sport || 'all', league })
-    .filter(e => e.bestOdds?.h2h)
-    .sort((a, b) => (a.start || 0) - (b.start || 0))
-    .slice(0, limit * 2);   // pedimos más para filtrar después
+  // orchestrator.events() ya ordena por priority (top teams primero).
+  // No re-ordenamos por start time porque los partidos esports simulados son
+  // cada 4 minutos y dominaban el feed con basura tipo "NBA H2H GG League".
+  let events = orchestrator.events({ sport: sport || 'all', league })
+    .filter(e => e.bestOdds?.h2h);
+
+  // FILTRO POR DEFAULT: eSports excluidos a menos que se pidan explícitamente.
+  // Sin esto, las simulaciones eFootball/eBasket (que arrancan cada 4 minutos)
+  // copan los picks y nunca se ven partidos reales.
+  if (!includeEsports) {
+    events = events.filter(e => e.sport !== 'esports' && !orchestrator.looksLikeEsports?.(e));
+  }
+
+  events = events.slice(0, limit * 2);   // pedimos más para filtrar después
 
   const steam = orchestrator.steamMoves();
   const surebets = arbEngine.snapshot().detected;
@@ -413,10 +424,21 @@ app.post('/api/generator', express.json(), async (req, res) => {
   }
   const wantedBooks = Array.isArray(books) ? books.filter(Boolean) : [];
 
-  // Top 35 partidos por overround (libros más eficientes = picks más confiables).
-  // Aumentado de 20 a 35 para dar al pool de la combinadora más opciones —
-  // si user pidió 5 legs con multi-leg-por-match, necesitamos más eventos.
-  events.sort((a, b) => (a.overround || 99) - (b.overround || 99));
+  // Excluir esports a menos que se pidan explícitamente — sin esto las
+  // simulaciones NBA H2H GG League dominan el pool del Generator.
+  const includeEsports = req.body?.includeEsports === true || sport === 'esports';
+  if (!includeEsports) {
+    events = events.filter(e => e.sport !== 'esports' && !orchestrator.looksLikeEsports?.(e));
+  }
+
+  // Top 35 partidos por priority + overround (libros más eficientes).
+  // events() ya retorna ordenado por priority — aplicamos secondary sort
+  // por overround dentro de la misma priority.
+  events.sort((a, b) => {
+    const pdiff = (orchestrator.eventPriority?.(b) || 0) - (orchestrator.eventPriority?.(a) || 0);
+    if (pdiff !== 0) return pdiff;
+    return (a.overround || 99) - (b.overround || 99);
+  });
   events = events.slice(0, 35);
 
   const steam = orchestrator.steamMoves();
