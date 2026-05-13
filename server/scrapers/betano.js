@@ -15,7 +15,7 @@
  */
 'use strict';
 
-const { httpJsonNative, browserPool, log, sleep } = require('../lib');
+const { httpJsonNative, httpJsonViaScrapingBee, browserPool, log, sleep } = require('../lib');
 const { parseBetanoJson } = require('../lib/betanoJson');
 const { withRetry, CircuitBreaker } = require('../lib/retry');
 
@@ -25,6 +25,9 @@ const { withRetry, CircuitBreaker } = require('../lib/retry');
 const directBreaker = new CircuitBreaker({ name: 'betano:direct', failThreshold: 3, cooldownMs: 90_000 });
 // Playwright breaker independiente — más conservador (es caro abrirlo).
 const playwrightBreaker = new CircuitBreaker({ name: 'betano:playwright', failThreshold: 3, cooldownMs: 120_000 });
+// ScrapingBee breaker — si quota agotada o API key inválida, no insistas
+// cada 30s. cooldown 10min para no quemar requests inútiles.
+const scrapingBeeBreaker = new CircuitBreaker({ name: 'betano:scrapingbee', failThreshold: 2, cooldownMs: 10 * 60_000 });
 
 const ENDPOINTS = [
   'https://www.betano.bet.ar/danae-webapi/api/live/overview/latest?includeVirtuals=true&queryLanguageId=8&queryOperatorId=19',
@@ -141,27 +144,76 @@ async function tryPlaywright() {
   return out;
 }
 
+/* ScrapingBee path: para deploys cloud (Render, Fly, etc.) donde Cloudflare
+ * blackholea la IP. Activado solo si SCRAPINGBEE_KEY está en env.
+ *
+ * Costo: ~10 créditos/req con premium_proxy. Para conservar quota free,
+ * pegamos SOLO al endpoint de live overview (el más valioso para arbitrage).
+ * Cache propio: 5 minutos.
+ */
+async function tryScrapingBee() {
+  if (!process.env.SCRAPINGBEE_KEY) return null;  // null = "no configurada, skip"
+  if (scrapingBeeBreaker.state === 'OPEN') {
+    scrapingBeeBreaker._maybeReset();
+    if (scrapingBeeBreaker.state === 'OPEN') return null;
+  }
+  // Solo el endpoint live para minimizar gasto de créditos.
+  // top-events-v2/top-events son redundantes con live-overview.
+  const url = ENDPOINTS[0];
+  try {
+    const { json, costCredits, status } = await scrapingBeeBreaker.exec(() =>
+      httpJsonViaScrapingBee(url, { timeout: 35000, premium: true, renderJs: false, country: 'ar' })
+    );
+    if (!json) return [];
+    const events = parseBetanoJson(json);
+    log(`[betano-json:sbee] ${events.length} eventos · ${costCredits} créditos · target=${status}`);
+    return events;
+  } catch (e) {
+    if (e?.circuitOpen) {
+      log(`[betano-json:sbee] circuit OPEN · skip`);
+      return null;
+    }
+    log(`[betano-json:sbee] err: ${e.message?.slice(0, 200)}`);
+    return [];
+  }
+}
+
 async function scrape() {
   const t0 = Date.now();
-  if (cachedEvents.length && Date.now() - cachedAt < 60_000) return cachedEvents;
+  // Si tenemos ScrapingBee: cache 5min (conservar créditos).
+  // Si no: cache 1min original (sin proxy de pago, podemos darle más vueltas).
+  const cacheTtl = process.env.SCRAPINGBEE_KEY ? 5 * 60_000 : 60_000;
+  if (cachedEvents.length && Date.now() - cachedAt < cacheTtl) return cachedEvents;
 
-  // Fast path
-  let events = await tryDirect();
-  let via = 'direct';
-  if (!events.length) {
+  // Cuando hay ScrapingBee, es el path PRIMARIO (es el único que funciona
+  // bajo Cloudflare desde IPs cloud). Si falla o no está, caemos a direct + PW.
+  let events = null;
+  let via = null;
+
+  const sbeeResult = await tryScrapingBee();
+  if (sbeeResult && sbeeResult.length) {
+    events = sbeeResult;
+    via = 'sbee';
+  }
+
+  if (!events?.length) {
+    events = await tryDirect();
+    via = 'direct';
+  }
+  if (!events?.length) {
     events = await tryPlaywright();
     via = 'playwright';
   }
 
-  if (events.length) {
+  if (events?.length) {
     cachedEvents = events;
     cachedAt = Date.now();
     log(`[betano-json:${via}] ${events.length} eventos · ${Date.now() - t0}ms`);
     return events;
   }
 
-  if (cachedEvents.length && Date.now() - cachedAt < 5 * 60_000) {
-    log(`[betano-json] both paths failed · serving cache (${cachedEvents.length})`);
+  if (cachedEvents.length && Date.now() - cachedAt < 15 * 60_000) {
+    log(`[betano-json] all paths failed · serving cache (${cachedEvents.length})`);
     return cachedEvents;
   }
 
@@ -169,9 +221,14 @@ async function scrape() {
   return [];
 }
 
-// Exponemos AMBOS breakers para que /api/breakers refleje el estado real.
+// Exponemos los breakers para que /api/breakers refleje el estado real.
 // `direct` cubre native HTTPS (vulnerable a Cloudflare TLS fingerprint);
-// `playwright` cubre el fallback con browser real.
-scrape.breakers = { direct: directBreaker, playwright: playwrightBreaker };
+// `playwright` cubre el fallback con browser real;
+// `scrapingbee` cubre el proxy-as-a-service (cuando SCRAPINGBEE_KEY está set).
+scrape.breakers = {
+  direct: directBreaker,
+  playwright: playwrightBreaker,
+  scrapingbee: scrapingBeeBreaker
+};
 
 module.exports = scrape;

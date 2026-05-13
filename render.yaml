@@ -65,6 +65,12 @@ services:
       # The Odds API — fuente PRIMARIA. Sin esto el sistema depende de scrapers.
       - key: THE_ODDS_API_KEY
         sync: false
+      # ScrapingBee proxy — necesario para Betano desde IPs cloud (Render bloqueado
+      # por Cloudflare). Activa el path `tryScrapingBee` en betano.js. Sin esto,
+      # betano cae a direct + playwright (que fallan en Render).
+      # Plan free: 1000 créditos/mes ≈ 100 requests con premium_proxy.
+      - key: SCRAPINGBEE_KEY
+        sync: false
       - key: ODDSAPI_REGION
         value: 'eu'
       # Factors APIs (opcionales — sin keys los factores quedan "unavailable")

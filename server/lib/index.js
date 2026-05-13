@@ -156,6 +156,75 @@ function httpGetNative(url, opts = {}) {
 
 async function httpJsonNative(url, opts = {}) { return httpGetNative(url, { ...opts, json: true }); }
 
+/* httpJsonViaScrapingBee — proxy genérico via ScrapingBee para bypass de Cloudflare
+ * desde IPs cloud (Render, Fly, Railway, etc.) que están blackholeadas.
+ *
+ * Activado solo si `SCRAPINGBEE_KEY` está seteada. Si no, lanza error que el
+ * caller debe manejar haciendo fallback al método directo.
+ *
+ * Cost (en créditos ScrapingBee):
+ *   - render_js=false + premium_proxy=true:   10 créditos / request
+ *   - render_js=false + premium_proxy=false:  1 crédito (datacenter, suele dar 403 igual)
+ *
+ * El header `Spb-Cost` del response dice cuánto gastó. Lo logueamos para
+ * monitorear quota.
+ *
+ * @param {string} url - URL target (e.g. betano endpoint)
+ * @param {object} opts - { timeout, premium=true, renderJs=false, country='ar', json=true }
+ * @returns {Promise<{ json|text, costCredits, status }>}
+ */
+async function httpViaScrapingBee(url, opts = {}) {
+  const key = process.env.SCRAPINGBEE_KEY;
+  if (!key) throw new Error('SCRAPINGBEE_KEY no configurada');
+
+  const params = new URLSearchParams({
+    api_key: key,
+    url,
+    premium_proxy: String(opts.premium !== false),    // default true (Cloudflare bypass)
+    render_js: String(opts.renderJs === true),        // default false (JSON endpoints)
+    country_code: opts.country || 'ar',
+    // No followear redirects de scrapingbee (ya los maneja él internamente)
+  });
+  const apiUrl = `https://app.scrapingbee.com/api/v1/?${params.toString()}`;
+  const timeout = Number(opts.timeout) || 30000;
+
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(new Error(`sbee-timeout ${timeout}ms`)), timeout);
+  try {
+    const { body, headers, statusCode } = await request(apiUrl, {
+      method: 'GET',
+      signal: ctrl.signal,
+      headersTimeout: Math.min(20000, timeout),
+      bodyTimeout: Math.min(25000, timeout)
+    });
+    const text = await body.text();
+    const costCredits = Number(headers['spb-cost'] || headers['Spb-Cost'] || 0);
+    const targetStatus = Number(headers['spb-initial-status-code'] || 0);
+    if (statusCode === 401) throw new Error(`sbee-auth: API key inválida`);
+    if (statusCode === 402) throw new Error(`sbee-quota: créditos agotados`);
+    if (statusCode === 422 || statusCode >= 500) {
+      throw new Error(`sbee ${statusCode}: target=${targetStatus} :: ${text.slice(0, 200)}`);
+    }
+    if (statusCode >= 400) {
+      throw new Error(`sbee HTTP ${statusCode} :: ${text.slice(0, 200)}`);
+    }
+    const result = { costCredits, status: targetStatus };
+    if (opts.json !== false) {
+      try { result.json = JSON.parse(text); }
+      catch (e) { throw new Error(`sbee-parse: ${e.message?.slice(0, 80)} :: ${text.slice(0, 200)}`); }
+    } else {
+      result.text = text;
+    }
+    return result;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function httpJsonViaScrapingBee(url, opts = {}) {
+  return httpViaScrapingBee(url, { ...opts, json: true });
+}
+
 // ── Browser pool (Playwright + stealth) ───────────────────────────────────
 // Estrategias de evasión aplicadas:
 //   - playwright-extra-stealth plugin (oculta webdriver, WebGL, plugins, etc.)
@@ -373,7 +442,8 @@ function eventKey(home, away, start) {
 function isFinite2(n) { return typeof n === 'number' && Number.isFinite(n) && n > 1.01 && n < 1000; }
 
 module.exports = {
-  log, sleep, httpGet, httpJson, httpGetNative, httpJsonNative, browserPool,
+  log, sleep, httpGet, httpJson, httpGetNative, httpJsonNative,
+  httpViaScrapingBee, httpJsonViaScrapingBee, browserPool,
   normalizeTeam, parseDecimal, parseAmericanToDecimal, eventKey, isFinite2,
   UA, ACCEPT_LANG
 };
