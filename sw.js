@@ -1,5 +1,5 @@
 // BetSafe Service Worker — cache strategy: cache-first for assets, network-first for HTML/data
-const VERSION = 'betsafe-v4.7.0';   // AUDIT EXTREMA: tracker real + voice input + share + power features
+const VERSION = 'betsafe-v4.8.0';   // ARBITRAJE: terminología 100% ES-AR + recálculo dinámico de banco + freshness real-time + active-only snapshot
 const STATIC_CACHE = `${VERSION}-static`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 

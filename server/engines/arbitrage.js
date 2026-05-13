@@ -92,26 +92,45 @@ class ArbitrageEngine {
     const newSurebets = [];
     const activeNow = new Set();
 
+    // Track every leg's data freshness por casa (min de lastUpdate de los
+    // mercados involucrados). Lo usamos para enriquecer la surebet con
+    // `oddsAge` y para que el frontend pueda mostrar "actualizada hace Xs"
+    // por surebet — no solo por snapshot global.
+    const eventFreshness = new Map();
+    fresh.forEach(ev => { eventFreshness.set(ev.id, ev.lastUpdate || Date.now()); });
+
+    // Cuando una surebet ya estaba activa la "refrescamos" — esto resetea
+    // su lastSeenAt para que el frontend muestre frescura correcta.
+    const upsert = (sb) => {
+      activeNow.add(sb.key);
+      sb.lastSeenAt = Date.now();
+      sb.oddsAge = Date.now() - (eventFreshness.get(sb.eventId) || Date.now());
+      if (!this.activeIds.has(sb.key)) {
+        newSurebets.push(sb);
+      } else {
+        // Re-detectada: actualizar la copia en `detected` con nueva info
+        const idx = this.detected.findIndex(x => x.key === sb.key);
+        if (idx >= 0) {
+          // Mantenemos el original (ts/enriquecimiento) pero actualizamos
+          // lastSeenAt + cuotas si bajaron/subieron + oddsAge
+          this.detected[idx].lastSeenAt = sb.lastSeenAt;
+          this.detected[idx].oddsAge = sb.oddsAge;
+          this.detected[idx].odds = sb.odds;
+        }
+      }
+    };
+
     fresh.forEach(ev => {
       // 1) 2-way + 3-way en 1X2
-      const sb1x2 = this.detect1x2(ev);
-      sb1x2.forEach(sb => { activeNow.add(sb.key); if (!this.activeIds.has(sb.key)) newSurebets.push(sb); });
-
-      // 2) Totals: para cada línea, encontrar over/under en distintas casas
-      const sbTotals = this.detectTotals(ev);
-      sbTotals.forEach(sb => { activeNow.add(sb.key); if (!this.activeIds.has(sb.key)) newSurebets.push(sb); });
-
-      // 3) BTTS: yes/no
-      const sbBtts = this.detectBtts(ev);
-      sbBtts.forEach(sb => { activeNow.add(sb.key); if (!this.activeIds.has(sb.key)) newSurebets.push(sb); });
-
-      // 4) Asian Handicap: home -0.5 / away +0.5 (lock)
-      const sbAh = this.detectAh(ev);
-      sbAh.forEach(sb => { activeNow.add(sb.key); if (!this.activeIds.has(sb.key)) newSurebets.push(sb); });
-
-      // 5) Cross-market entre 1X2 y DC (1X + 2 = full market)
-      const sbDc = this.detect1x2VsDc(ev);
-      sbDc.forEach(sb => { activeNow.add(sb.key); if (!this.activeIds.has(sb.key)) newSurebets.push(sb); });
+      this.detect1x2(ev).forEach(upsert);
+      // 2) Totals
+      this.detectTotals(ev).forEach(upsert);
+      // 3) BTTS
+      this.detectBtts(ev).forEach(upsert);
+      // 4) Asian Handicap
+      this.detectAh(ev).forEach(upsert);
+      // 5) Cross-market 1X2 × DC
+      this.detect1x2VsDc(ev).forEach(upsert);
     });
 
     // Surebets que desaparecieron del snapshot fresco = "cerradas"
@@ -152,6 +171,7 @@ class ArbitrageEngine {
     if (closed.length) this.emit('surebets-closed', closed);
 
     this.lastCycleMs = Date.now() - t0;
+    this._lastCycleAt = Date.now();
     this.emit('arb-cycle', {
       n: this.cycles,
       durMs: this.lastCycleMs,
@@ -450,11 +470,16 @@ class ArbitrageEngine {
 
   // ── Snapshot público ────────────────────────────────────────────────────
   snapshot() {
+    // Filtrar `detected` para devolver SOLO las que siguen activas (activeIds).
+    // Esto evita servir cuotas viejas que ya no existen en el mercado y
+    // que confundirían al usuario (ej: Betano marcando 1.40 cuando ya cerró a 1.25).
+    const activeOnly = this.detected.filter(sb => this.activeIds.has(sb.key));
     return {
-      detected: this.detected,
+      detected: activeOnly,
       activeSurebets: this.activeIds.size,
       cycles: this.cycles,
       lastCycleMs: this.lastCycleMs,
+      lastCycleAt: this._lastCycleAt || 0,
       startedAt: this.startedAt,
       interval: this.interval
     };

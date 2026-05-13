@@ -379,18 +379,20 @@ app.get('/api/surebets', (req, res) => {
   const minRoi = Number(req.query.minRoi || 0) / 100;
   const sport = req.query.sport;
   const minConf = Number(req.query.minConfidence || 0);
-  const advanced = arbEngine.snapshot().detected;
-  const filtered = advanced
+  const snap = arbEngine.snapshot();
+  const filtered = snap.detected
     .filter(sb => sb.netRoi >= minRoi)
     .filter(sb => !sport || sb.sport === sport)
     .filter(sb => sb.confidence >= minConf);
   res.json({
     surebets: filtered,
     meta: {
-      cycles: arbEngine.cycles,
-      lastCycleMs: arbEngine.lastCycleMs,
-      active: arbEngine.activeIds.size,
-      interval: arbEngine.interval
+      cycles: snap.cycles,
+      lastCycleMs: snap.lastCycleMs,
+      lastCycleAt: snap.lastCycleAt,
+      active: snap.activeSurebets,
+      interval: snap.interval,
+      serverNow: Date.now()
     }
   });
 });

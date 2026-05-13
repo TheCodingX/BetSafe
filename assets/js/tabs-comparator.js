@@ -24,7 +24,7 @@
       <div class="row between mb-3" style="flex-wrap:wrap;gap:14px">
         <div>
           <h2 class="h3">Comparador en vivo · casas legales AR</h2>
-          <p class="muted">Mostramos las casas que mejor pagan cada outcome. Solo eventos con 2+ casas comparables — para que el ranking sirva.</p>
+          <p class="muted">Mostramos las casas que mejor pagan cada resultado. Solo eventos con 2+ casas comparables — para que el ranking sirva.</p>
         </div>
         <div class="cluster" style="gap:6px">
           <select class="select" id="cSport"><option value="all">Todos los deportes</option>${BSData.SPORTS.map(s=>`<option value="${s.key}">${BSUI.esc(s.name)}</option>`).join('')}</select>

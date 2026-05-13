@@ -485,11 +485,11 @@ ${pick.llmKeyFactor ? '⚡ ' + pick.llmKeyFactor : ''}
           ${ev_pct != null ? `<div class="ai-metric"><span class="muted tiny">EV</span><strong class="${evClass}">${ev_pct > 0 ? '+' : ''}${ev_pct.toFixed(2)}%</strong></div>` : ''}
           ${s.valueGap != null ? `<div class="ai-metric" title="Diferencia entre la probabilidad real y la implícita por la cuota"><span class="muted tiny">Valor</span><strong class="${s.valueGap > 0 ? 'text-success' : 'muted'}">${s.valueGap > 0 ? '+' : ''}${s.valueGap.toFixed(1)}%</strong></div>` : ''}
           ${s.modelConvergence ? `<div class="ai-metric" title="Qué tan de acuerdo están los 4 modelos entre sí"><span class="muted tiny">Convergencia</span><strong class="${s.modelConvergence === 'alta' ? 'text-success' : s.modelConvergence === 'baja' ? 'text-warning' : ''}">${s.modelConvergence}</strong></div>` : ''}
-          ${s.kellyFractional ? `<div class="ai-metric" title="Stake recomendado según Kelly fraccional 1/4 (conservador)"><span class="muted tiny">Stake</span><strong>${(s.kellyFractional*100).toFixed(1)}% banca</strong></div>` : ''}
+          ${s.kellyFractional ? `<div class="ai-metric" title="Monto sugerido según Kelly fraccional 1/4 (conservador, sobre tu banca total)"><span class="muted tiny">Apuesta sugerida</span><strong>${(s.kellyFractional*100).toFixed(1)}% banca</strong></div>` : ''}
         </div>
         ${s.rationale ? `<p class="muted tiny" style="margin-top:6px;line-height:1.4">${BSUI.esc(s.rationale).slice(0, 180)}${s.rationale.length > 180 ? '…' : ''}</p>` : ''}
         ${(s.warnings || []).length ? `<div class="cluster tiny" style="margin-top:6px;flex-wrap:wrap">${s.warnings.map(w => `<span class="badge badge-warning tiny">⚠ ${BSUI.esc(w)}</span>`).join('')}</div>` : ''}
-        <button class="btn btn-primary btn-sm w-full" style="margin-top:8px" data-add-slip='${addPayload}'>Agregar al slip</button>
+        <button class="btn btn-primary btn-sm w-full" style="margin-top:8px" data-add-slip='${addPayload}'>Agregar a la combinada</button>
       </div>
     `;
   }
@@ -634,7 +634,7 @@ ${pick.llmKeyFactor ? '⚡ ' + pick.llmKeyFactor : ''}
         <strong>🧮 Análisis del mercado</strong>
         <div class="grid grid-3 gap-2">
           <div><span class="muted tiny">Margen libro</span><div class="num">${q.margin?.toFixed(2)}%</div></div>
-          <div><span class="muted tiny">Cuotas fair</span><div class="tiny">${(q.fairOdds || []).map(o => o?.toFixed(2) || '—').join(' / ')}</div></div>
+          <div><span class="muted tiny" title="Cuota matemáticamente justa (sin margen de la casa)">Cuota justa</span><div class="tiny">${(q.fairOdds || []).map(o => o?.toFixed(2) || '—').join(' / ')}</div></div>
           <div><span class="muted tiny">EV vs mercado</span><div class="tiny">${(q.ev || []).map(v => (v > 0 ? '+' : '') + v.toFixed(2) + '%').join(' / ')}</div></div>
         </div>
       </div>`);

@@ -301,7 +301,7 @@
             </div>
           </div>
           <div class="agx-config__item">
-            <span class="agx-config__label">Stake (ARS)</span>
+            <span class="agx-config__label">Monto a apostar (ARS)</span>
             <div class="num-stepper" data-stepper="agstake">
               <button type="button" class="num-stepper-btn" data-step="-" aria-label="−"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14"/></svg></button>
               <input class="num-stepper-input" id="agStake" type="text" inputmode="numeric" pattern="[0-9]*" value="10000" />
@@ -972,9 +972,9 @@
 
               <!-- Action row -->
               <div class="ag-actions">
-                <button class="btn btn-primary btn-sm" data-combo-idx="${ci}">${BSIcons.svg('plus',{size:14})} Agregar al slip</button>
-                <button class="btn btn-outline btn-sm" data-combo-share="${ci}">${BSIcons.svg('share',{size:14})} Compartir link</button>
-                <button class="btn btn-outline btn-sm" data-combo-whatif="${ci}">${BSIcons.svg('cpu',{size:14})} Simular What-If</button>
+                <button class="btn btn-primary btn-sm" data-combo-idx="${ci}">${BSIcons.svg('plus',{size:14})} Agregar a la combinada</button>
+                <button class="btn btn-outline btn-sm" data-combo-share="${ci}">${BSIcons.svg('share',{size:14})} Compartir</button>
+                <button class="btn btn-outline btn-sm" data-combo-whatif="${ci}">${BSIcons.svg('cpu',{size:14})} Simular escenarios</button>
                 <button class="btn btn-ghost btn-sm" data-combo-detail="${ci}">${BSIcons.svg('info',{size:14})} Análisis detallado</button>
               </div>
             </div>`;
