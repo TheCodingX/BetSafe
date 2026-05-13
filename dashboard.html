@@ -18,11 +18,18 @@
 <main id="main" class="app-shell">
   <aside class="sidebar" aria-label="Navegación de dashboard">
     <nav id="sideNav" class="stack-sm"></nav>
-    <div class="card card-tinted card-pad-sm mt-4" id="upgradeCard" hidden>
-      <span class="badge-vip">VIP</span>
-      <h4 class="h4 mt-2">Pasá a VIP</h4>
-      <p class="muted tiny">Arbitraje 24/7, IA Pro, Monte Carlo, Smart Money.</p>
-      <a href="pricing.html" class="btn btn-gold btn-sm btn-block mt-2">Ver planes</a>
+    <div class="sidebar-vip-card" id="upgradeCard" hidden>
+      <div class="sidebar-vip-card__head">
+        <span class="badge-vip">VIP Gold</span>
+      </div>
+      <h4 class="h4 sidebar-vip-card__title">Hacete VIP</h4>
+      <ul class="sidebar-vip-card__feats">
+        <li><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Comparador avanzado</li>
+        <li><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Arbitraje en tiempo real</li>
+        <li><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Generador IA premium</li>
+        <li><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Mundial 2026 exclusivo</li>
+      </ul>
+      <a href="pricing.html" class="btn btn-gold btn-sm btn-block">Ver planes</a>
     </div>
   </aside>
 

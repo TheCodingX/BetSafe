@@ -2,6 +2,14 @@
 (function () {
   'use strict';
 
+  function greetingByHour() {
+    const h = new Date().getHours();
+    if (h < 5) return 'Buenas noches';
+    if (h < 12) return 'Buenos días';
+    if (h < 19) return 'Buenas tardes';
+    return 'Buenas noches';
+  }
+
   async function render(panel) {
     const session = BSAuth.current();
     const name = (session?.name || 'apostador').split(' ')[0];
@@ -30,10 +38,19 @@
         </section>
       ` : ''}
 
-      <section class="ov-hero reveal">
-        <span class="ov-eyebrow">${isVip ? 'VIP · Gold' : 'Bienvenida'}</span>
-        <h1 class="ov-welcome">Bienvenido, <span class="ov-name">${BSUI.esc(name)}</span></h1>
-        <p class="ov-sub">Esto es lo que tenés disponible hoy.</p>
+      <section class="ov-hero ov-hero--premium reveal">
+        <div class="ov-hero__bg" aria-hidden="true"></div>
+        <div class="ov-hero__content">
+          <div class="ov-hero__row">
+            <span class="ov-eyebrow ${isVip ? 'ov-eyebrow--vip' : ''}">
+              ${isVip ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26"/></svg>' : ''}
+              ${isVip ? 'VIP · Gold tier' : 'Bienvenida'}
+            </span>
+            <span class="ov-hero__greeting muted tiny">${greetingByHour()}</span>
+          </div>
+          <h1 class="ov-welcome">Bienvenido, <span class="ov-name">${BSUI.esc(name)}</span></h1>
+          <p class="ov-sub">Esto es lo que tenés disponible hoy.</p>
+        </div>
       </section>
 
       <!-- ── BRIEF DEL DÍA ────────────────────────────────────────── -->

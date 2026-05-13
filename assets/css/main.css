@@ -11120,3 +11120,316 @@ html.reduce-motion *::after {
   .ai-loading__visual { flex-wrap: wrap; }
   .ai-loading__seconds { width: 100%; text-align: left; }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Sidebar VIP card — premium gold tier (rediseño)
+   ───────────────────────────────────────────────────────────────────────── */
+.sidebar-vip-card {
+  margin-top: 16px;
+  padding: 16px 14px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--gold-500) 12%, transparent) 0%, transparent 60%),
+    var(--surface);
+  border: 1px solid color-mix(in srgb, var(--gold-500) 35%, transparent);
+  border-radius: 14px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 8px 20px -14px color-mix(in srgb, var(--gold-500) 60%, transparent);
+}
+.sidebar-vip-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; height: 2px;
+  background: linear-gradient(90deg, transparent, var(--gold-500), transparent);
+  opacity: 0.6;
+}
+.sidebar-vip-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.sidebar-vip-card__title {
+  margin: 8px 0 10px;
+  font-size: 1rem;
+  letter-spacing: -.01em;
+}
+.sidebar-vip-card__feats {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+.sidebar-vip-card__feats li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  line-height: 1.35;
+}
+.sidebar-vip-card__feats svg {
+  color: var(--gold-700, #c49a1a);
+  flex-shrink: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   HERO — padding reducido para que el contenido aparezca antes
+   ═══════════════════════════════════════════════════════════════════════════ */
+.hero {
+  padding-block: clamp(var(--s-6), 4vw, var(--s-12)) !important;   /* era clamp(s-12, 8vw, s-24) */
+}
+@media (max-width: 720px) {
+  .hero { padding-block: clamp(var(--s-4), 5vw, var(--s-8)) !important; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   QUICK ACCESS CARDS — estilo Stripe/Linear/Vercel premium
+   ═══════════════════════════════════════════════════════════════════════════ */
+.quick-access {
+  padding-block: 32px 8px;
+}
+.qa-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+.qa-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  color: var(--text-primary);
+  text-decoration: none;
+  transition: transform .22s cubic-bezier(.4,0,.2,1),
+              box-shadow .22s cubic-bezier(.4,0,.2,1),
+              border-color .22s,
+              background .22s;
+  box-shadow: 0 1px 2px -1px rgba(15,23,42,.05),
+              0 1px 1px rgba(15,23,42,.04);
+  position: relative;
+  overflow: hidden;
+}
+.qa-card::after {
+  /* highlight superior premium sutil */
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--brand-500) 14%, transparent), transparent);
+  opacity: 0;
+  transition: opacity .25s;
+}
+.qa-card:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--brand-500) 28%, var(--border));
+  box-shadow: 0 8px 24px -10px color-mix(in srgb, var(--brand-500) 25%, transparent),
+              0 2px 4px -1px rgba(15,23,42,.06);
+  background: var(--surface);
+}
+.qa-card:hover::after {
+  opacity: 1;
+}
+.qa-card:focus-visible {
+  outline: 2px solid var(--brand-500);
+  outline-offset: 2px;
+}
+.qa-card__icon {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--brand-500) 12%, transparent), color-mix(in srgb, var(--brand-700) 8%, transparent));
+  border: 1px solid color-mix(in srgb, var(--brand-500) 22%, transparent);
+  border-radius: 10px;
+  color: var(--brand-700, var(--brand-600));
+  transition: transform .25s cubic-bezier(.2,.7,.2,1), background .25s;
+}
+.qa-card:hover .qa-card__icon {
+  transform: scale(1.05) rotate(-3deg);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--brand-500) 18%, transparent), color-mix(in srgb, var(--brand-700) 14%, transparent));
+}
+.qa-card__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.qa-card__title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: -.01em;
+  line-height: 1.2;
+  color: var(--text-primary);
+}
+.qa-card__desc {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.qa-card__arrow {
+  flex-shrink: 0;
+  font-size: 1.1rem;
+  color: var(--text-tertiary);
+  transition: transform .25s, color .25s;
+}
+.qa-card:hover .qa-card__arrow {
+  transform: translateX(3px);
+  color: var(--gold-700, #c49a1a);
+}
+
+/* Dark mode: cards con fondo elevated */
+[data-theme="dark"] .qa-card {
+  background: color-mix(in srgb, var(--surface) 96%, white);
+  box-shadow: 0 1px 2px -1px rgba(0,0,0,.4),
+              0 1px 1px rgba(0,0,0,.2);
+}
+[data-theme="dark"] .qa-card:hover {
+  background: color-mix(in srgb, var(--surface) 92%, white);
+  box-shadow: 0 8px 24px -10px color-mix(in srgb, var(--brand-500) 35%, transparent),
+              0 2px 4px -1px rgba(0,0,0,.3);
+}
+
+@media (max-width: 720px) {
+  .qa-grid { grid-template-columns: 1fr; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   DASHBOARD WELCOME — Premium hero card con glow azul/dorado sutil
+   ═══════════════════════════════════════════════════════════════════════════ */
+.ov-hero--premium {
+  position: relative;
+  padding: 28px 30px 26px;
+  border-radius: 18px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--brand-500) 5%, transparent) 0%, transparent 60%),
+    linear-gradient(225deg, color-mix(in srgb, var(--gold-500) 4%, transparent) 0%, transparent 50%),
+    var(--surface);
+  border: 1px solid var(--border);
+  overflow: hidden;
+  box-shadow:
+    0 1px 2px -1px rgba(15,23,42,.04),
+    0 4px 16px -8px color-mix(in srgb, var(--brand-500) 18%, transparent);
+}
+.ov-hero__bg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(800px 300px at 20% -10%, color-mix(in srgb, var(--brand-500) 10%, transparent), transparent 60%),
+    radial-gradient(600px 250px at 100% 110%, color-mix(in srgb, var(--gold-500) 8%, transparent), transparent 55%);
+}
+.ov-hero__content {
+  position: relative;
+  z-index: 1;
+}
+.ov-hero__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.ov-eyebrow--vip {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--gold-500) 22%, transparent), color-mix(in srgb, var(--gold-500) 10%, transparent));
+  border: 1px solid color-mix(in srgb, var(--gold-500) 40%, transparent);
+  padding: 3px 10px 3px 8px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--gold-700, #c49a1a) !important;
+}
+.ov-eyebrow--vip svg { color: var(--gold-700, #c49a1a); }
+.ov-welcome {
+  font-size: clamp(1.6rem, 3.2vw, 2.2rem);
+  font-weight: 800;
+  letter-spacing: -.02em;
+  line-height: 1.15;
+  margin: 6px 0 4px;
+  color: var(--text-primary);
+}
+.ov-welcome .ov-name {
+  background: linear-gradient(135deg, var(--brand-600), var(--gold-700, #c49a1a));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.ov-sub {
+  color: var(--text-secondary);
+  font-size: 0.96rem;
+  margin: 0;
+}
+
+/* Dark mode: glow más visible */
+[data-theme="dark"] .ov-hero--premium {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--brand-500) 10%, transparent) 0%, transparent 60%),
+    linear-gradient(225deg, color-mix(in srgb, var(--gold-500) 7%, transparent) 0%, transparent 50%),
+    var(--surface);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   WC 2026 — Análisis inteligente por grupos (preview pre-torneo)
+   ═══════════════════════════════════════════════════════════════════════════ */
+.wc-group-ai {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--gold-500) 5%, transparent), transparent 60%),
+    var(--surface);
+  border: 1px solid color-mix(in srgb, var(--gold-500) 28%, transparent);
+}
+.wc-group-ai__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.wc-group-ai__group-label {
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text-tertiary);
+  margin-bottom: 8px;
+  font-weight: 700;
+}
+.wc-group-ai__insights {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.wc-group-ai__insights li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--surface-2);
+  border-radius: 8px;
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+.wc-insight-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-top: 6px;
+}
+.wc-insight-dot--green  { background: var(--success); box-shadow: 0 0 6px var(--success); }
+.wc-insight-dot--yellow { background: #eab308; }
+.wc-insight-dot--orange { background: #f97316; }
+.wc-insight-dot--red    { background: var(--danger, #dc2626); }

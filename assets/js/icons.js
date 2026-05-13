@@ -184,7 +184,18 @@
     UZ:['#0099B5','#fff','#1EB53A'], MA:['#C1272D','#005138','#C1272D'], SN:['#00853F','#FDEF42','#E31B23'],
     EG:['#CE1126','#fff','#000'], NG:['#008751','#fff','#008751'], CI:['#F77F00','#fff','#009E60'],
     GH:['#CE1126','#FCD116','#006B3F'], CM:['#007A5E','#CE1126','#FCD116'], TN:['#E70013','#fff','#E70013'],
-    DZ:['#006233','#fff','#D21034'], NZ:['#012169','#fff','#012169'], P1:['#cbd5e1','#94a3b8','#64748b'],
+    DZ:['#006233','#fff','#D21034'], NZ:['#012169','#fff','#012169'],
+    // Banderas faltantes solicitadas por el user (Sudamérica + Asia + Europa)
+    CL:['#fff','#D52B1E','#0033A0'],     // Chile: blanco, rojo, azul
+    PE:['#D91023','#fff','#D91023'],     // Perú: rojo-blanco-rojo
+    JO:['#000','#fff','#007A3D'],         // Jordania: negro-blanco-verde (con rojo triangle)
+    SK:['#fff','#0B4EA2','#EE1C25'],     // Eslovaquia
+    RS:['#C6363C','#0C4076','#fff'],      // Serbia
+    UA:['#0057B7','#FFD500','#0057B7'],   // Ucrania
+    WLS:['#fff','#00B140','#D30731'],     // Gales (verde + rojo + dragón)
+    SCT:['#005EB8','#fff','#005EB8'],     // Escocia (azul con cruz blanca)
+    // Aliases adicionales por código alternativo
+    P1:['#cbd5e1','#94a3b8','#64748b'],
     P2:['#cbd5e1','#94a3b8','#64748b']
   };
 

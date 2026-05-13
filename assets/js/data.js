@@ -218,14 +218,18 @@
     { city:'Seattle',          country:'US', stadium:'Lumen Field',    cap:69000 }
   ];
 
-  // Calendario oficial (datos públicos)
+  // Calendario oficial Mundial 2026 (datos públicos FIFA)
   const TIMELINE = [
-    { date:'2026-05-30', name:'UEFA Champions League — Final',  loc:'Budapest', tag:'UCL' },
-    { date:'2026-05-20', name:'UEFA Europa League — Final',     loc:'Estambul', tag:'UEL' },
-    { date:'2026-02-08', name:'Super Bowl LX',                  loc:'Santa Clara', tag:'NFL' },
-    { date:'2026-06-04', name:'NBA Finals (game 1)',            loc:'TBD', tag:'NBA' },
-    { date:'2026-06-11', name:'Mundial 2026 — Apertura',        loc:'Estadio Azteca, México', tag:'WC' },
-    { date:'2026-07-19', name:'Mundial 2026 — Final',           loc:'MetLife, Nueva York', tag:'WC' }
+    { date:'2025-12-05', name:'Sorteo Final de grupos',          loc:'Las Vegas, EE.UU.', tag:'WC' },
+    { date:'2026-03-26', name:'Repechajes intercontinentales',   loc:'México', tag:'WC' },
+    { date:'2026-06-11', name:'Mundial 2026 — Inauguración',     loc:'Estadio Azteca, México', tag:'WC' },
+    { date:'2026-06-27', name:'Fase de grupos — última jornada', loc:'Sedes USA · México · Canadá', tag:'WC' },
+    { date:'2026-06-29', name:'Inicio dieciseisavos de final',   loc:'Sedes varias', tag:'WC' },
+    { date:'2026-07-04', name:'Inicio octavos de final',         loc:'Sedes varias', tag:'WC' },
+    { date:'2026-07-09', name:'Cuartos de final',                loc:'Sedes varias', tag:'WC' },
+    { date:'2026-07-14', name:'Semifinales',                     loc:'Dallas y Atlanta', tag:'WC' },
+    { date:'2026-07-18', name:'Partido por el 3er puesto',       loc:'Miami', tag:'WC' },
+    { date:'2026-07-19', name:'Mundial 2026 — Final',            loc:'MetLife, Nueva York', tag:'WC' }
   ];
 
   // Cobertura real de mercados por casa (verificada empíricamente con los

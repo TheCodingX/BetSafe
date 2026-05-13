@@ -75,7 +75,8 @@
           <div id="wcTrends" class="stack-sm"></div>
         </div>
         <div class="card stack">
-          <strong>Eventos clave 2026</strong>
+          <strong>Eventos más relevantes</strong>
+          <span class="muted tiny">Sorteo, repechajes, fases del Mundial 2026</span>
           <div id="wcTimeline" class="stack-sm"></div>
         </div>
       </section>
@@ -309,8 +310,45 @@
     });
 
     // ───────── Tabla de grupos · cuando FIFA confirme la fase de grupos ─────────
-    // No fabricamos posiciones falsas. Mostramos hasta que haya feed real.
-    panel.querySelector('#wcGroupsTable').innerHTML = `<div class="empty" style="padding:24px;grid-column:1/-1;text-align:center"><strong>Fase de grupos · pendiente</strong><div class="muted tiny" style="margin-top:6px;max-width:480px;margin-inline:auto">Cuando empiece el torneo (junio 2026), las posiciones reales — puntos, goles y diferencia — aparecen acá con datos de SofaScore/ESPN. Mientras tanto: <a href="https://www.fifa.com/es/tournaments/mens/worldcup/canadamexicousa2026" target="_blank" rel="noopener noreferrer">FIFA — Mundial 2026</a>.</div></div>`;
+    panel.querySelector('#wcGroupsTable').innerHTML = `<div class="empty" style="padding:24px;grid-column:1/-1;text-align:center"><strong>Fase de grupos · pendiente</strong><div class="muted tiny" style="margin-top:6px;max-width:480px;margin-inline:auto">Cuando empiece el torneo (junio 2026), las posiciones reales — puntos, goles y diferencia — aparecen acá. Mientras tanto: <a href="https://www.fifa.com/es/tournaments/mens/worldcup/canadamexicousa2026" target="_blank" rel="noopener noreferrer">FIFA — Mundial 2026</a>.</div></div>`;
+
+    // ───────── ANÁLISIS INTELIGENTE POR GRUPOS (placeholder + auto-mount) ─────────
+    // Cuando empiece el torneo, este widget muestra:
+    //  - Situación actual por grupo
+    //  - Qué necesita cada selección para clasificar
+    //  - Posibles escenarios + riesgos de eliminación
+    //  - Diferencia de goles crítica
+    // Pre-torneo: muestra el preview del feature.
+    const ai = panel.querySelector('#wcGroupAi') || (() => {
+      const el = document.createElement('section');
+      el.id = 'wcGroupAi';
+      el.className = 'wc-group-ai card stack mt-4 reveal';
+      el.innerHTML = `
+        <div class="wc-group-ai__head">
+          <div>
+            <strong>Análisis inteligente por grupos</strong>
+            <p class="muted tiny" style="margin:2px 0 0">Contexto, escenarios y necesidades de cada selección — generado con IA en tiempo real.</p>
+          </div>
+          <span class="badge badge-vip">VIP</span>
+        </div>
+        <div class="wc-group-ai__preview">
+          <div class="wc-group-ai__sample">
+            <div class="wc-group-ai__group-label">Grupo C · Ejemplo</div>
+            <ul class="wc-group-ai__insights">
+              <li><span class="wc-insight-dot wc-insight-dot--green"></span><span><strong>Argentina (6 pts)</strong> — Clasificación asegurada. Pelea primer puesto en última fecha.</span></li>
+              <li><span class="wc-insight-dot wc-insight-dot--yellow"></span><span><strong>Francia (3 pts)</strong> — Necesita ganar y esperar diferencia de gol. Riesgo medio.</span></li>
+              <li><span class="wc-insight-dot wc-insight-dot--orange"></span><span><strong>Inglaterra (3 pts)</strong> — Ganar y depender de otros. Diferencia −2.</span></li>
+              <li><span class="wc-insight-dot wc-insight-dot--red"></span><span><strong>Australia (0 pts)</strong> — Eliminada, juega por dignidad.</span></li>
+            </ul>
+            <p class="muted tiny" style="margin:8px 0 0">Cuando empiece el torneo, este análisis se genera con datos reales en cada fecha — incluyendo posibles emparejamientos, valor del mercado por selección y riesgo competitivo.</p>
+          </div>
+        </div>
+      `;
+      const tbl = panel.querySelector('#wcGroupsTable')?.closest('section') || panel.querySelector('#wcGroupsTable')?.parentElement;
+      if (tbl) tbl.insertAdjacentElement('afterend', el);
+      else panel.appendChild(el);
+      return el;
+    })();
   }
 
     function doRegister() {
