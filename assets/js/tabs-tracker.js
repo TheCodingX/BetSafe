@@ -36,6 +36,36 @@
     const avgOddWin = avg(hist.filter(h => h.result === 'W').map(h => h.odd));
     const avgOddLose = avg(hist.filter(h => h.result === 'L').map(h => h.odd));
     const worst = hist.reduce((min, h) => (h.profit || 0) < (min.profit || 0) ? h : min, hist[0] || { profit: 0 });
+    const best  = hist.reduce((max, h) => (h.profit || 0) > (max.profit || 0) ? h : max, hist[0] || { profit: 0 });
+
+    // ── STREAK TRACKING: actual + máxima histórica ──
+    const sorted = hist.slice().sort((a, b) => (a.at || 0) - (b.at || 0));
+    let currentStreak = 0, currentType = null;
+    let maxWinStreak = 0, maxLoseStreak = 0;
+    let winRun = 0, loseRun = 0;
+    for (const h of sorted) {
+      if (h.result === 'W') {
+        winRun++; loseRun = 0;
+        if (winRun > maxWinStreak) maxWinStreak = winRun;
+      } else if (h.result === 'L') {
+        loseRun++; winRun = 0;
+        if (loseRun > maxLoseStreak) maxLoseStreak = loseRun;
+      }
+    }
+    // Streak actual: cuenta hacia atrás desde el último W o L (saltea pendientes)
+    for (let i = sorted.length - 1; i >= 0; i--) {
+      const r = sorted[i].result;
+      if (r === 'P') continue;
+      if (currentType == null) currentType = r;
+      if (r === currentType) currentStreak++;
+      else break;
+    }
+
+    // ── CLV (Closing Line Value): comparar cuota apostada vs cuota cierre.
+    // El user puede haberlo cargado en el campo opcional `closingOdd` del CSV
+    // o desde el Builder. Si no, no se muestra.
+    const withCLV = hist.filter(h => Number.isFinite(h.closingOdd) && h.closingOdd > 1);
+    const clvAvg = withCLV.length ? avg(withCLV.map(h => ((h.odd - h.closingOdd) / h.closingOdd) * 100)) : null;
 
     panel.innerHTML = `
       <div class="row between mb-3">
@@ -68,6 +98,26 @@
         </div>
       </div>
 
+      <!-- ── STREAK + INSIGHTS row ── -->
+      <div class="grid grid-4 mb-4" style="gap:10px">
+        <div class="kpi-mini kpi-mini--${currentType === 'W' ? 'success' : currentType === 'L' ? 'danger' : 'neutral'}">
+          <span class="kpi-mini-label">Racha actual</span>
+          <strong class="kpi-mini-value">${currentStreak > 0 ? `${currentStreak} ${currentType === 'W' ? 'W' : currentType === 'L' ? 'L' : ''}` : '—'}</strong>
+        </div>
+        <div class="kpi-mini">
+          <span class="kpi-mini-label">Mejor racha</span>
+          <strong class="kpi-mini-value text-success">${maxWinStreak}W</strong>
+        </div>
+        <div class="kpi-mini">
+          <span class="kpi-mini-label">Peor racha</span>
+          <strong class="kpi-mini-value text-danger">${maxLoseStreak}L</strong>
+        </div>
+        <div class="kpi-mini ${clvAvg != null && clvAvg > 0 ? 'kpi-mini--success' : ''}">
+          <span class="kpi-mini-label" title="Closing Line Value: cuán mejor fue tu cuota vs la cuota de cierre del mercado. CLV positivo sostenido > rentabilidad a largo plazo.">CLV promedio</span>
+          <strong class="kpi-mini-value">${clvAvg != null ? (clvAvg > 0 ? '+' : '') + clvAvg.toFixed(2) + '%' : '—'}</strong>
+        </div>
+      </div>
+
       <div class="grid grid-2 gap-4 mb-4">
         <div class="card stack">
           <strong>Distribución por deporte</strong>
@@ -79,7 +129,8 @@
           <div class="row between"><span>Perdedoras</span><strong class="num text-danger">${avgOddLose.toFixed(2)}</strong></div>
           <div class="row between"><span>Estilo</span><strong>${avgOddWin > 2.2 ? 'Cazador de longshots' : 'Cazador de favoritas'}</strong></div>
           <hr style="border:0;border-top:1px solid var(--border);margin:8px 0">
-          <strong>Worst trade rule</strong>
+          <strong>Mejor y peor pick</strong>
+          <div class="row between"><span>Mejor pick</span><strong class="num text-success">${BSUI.money(best.profit||0)}</strong></div>
           <div class="row between"><span>Peor pick</span><strong class="num ${worst.profit>0?'text-success':'text-danger'}">${BSUI.money(worst.profit||0)}</strong></div>
           <div class="muted tiny">${worst.profit > 0 ? 'Aún tu peor trade es positivo. Excelente disciplina.' : 'Revisá tu peor trade para identificar fugas.'}</div>
         </div>

@@ -1495,9 +1495,56 @@
    *   2) Si tenemos en remoteLogoCache (de fetches anteriores) → usar esa
    *   3) Devolver placeholder iniciales + disparar async fetch a /api/logo
    *      Cuando llegue la URL real, el placeholder se reemplaza en el DOM. */
+  /* Aliases para short names comunes → keys del CDN baked.
+   * Sin esto, 'River' no matchea 'riverplate', 'Inter' no matchea
+   * 'inter' (existe pero quizás falla), 'Roma' no matchea 'asroma', etc. */
+  const TEAM_NAME_ALIASES = {
+    'river': 'riverplate',
+    'boca': 'bocajuniors',
+    'inter': 'internazionale',
+    'intermilan': 'internazionale',
+    'roma': 'asroma',
+    'milan': 'acmilan',
+    'leipzig': 'rbleipzig',
+    'rbl': 'rbleipzig',
+    'manchestercity': 'mancity',
+    'mancity': 'mancity',
+    'manchesterunited': 'manutd',
+    'manutd': 'manutd',
+    'realmadridcf': 'realmadrid',
+    'atleticodemadrid': 'atleticomadrid',
+    'atletimadrid': 'atleticomadrid',
+    'barca': 'barcelona',
+    'fcbarcelona': 'barcelona',
+    'parissaintgermain': 'psg',
+    'parisaintgerman': 'psg',
+    'bayernmunchen': 'bayern',
+    'bayernmunich': 'bayern',
+    'bayern': 'bayern',
+    'borussiadortmund': 'dortmund',
+    'bvb': 'dortmund',
+    'bayerleverkusen': 'leverkusen',
+    'leverkusen': 'leverkusen',
+    'cristalpalace': 'crystalpalace',
+    'astonvilla': 'astonvilla',
+    'newcastleunited': 'newcastle',
+    'tottenhamhotspur': 'tottenham',
+    'tottenhamhotspurs': 'tottenham',
+    'spurs': 'tottenham',
+    'westhamunited': 'westham',
+    'wolverhampton': 'wolves',
+    'palmeirassp': 'palmeiras',
+    'flamengorj': 'flamengo',
+    'racingclub': 'racing',
+    'clubatleticoindependiente': 'independiente',
+    'sanlorenzodealmagro': 'sanlorenzo',
+    'velezsarsfield': 'velez'
+  };
+
   function teamCrest(key, opts = {}) {
     const size = opts.size || 36;
-    const k = String(key || '').toLowerCase().replace(/\s|-|\.|'|_/g, '');
+    let k = String(key || '').toLowerCase().replace(/\s|-|\.|'|_/g, '');
+    if (TEAM_NAME_ALIASES[k]) k = TEAM_NAME_ALIASES[k];
     const teamName = opts.name || key;
     const t = TEAMS[k];
     const color = t?.primary || opts.color || '#1f2937';
