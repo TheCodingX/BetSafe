@@ -1,251 +1,123 @@
-/* Scraper: Betsson AR (pba.betsson.bet.ar) — Sportsbook SPA con AWS WAF
+/* Scraper: Betsson AR (pba.betsson.bet.ar) — Kambi Sportsbook XP + AWS WAF
  * ============================================================================
- * Betsson AR opera bajo licencia LOTBA en `pba.betsson.bet.ar/apuestas-deportivas`.
- * Su plataforma es un SPA propietario (NO Kambi) protegido con AWS WAF.
+ * DESCUBRIMIENTO 2026-05-13: Betsson AR usa Kambi Group Sportsbook XP debajo
+ * (mismo provider que BetWarrior). Esto se confirmó leyendo el HTML del
+ * sportsbook: los JS bundles vienen de `/dist/prod/xp/widgets/sportsbook/`
+ * que es la firma estándar de Kambi SBKB.
+ *
+ * Cambios vs versión anterior:
+ *   1) URL FIX: `/apuestas-deportivas` devuelve 404 (anti-bot). El path
+ *      correcto es `/apuestas-deportivas/futbol` (200 OK sin cookies).
+ *   2) Multi-URL: tirar también `/en-directo`, `/basquet`, `/tenis` para
+ *      capturar más mercados.
+ *   3) Intento ALTERNATIVO Kambi directo: probamos varios operator keys
+ *      (`betssonarba`, `betssonpba`, etc) — si alguno responde, evitamos
+ *      ScrapingBee (GRATIS). Solo si todos fallan, caemos a SBee render_js.
  *
  * Estrategia:
- *   1) ScrapingBee con `render_js:true + premium_proxy` — bypass WAF y captura
- *      la HTML renderizada. Cost: ~25 créditos/req (premium + JS rendering).
- *   2) Playwright stealth como fallback si el budget de ScrapingBee se agota o
- *      el call falla. Carga la SPA + intercepta XHRs.
+ *   1) Kambi direct API → si operator key funciona, GRATIS y rápido
+ *   2) ScrapingBee render_js sobre pba.betsson.bet.ar/apuestas-deportivas/futbol
+ *      → ~25 créditos, Kambi SPA monta odds en HTML rendered
+ *   3) Playwright stealth fallback si el budget de SBee se agota
  *
- * Parsing: extrae odds desde el HTML renderizado (data embebida en
- * window.__SBKB_INITIAL_STATE__ o estructuras DOM con clases conocidas).
- *
- * NO hay path nativo HTTPS — AWS WAF bloquea inmediatamente sin JS.
- *
- * Cache server-side: 5min frescos, hasta 30min stale-fallback.
- * Tunable: BETSSON_CACHE_MS (default 5min), BETSSON_SBEE_MAX_CALLS_HR (rate limit).
- *
- * Costo estimado: 25 créditos × 12 calls/hr × 24h × 30d = ~216k créditos/mes
- * (87% del plan Freelance ScrapingBee). Cache agresivo es CRÍTICO para no
- * quemar quota.
+ * Cache: 5min frescos × budget multiplier, hasta 30min stale-fallback.
  * ============================================================================
  */
 'use strict';
 
-const { httpJsonViaScrapingBee, httpViaScrapingBee, getCreditBudgetMultiplier, browserPool, log, sleep } = require('../lib');
+const { httpJsonNative, httpViaScrapingBee, getCreditBudgetMultiplier, browserPool, log, sleep } = require('../lib');
 const { CircuitBreaker } = require('../lib/retry');
+const { parseKambiListView } = require('../lib/kambiJson');
 
-const SPORTSBOOK_URL = 'https://pba.betsson.bet.ar/apuestas-deportivas';
+// URLs del sportsbook — orden de prioridad para extracción multi-deporte.
+// `/apuestas-deportivas` SOLO devuelve 404 sin session cookie.
+const SPORTSBOOK_URLS = [
+  'https://pba.betsson.bet.ar/apuestas-deportivas/futbol',
+  'https://pba.betsson.bet.ar/apuestas-deportivas/en-directo'
+];
+
+// Operator keys candidatos para la API de Kambi. El primero que responda OK
+// se cachea en memoria — los demás se skip los siguientes ciclos.
+// Pattern típico: <brand><country><region> (e.g. betssoncolar para Colombia)
+const KAMBI_OPERATOR_CANDIDATES = [
+  'betssonarba', 'betssonpba', 'betssoncba', 'betssoncaba',
+  'betssonarg', 'betssonar', 'betssonarmx',
+  'betssonbetar', 'betssonbet'
+];
+let validKambiOperator = null;  // cacheado tras primer descubrimiento
+
+const KAMBI_BASES = [
+  'https://us.offering-api.kambicdn.com',
+  'https://eu-offering.kambicdn.org'
+];
+
+const KAMBI_HEADERS = {
+  'Accept': 'application/json',
+  'Accept-Language': 'es-AR,es;q=0.9,en;q=0.8',
+  'Origin': 'https://pba.betsson.bet.ar',
+  'Referer': 'https://pba.betsson.bet.ar/',
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+};
 
 const scrapingBeeBreaker = new CircuitBreaker({ name: 'betsson:scrapingbee', failThreshold: 3, cooldownMs: 15 * 60_000 });
 const playwrightBreaker = new CircuitBreaker({ name: 'betsson:playwright',  failThreshold: 3, cooldownMs: 20 * 60_000 });
+const kambiBreaker      = new CircuitBreaker({ name: 'betsson:kambi',       failThreshold: 5, cooldownMs: 10 * 60_000 });
 
 let cachedEvents = [];
 let cachedAt = 0;
 
-/* Parser: extrae events del HTML renderizado de Betsson.
- *
- * Betsson embebe el initial state del SPA en patrones JSON dentro de
- * <script>. Intentamos múltiples extractors en orden de robustez:
- *   1) window.__SBKB_INITIAL_STATE__ (si existe)
- *   2) JSON literal en scripts con shape esperado
- *   3) DOM-scrape de las cards (último recurso)
- *
- * Si no encontramos data, devolvemos [] sin throw.
- */
-function parseBetssonHtml(html) {
-  if (!html || typeof html !== 'string') return [];
-  const out = [];
-  const seen = new Set();
+const BOOK = 'betsson';
 
-  // Estrategia 1: extraer JSONs grandes de scripts inline
-  const scriptRe = /<script[^>]*>([\s\S]*?)<\/script>/gi;
-  let match;
-  const candidates = [];
-  while ((match = scriptRe.exec(html)) !== null) {
-    const body = match[1];
-    if (body.length < 200 || body.length > 5_000_000) continue;
-    // Buscar JSONs con shape de odds (palabras clave esperadas)
-    if (!/\b(odds|markets|outcomes|event|home|away|kickoff|startsAt|participants)\b/i.test(body)) continue;
-    // Intentar parsear el script entero si es JSON puro
+/* ── Path 1: Kambi direct (GRATIS si encontramos el operator key) ─────────── */
+async function tryKambiDirect() {
+  if (kambiBreaker.state === 'OPEN') {
+    kambiBreaker._maybeReset();
+    if (kambiBreaker.state === 'OPEN') return null;
+  }
+
+  // Si ya descubrimos el operator key, usalo directo
+  if (validKambiOperator) {
+    const events = await fetchKambiOperator(validKambiOperator);
+    if (events && events.length) return events;
+    // Si dejó de funcionar, invalidar para re-descubrir
+    validKambiOperator = null;
+  }
+
+  // Descubrimiento: probar operadores uno por uno
+  for (const op of KAMBI_OPERATOR_CANDIDATES) {
     try {
-      const parsed = JSON.parse(body.trim());
-      candidates.push(parsed);
-      continue;
-    } catch {}
-    // Buscar JSON embedded asignado a variable
-    const jsonAssignRe = /(?:window\.__[A-Z_]+__|const\s+\w+|var\s+\w+|let\s+\w+)\s*=\s*(\{[\s\S]+?\});?\s*(?:<\/script>|$)/m;
-    const m = body.match(jsonAssignRe);
-    if (m) {
-      try { candidates.push(JSON.parse(m[1])); } catch {}
-    }
-  }
-
-  // Estrategia 2: recorrer cada candidate buscando arrays de events
-  for (const root of candidates) {
-    const events = findEventArrays(root, 0);
-    for (const ev of events) {
-      const parsed = normalizeBetssonEvent(ev);
-      if (!parsed) continue;
-      const key = `${parsed.home?.name}|${parsed.away?.name}|${parsed.start}`.toLowerCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push(parsed);
-    }
-  }
-
-  return out;
-}
-
-/* Recorre profundamente buscando arrays cuyos items tengan shape de "event". */
-function findEventArrays(node, depth, found = []) {
-  if (depth > 8 || !node || typeof node !== 'object') return found;
-  if (Array.isArray(node)) {
-    // Heurística: si el primer item tiene home+away u homeTeam+awayTeam, es array de events
-    if (node.length && looksLikeEvent(node[0])) {
-      for (const it of node) if (looksLikeEvent(it)) found.push(it);
-      return found;
-    }
-    for (const it of node) findEventArrays(it, depth + 1, found);
-    return found;
-  }
-  // Es objeto plano: recorrer values
-  for (const v of Object.values(node)) findEventArrays(v, depth + 1, found);
-  return found;
-}
-
-function looksLikeEvent(o) {
-  if (!o || typeof o !== 'object' || Array.isArray(o)) return false;
-  const hasHomeAway =
-    (o.home && o.away) ||
-    (o.homeTeam && o.awayTeam) ||
-    (Array.isArray(o.participants) && o.participants.length >= 2) ||
-    (Array.isArray(o.competitors) && o.competitors.length >= 2);
-  if (!hasHomeAway) return false;
-  // Debe tener algo similar a markets/odds
-  const hasOdds =
-    (o.markets && (Array.isArray(o.markets) || typeof o.markets === 'object')) ||
-    (o.odds && (Array.isArray(o.odds) || typeof o.odds === 'object')) ||
-    o.bets || o.selections;
-  return !!hasOdds;
-}
-
-function normalizeBetssonEvent(raw) {
-  if (!raw) return null;
-  // Extraer teams
-  let homeName, awayName;
-  if (raw.home?.name && raw.away?.name) { homeName = raw.home.name; awayName = raw.away.name; }
-  else if (raw.homeTeam?.name && raw.awayTeam?.name) { homeName = raw.homeTeam.name; awayName = raw.awayTeam.name; }
-  else if (typeof raw.home === 'string' && typeof raw.away === 'string') { homeName = raw.home; awayName = raw.away; }
-  else if (Array.isArray(raw.participants) && raw.participants[0] && raw.participants[1]) {
-    homeName = raw.participants[0].name || raw.participants[0].displayName;
-    awayName = raw.participants[1].name || raw.participants[1].displayName;
-  } else if (Array.isArray(raw.competitors) && raw.competitors[0] && raw.competitors[1]) {
-    homeName = raw.competitors[0].name || raw.competitors[0].displayName;
-    awayName = raw.competitors[1].name || raw.competitors[1].displayName;
-  }
-  if (!homeName || !awayName) return null;
-
-  // Start
-  const start = raw.start || raw.startTime || raw.kickoff || raw.startsAt || raw.scheduledStart || raw.eventDate;
-  const startMs = start ? new Date(start).getTime() : null;
-  if (!Number.isFinite(startMs)) return null;
-
-  // League
-  const leagueName = raw.competition?.name || raw.league?.name || raw.tournament?.name ||
-                     raw.competitionName || raw.leagueName;
-
-  // Sport
-  const sportRaw = String(raw.sport?.name || raw.sportName || raw.sport || '').toLowerCase();
-  const sport = sportRaw.includes('basket') ? 'basketball'
-              : sportRaw.includes('tenis') || sportRaw.includes('tennis') ? 'tennis'
-              : sportRaw.includes('beisbol') || sportRaw.includes('baseball') ? 'baseball'
-              : sportRaw.includes('hockey') ? 'hockey'
-              : sportRaw.includes('americano') || sportRaw.includes('amfootball') ? 'amfootball'
-              : sportRaw.includes('mma') || sportRaw.includes('ufc') ? 'mma'
-              : 'soccer';
-
-  // Markets — intentar extraer 1X2 / over-under / BTTS / DC
-  const markets = extractBetssonMarkets(raw);
-  if (!markets.h2h && !markets.totals && !markets.btts && !markets.dc) return null;
-
-  return {
-    home: { name: homeName.trim() },
-    away: { name: awayName.trim() },
-    start: startMs,
-    league: null,
-    leagueName: leagueName || null,
-    sport,
-    markets: {
-      ...(markets.h2h    ? { h2h:    { betsson: markets.h2h }    } : {}),
-      ...(markets.totals ? { totals: { betsson: markets.totals } } : {}),
-      ...(markets.btts   ? { btts:   { betsson: markets.btts }   } : {}),
-      ...(markets.dc     ? { dc:     { betsson: markets.dc }     } : {})
-    }
-  };
-}
-
-function extractBetssonMarkets(raw) {
-  const out = {};
-  const mList = []
-    .concat(raw.markets || [])
-    .concat(raw.bets || [])
-    .concat(raw.odds || [])
-    .concat(raw.oddsMarkets || []);
-
-  for (const m of mList) {
-    if (!m) continue;
-    const sel = m.selections || m.outcomes || m.runners || m.results || [];
-    const name = String(m.name || m.marketName || m.type || m.shortName || '').toLowerCase();
-
-    if (!out.h2h && /(1x2|resultado|moneyline|h2h|ganador|winner|3.?way|match\s+result)/.test(name) && sel.length >= 2) {
-      const find = (re) => sel.find(s => re.test(String(s.name || s.label || s.shortName || '')));
-      const h = find(/^1$|local|home/i), d = find(/^x$|empate|draw|tie/i), a = find(/^2$|visit|away/i);
-      const h2h = {
-        home: parsePrice(h?.price ?? h?.odd ?? h?.odds ?? sel[0]?.price),
-        draw: parsePrice(d?.price ?? d?.odd ?? d?.odds),
-        away: parsePrice(a?.price ?? a?.odd ?? a?.odds ?? sel[sel.length - 1]?.price)
-      };
-      if (Number.isFinite(h2h.home) || Number.isFinite(h2h.away)) out.h2h = h2h;
-    } else if (!out.totals && /(total|over|under|m.s|menos)/.test(name)) {
-      const line = m.line || m.handicap || sel[0]?.line || sel[0]?.handicap || sel[0]?.point;
-      const ov = sel.find(s => /over|m.s/i.test(String(s.name || s.label || '')));
-      const un = sel.find(s => /under|menos/i.test(String(s.name || s.label || '')));
-      const numLine = Number(line);
-      if (Number.isFinite(numLine) && (ov || un)) {
-        out.totals = {
-          [numLine]: {
-            line: numLine,
-            over: parsePrice(ov?.price ?? ov?.odd ?? ov?.odds),
-            under: parsePrice(un?.price ?? un?.odd ?? un?.odds)
-          }
-        };
+      const events = await fetchKambiOperator(op);
+      if (events && events.length > 0) {
+        validKambiOperator = op;
+        log(`[betsson:kambi] operator key descubierto: '${op}' · ${events.length} eventos`);
+        return events;
       }
-    } else if (!out.btts && /(btts|ambos|both.*score)/.test(name)) {
-      const y = sel.find(s => /yes|s.?$|s.\b/i.test(String(s.name || s.label || '')));
-      const n = sel.find(s => /no\b/i.test(String(s.name || s.label || '')));
-      const btts = {
-        yes: parsePrice(y?.price ?? y?.odd ?? y?.odds),
-        no:  parsePrice(n?.price ?? n?.odd ?? n?.odds)
-      };
-      if (Number.isFinite(btts.yes) || Number.isFinite(btts.no)) out.btts = btts;
-    } else if (!out.dc && /(doble|double\s+chance|dc)/.test(name)) {
-      const hd = sel.find(s => /1x|home.*draw|local.*empate/i.test(String(s.name || s.label || '')));
-      const da = sel.find(s => /x2|draw.*away|empate.*visit/i.test(String(s.name || s.label || '')));
-      const ha = sel.find(s => /12|home.*away|local.*visit/i.test(String(s.name || s.label || '')));
-      const dc = {
-        home_or_draw: parsePrice(hd?.price ?? hd?.odd ?? hd?.odds),
-        draw_or_away: parsePrice(da?.price ?? da?.odd ?? da?.odds),
-        home_or_away: parsePrice(ha?.price ?? ha?.odd ?? ha?.odds)
-      };
-      if (Number.isFinite(dc.home_or_draw) || Number.isFinite(dc.draw_or_away)) out.dc = dc;
+    } catch (e) {
+      // Continuar al siguiente operator
     }
+    // Pequeña pausa entre intentos para no rate-limit
+    await sleep(300);
   }
-
-  return out;
+  log(`[betsson:kambi] ningún operator key responde — caer a SBee`);
+  return null;
 }
 
-function parsePrice(v) {
-  if (v == null) return null;
-  const n = typeof v === 'number' ? v : parseFloat(String(v).replace(',', '.').replace(/[^\d.+\-]/g, ''));
-  return Number.isFinite(n) && n > 1.01 && n < 1000 ? Number(n.toFixed(3)) : null;
+async function fetchKambiOperator(op) {
+  for (const base of KAMBI_BASES) {
+    const url = `${base}/offering/v2018/${op}/listView/all.json?channel_id=7&client_id=200&lang=es_AR&market=AR&useCombined=true`;
+    try {
+      const res = await kambiBreaker.exec(() => httpJsonNative(url, { headers: KAMBI_HEADERS, timeout: 12000 }));
+      if (res && Array.isArray(res.events) && res.events.length > 0) {
+        // Parsear con el parser estándar de Kambi (mismo que BetWarrior)
+        const parsed = parseKambiListView(res, BOOK);
+        return parsed;
+      }
+    } catch (_) {}
+  }
+  return null;
 }
 
-/* Path PRIMARIO: ScrapingBee con render_js. La SPA monta, hace fetch interno
- * a sus APIs, y al renderizar inyecta los events en el HTML/initialState.
- * Cost: ~25 créditos. */
+/* ── Path 2: ScrapingBee render_js sobre URL correcta ─────────────────────── */
 async function tryScrapingBee() {
   if (!process.env.SCRAPINGBEE_KEY) return null;
   if (scrapingBeeBreaker.state === 'OPEN') {
@@ -253,30 +125,240 @@ async function tryScrapingBee() {
     if (scrapingBeeBreaker.state === 'OPEN') return null;
   }
 
-  try {
-    const r = await scrapingBeeBreaker.exec(() =>
-      httpViaScrapingBee(SPORTSBOOK_URL, {
-        timeout: 50000,
-        premium: true,
-        renderJs: true,        // CRÍTICO: la SPA monta odds tras JS render
-        country: 'ar',
-        json: false,            // queremos el HTML, no JSON
-        tag: 'betsson:home'
-      })
-    );
-    if (!r?.text) return [];
-    const events = parseBetssonHtml(r.text);
-    log(`[betsson:sbee] ${events.length} eventos · ${r.costCredits} créditos · target=${r.status}`);
-    return events;
-  } catch (e) {
-    if (e?.circuitOpen) { log('[betsson:sbee] circuit OPEN · skip'); return null; }
-    log(`[betsson:sbee] err: ${e.message?.slice(0, 200)}`);
-    return [];
+  const all = [];
+  const seen = new Set();
+
+  for (const url of SPORTSBOOK_URLS) {
+    try {
+      const r = await scrapingBeeBreaker.exec(() =>
+        httpViaScrapingBee(url, {
+          timeout: 55000,
+          premium: true,
+          renderJs: true,
+          country: 'ar',
+          json: false,
+          wait: 5000,          // dar tiempo a Kambi SPA a montar
+          tag: `betsson:${url.split('/').pop()}`
+        })
+      );
+      if (!r?.text) continue;
+      const events = parseBetssonRendered(r.text);
+      for (const ev of events) {
+        const key = `${ev.home?.name}|${ev.away?.name}|${ev.start}`.toLowerCase();
+        if (!seen.has(key)) { seen.add(key); all.push(ev); }
+      }
+      log(`[betsson:sbee] ${url.split('/').pop()} → ${events.length} eventos · ${r.costCredits} créditos`);
+    } catch (e) {
+      if (e?.circuitOpen) { log('[betsson:sbee] circuit OPEN · skip'); break; }
+      log(`[betsson:sbee] err ${url.split('/').pop()}: ${e.message?.slice(0, 150)}`);
+    }
   }
+  return all;
 }
 
-/* Fallback: Playwright stealth con browserPool. Solo si ScrapingBee no
- * funciona (cooldown agotado o cuota llena). */
+/* ── Parser del HTML rendered (post-JS) ────────────────────────────────────── */
+function parseBetssonRendered(html) {
+  if (!html || typeof html !== 'string') return [];
+  const out = [];
+  const seen = new Set();
+
+  // Estrategia 1: JSON embebido en scripts
+  const scriptRe = /<script[^>]*>([\s\S]*?)<\/script>/gi;
+  const candidates = [];
+  let m;
+  while ((m = scriptRe.exec(html)) !== null) {
+    const body = m[1];
+    if (body.length < 200 || body.length > 10_000_000) continue;
+    // Buscar shapes de events (Kambi usa "betOffers", "outcomes", "homeName", "awayName")
+    if (!/(betOffers|homeName|awayName|criterion|outcomes|kickoff|startTime)/i.test(body)) continue;
+    try { candidates.push(JSON.parse(body.trim())); continue; } catch {}
+    // JSON asignado a variable
+    const m2 = body.match(/(?:window\.__[A-Z_]+__|const\s+\w+|let\s+\w+|var\s+\w+)\s*=\s*(\{[\s\S]+?\});?\s*(?:<\/script>|$)/m);
+    if (m2) { try { candidates.push(JSON.parse(m2[1])); } catch {} }
+  }
+
+  // Estrategia 2: si encontramos JSON con shape Kambi, usar parser estándar
+  for (const root of candidates) {
+    // Caso A: el JSON es { events: [...] } directo (formato Kambi)
+    if (root && Array.isArray(root.events)) {
+      try {
+        const parsed = parseKambiListView(root, BOOK);
+        for (const ev of parsed) {
+          const key = `${ev.home?.name}|${ev.away?.name}|${ev.start}`.toLowerCase();
+          if (!seen.has(key)) { seen.add(key); out.push(ev); }
+        }
+        continue;
+      } catch {}
+    }
+    // Caso B: buscar arrays con shape de event en cualquier rama
+    const events = findEventArrays(root, 0);
+    for (const raw of events) {
+      const parsed = normalizeBetssonEvent(raw);
+      if (!parsed) continue;
+      const key = `${parsed.home?.name}|${parsed.away?.name}|${parsed.start}`.toLowerCase();
+      if (!seen.has(key)) { seen.add(key); out.push(parsed); }
+    }
+  }
+
+  return out;
+}
+
+function findEventArrays(node, depth, found = []) {
+  if (depth > 8 || !node || typeof node !== 'object') return found;
+  if (Array.isArray(node)) {
+    if (node.length && looksLikeEvent(node[0])) {
+      for (const it of node) if (looksLikeEvent(it)) found.push(it);
+      return found;
+    }
+    for (const it of node) findEventArrays(it, depth + 1, found);
+    return found;
+  }
+  for (const v of Object.values(node)) findEventArrays(v, depth + 1, found);
+  return found;
+}
+
+function looksLikeEvent(o) {
+  if (!o || typeof o !== 'object' || Array.isArray(o)) return false;
+  const hasHomeAway =
+    (o.homeName && o.awayName) ||
+    (o.home && o.away) ||
+    (o.homeTeam && o.awayTeam) ||
+    (Array.isArray(o.participants) && o.participants.length >= 2) ||
+    (Array.isArray(o.competitors) && o.competitors.length >= 2);
+  if (!hasHomeAway) return false;
+  return !!(o.markets || o.odds || o.betOffers || o.bets || o.selections || o.outcomes);
+}
+
+function normalizeBetssonEvent(raw) {
+  if (!raw) return null;
+  // Extraer teams (Kambi usa homeName/awayName)
+  let homeName = raw.homeName || raw.home?.name || raw.homeTeam?.name;
+  let awayName = raw.awayName || raw.away?.name || raw.awayTeam?.name;
+  if (!homeName && typeof raw.home === 'string') homeName = raw.home;
+  if (!awayName && typeof raw.away === 'string') awayName = raw.away;
+  if (!homeName && Array.isArray(raw.participants) && raw.participants[0]) {
+    homeName = raw.participants[0].name || raw.participants[0].displayName;
+    awayName = raw.participants[1]?.name || raw.participants[1]?.displayName;
+  }
+  if (!homeName && Array.isArray(raw.competitors) && raw.competitors[0]) {
+    homeName = raw.competitors[0].name || raw.competitors[0].displayName;
+    awayName = raw.competitors[1]?.name || raw.competitors[1]?.displayName;
+  }
+  if (!homeName || !awayName) return null;
+
+  const start = raw.start || raw.startTime || raw.kickoff || raw.startsAt || raw.scheduledStart;
+  const startMs = start ? new Date(start).getTime() : null;
+  if (!Number.isFinite(startMs)) return null;
+
+  const leagueName = raw.group || raw.path?.[raw.path.length - 1]?.name || raw.competition?.name || raw.league?.name || raw.leagueName;
+
+  const sportRaw = String(raw.sport || raw.sport?.name || raw.sportName || '').toLowerCase();
+  const sport = sportRaw.includes('basket') ? 'basketball'
+              : sportRaw.includes('tennis') ? 'tennis'
+              : sportRaw.includes('hockey') ? 'hockey'
+              : sportRaw.includes('baseball') ? 'baseball'
+              : sportRaw.includes('american') || sportRaw.includes('amfootball') ? 'amfootball'
+              : sportRaw.includes('mma') || sportRaw.includes('boxing') ? 'mma'
+              : 'soccer';
+
+  const markets = extractBetssonMarkets(raw);
+  if (!markets.h2h && !markets.totals && !markets.btts && !markets.dc) return null;
+
+  return {
+    home: { name: String(homeName).trim() },
+    away: { name: String(awayName).trim() },
+    start: startMs,
+    league: null,
+    leagueName: leagueName || null,
+    sport,
+    markets: {
+      ...(markets.h2h    ? { h2h:    { [BOOK]: markets.h2h }    } : {}),
+      ...(markets.totals ? { totals: { [BOOK]: markets.totals } } : {}),
+      ...(markets.btts   ? { btts:   { [BOOK]: markets.btts }   } : {}),
+      ...(markets.dc     ? { dc:     { [BOOK]: markets.dc }     } : {})
+    }
+  };
+}
+
+function extractBetssonMarkets(raw) {
+  const out = {};
+  const mList = []
+    .concat(raw.betOffers || [])
+    .concat(raw.markets || [])
+    .concat(raw.bets || [])
+    .concat(raw.odds || []);
+
+  for (const m of mList) {
+    if (!m) continue;
+    // Kambi: outcomes; otros: selections/runners
+    const sel = m.outcomes || m.selections || m.runners || m.results || [];
+    const name = String(m.name || m.marketName || m.criterion?.label || m.type || m.shortName || '').toLowerCase();
+    const cid = m.criterion?.id;
+
+    // 1X2 / Resultado / h2h
+    if (!out.h2h && (cid === 1001159858 || /(1x2|resultado|moneyline|h2h|ganador|winner|3.?way|match\s+result)/.test(name)) && sel.length >= 2) {
+      const findOut = (re) => sel.find(s => re.test(String(s.label || s.name || s.type || '')));
+      const h = findOut(/^1\b|home|local|OT_ONE/i);
+      const d = findOut(/^x\b|empate|draw|tie|OT_CROSS/i);
+      const a = findOut(/^2\b|away|visit|OT_TWO/i);
+      const h2h = {
+        home: parsePrice(h?.odds ?? h?.price ?? h?.odd ?? sel[0]?.odds),
+        draw: parsePrice(d?.odds ?? d?.price ?? d?.odd),
+        away: parsePrice(a?.odds ?? a?.price ?? a?.odd ?? sel[sel.length - 1]?.odds)
+      };
+      if (Number.isFinite(h2h.home) || Number.isFinite(h2h.away)) out.h2h = h2h;
+    } else if (!out.totals && (cid === 1001159926 || /(total|over|under|m.s|menos)/.test(name))) {
+      const line = m.line || m.handicap || sel[0]?.line || sel[0]?.handicap || sel[0]?.point;
+      const ov = sel.find(s => /over|m.s|OT_OVER/i.test(String(s.label || s.name || s.type || '')));
+      const un = sel.find(s => /under|menos|OT_UNDER/i.test(String(s.label || s.name || s.type || '')));
+      const numLine = Number(line);
+      if (Number.isFinite(numLine) && (ov || un)) {
+        // Si line viene en milliunits (Kambi: 25 = 2.5), normalizar
+        const finalLine = numLine > 100 ? numLine / 1000 : numLine;
+        out.totals = {
+          [finalLine]: {
+            line: finalLine,
+            over: parsePrice(ov?.odds ?? ov?.price ?? ov?.odd),
+            under: parsePrice(un?.odds ?? un?.price ?? un?.odd)
+          }
+        };
+      }
+    } else if (!out.btts && (cid === 1001642858 || /(btts|ambos|both.*score|ambos.*marcar)/.test(name))) {
+      const y = sel.find(s => /yes|s.?$|OT_YES/i.test(String(s.label || s.name || s.type || '')));
+      const n = sel.find(s => /^no\b|OT_NO/i.test(String(s.label || s.name || s.type || '')));
+      const btts = {
+        yes: parsePrice(y?.odds ?? y?.price ?? y?.odd),
+        no:  parsePrice(n?.odds ?? n?.price ?? n?.odd)
+      };
+      if (Number.isFinite(btts.yes) || Number.isFinite(btts.no)) out.btts = btts;
+    } else if (!out.dc && (cid === 1001159922 || /(doble|double\s+chance|dc)/.test(name))) {
+      const hd = sel.find(s => /1x|home.*draw|local.*empate|OT_ONE_OR_CROSS/i.test(String(s.label || s.name || s.type || '')));
+      const da = sel.find(s => /x2|draw.*away|empate.*visit|OT_CROSS_OR_TWO/i.test(String(s.label || s.name || s.type || '')));
+      const ha = sel.find(s => /12|home.*away|local.*visit|OT_ONE_OR_TWO/i.test(String(s.label || s.name || s.type || '')));
+      const dc = {
+        home_or_draw: parsePrice(hd?.odds ?? hd?.price ?? hd?.odd),
+        draw_or_away: parsePrice(da?.odds ?? da?.price ?? da?.odd),
+        home_or_away: parsePrice(ha?.odds ?? ha?.price ?? ha?.odd)
+      };
+      if (Number.isFinite(dc.home_or_draw) || Number.isFinite(dc.draw_or_away)) out.dc = dc;
+    }
+  }
+  return out;
+}
+
+function parsePrice(v) {
+  if (v == null) return null;
+  let n;
+  if (typeof v === 'number') {
+    // Kambi devuelve odds en milliunits: 1960 = 1.96
+    n = v > 100 ? v / 1000 : v;
+  } else {
+    n = parseFloat(String(v).replace(',', '.').replace(/[^\d.+\-]/g, ''));
+  }
+  return Number.isFinite(n) && n > 1.01 && n < 1000 ? Number(n.toFixed(3)) : null;
+}
+
+/* ── Path 3: Playwright fallback ──────────────────────────────────────────── */
 async function tryPlaywright() {
   if (playwrightBreaker.state === 'OPEN') {
     playwrightBreaker._maybeReset();
@@ -290,12 +372,10 @@ async function tryPlaywright() {
       ctx = handle.ctx;
       const page = handle.page;
 
-      // Interceptar TODOS los JSON responses durante el load — los SDK del
-      // sportsbook hacen N XHRs con shapes variados.
       page.on('response', async (res) => {
         try {
           const url = res.url();
-          if (!/betsson|sportsbook|sb-xp|kambi/i.test(url)) return;
+          if (!/(kambi|betsson|sb-xp|sportsbook|offering)/i.test(url)) return;
           const ct = (res.headers()['content-type'] || '').toLowerCase();
           if (!ct.includes('json')) return;
           const json = await res.json().catch(() => null);
@@ -303,47 +383,53 @@ async function tryPlaywright() {
         } catch (_) {}
       });
 
-      await page.goto(SPORTSBOOK_URL, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
-      await sleep(5000);  // dar tiempo a la SPA a montar
-      // Scroll suave para forzar lazy-load
-      await page.evaluate(() => window.scrollBy(0, 600)).catch(() => {});
-      await sleep(2500);
+      // Cargar primero el home para cookies, luego sportsbook
+      await page.goto('https://pba.betsson.bet.ar/', { waitUntil: 'domcontentloaded', timeout: 25000 }).catch(() => {});
+      await sleep(2000);
+      await page.goto('https://pba.betsson.bet.ar/apuestas-deportivas/futbol', { waitUntil: 'domcontentloaded', timeout: 25000 }).catch(() => {});
+      await sleep(6000);  // Kambi SPA monta los eventos
+      await page.evaluate(() => window.scrollBy(0, 800)).catch(() => {});
+      await sleep(2000);
       const html = await page.content().catch(() => '');
-      captured.push({ url: 'page-html', json: null, html });
+      captured.push({ url: 'page-html', html, json: null });
 
       if (!captured.some(c => c.json) && !html) throw new Error('no-content-captured');
     });
   } catch (e) {
-    const stack = (e.stack || '').split('\n').slice(1, 3).join(' | ').slice(0, 200);
-    log(`[betsson:playwright] err: ${e.message}${e.circuitOpen ? ' · circuit OPEN' : ''} · ${stack}`);
+    log(`[betsson:playwright] err: ${e.message}${e.circuitOpen ? ' · circuit OPEN' : ''}`);
   } finally {
     if (ctx) try { await ctx.close(); } catch {}
   }
 
   const out = [];
   const seen = new Set();
-  // Parse JSON responses
   for (const c of captured) {
-    if (!c.json) continue;
-    const events = findEventArrays(c.json, 0);
-    for (const raw of events) {
-      const parsed = normalizeBetssonEvent(raw);
-      if (!parsed) continue;
-      const key = `${parsed.home?.name}|${parsed.away?.name}|${parsed.start}`.toLowerCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push(parsed);
+    if (c.json) {
+      // Si es shape Kambi, usar parser
+      if (Array.isArray(c.json.events)) {
+        try {
+          const evs = parseKambiListView(c.json, BOOK);
+          for (const ev of evs) {
+            const key = `${ev.home?.name}|${ev.away?.name}|${ev.start}`.toLowerCase();
+            if (!seen.has(key)) { seen.add(key); out.push(ev); }
+          }
+        } catch {}
+      } else {
+        const events = findEventArrays(c.json, 0);
+        for (const raw of events) {
+          const parsed = normalizeBetssonEvent(raw);
+          if (!parsed) continue;
+          const key = `${parsed.home?.name}|${parsed.away?.name}|${parsed.start}`.toLowerCase();
+          if (!seen.has(key)) { seen.add(key); out.push(parsed); }
+        }
+      }
     }
-  }
-  // Parse HTML como último recurso
-  const htmlCaps = captured.filter(c => c.html);
-  for (const c of htmlCaps) {
-    const evs = parseBetssonHtml(c.html);
-    for (const ev of evs) {
-      const key = `${ev.home?.name}|${ev.away?.name}|${ev.start}`.toLowerCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push(ev);
+    if (c.html) {
+      const evs = parseBetssonRendered(c.html);
+      for (const ev of evs) {
+        const key = `${ev.home?.name}|${ev.away?.name}|${ev.start}`.toLowerCase();
+        if (!seen.has(key)) { seen.add(key); out.push(ev); }
+      }
     }
   }
   log(`[betsson:playwright] ${out.length} eventos extraídos`);
@@ -361,9 +447,17 @@ async function scrape() {
   let events = null;
   let via = null;
 
-  const sbeeRes = await tryScrapingBee();
-  if (sbeeRes && sbeeRes.length) { events = sbeeRes; via = 'sbee'; }
+  // PATH 1: Kambi direct (gratis)
+  const kambiRes = await tryKambiDirect();
+  if (kambiRes && kambiRes.length) { events = kambiRes; via = 'kambi'; }
 
+  // PATH 2: ScrapingBee render_js
+  if (!events?.length) {
+    const sbeeRes = await tryScrapingBee();
+    if (sbeeRes && sbeeRes.length) { events = sbeeRes; via = 'sbee'; }
+  }
+
+  // PATH 3: Playwright
   if (!events?.length) {
     events = await tryPlaywright();
     via = 'playwright';
@@ -376,7 +470,7 @@ async function scrape() {
     return events;
   }
 
-  // Stale fallback 30min — cuotas viejas son mejor que vacío
+  // Stale fallback
   const staleTtl = 30 * 60_000;
   if (cachedEvents.length && Date.now() - cachedAt < staleTtl) {
     log(`[betsson] all paths failed · serving cache (${cachedEvents.length})`);
@@ -388,10 +482,11 @@ async function scrape() {
 }
 
 scrape.breakers = {
+  kambi: kambiBreaker,
   scrapingbee: scrapingBeeBreaker,
   playwright: playwrightBreaker
 };
 
-scrape.clearCache = () => { cachedEvents = []; cachedAt = 0; };
+scrape.clearCache = () => { cachedEvents = []; cachedAt = 0; validKambiOperator = null; };
 
 module.exports = scrape;
