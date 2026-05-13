@@ -1082,6 +1082,40 @@ setTimeout(() => { prewarmAllLogos().catch(e => log(`[logo:prewarm] fatal: ${e?.
 // Refresh cada 24h
 setInterval(() => { prewarmAllLogos().catch(() => {}); }, 24 * 60 * 60 * 1000);
 
+/* GET /api/ai/test — diagnóstico: prueba Groq directamente y devuelve raw response. */
+app.get('/api/ai/test', async (req, res) => {
+  const key = process.env.BS_GROQ_API_KEY || process.env.GROQ_API_KEY || '';
+  if (!key) return res.json({ ok: false, error: 'NO_GROQ_KEY', detail: 'BS_GROQ_API_KEY no está en env' });
+  const keyPreview = key.slice(0, 6) + '...' + key.slice(-4);
+  try {
+    const ctrl = new AbortController();
+    setTimeout(() => ctrl.abort(), 15000);
+    const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      signal: ctrl.signal,
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+      body: JSON.stringify({
+        model: process.env.BS_GROQ_MODEL || 'llama-3.3-70b-versatile',
+        messages: [
+          { role: 'system', content: 'Responde JSON: {"ok": true, "msg": "<saludo>"}' },
+          { role: 'user', content: 'Test' }
+        ],
+        temperature: 0.1,
+        response_format: { type: 'json_object' },
+        max_tokens: 100
+      })
+    });
+    const text = await r.text();
+    res.json({
+      ok: r.ok, status: r.status, keyPreview,
+      model: process.env.BS_GROQ_MODEL || 'llama-3.3-70b-versatile',
+      response: text.slice(0, 800)
+    });
+  } catch (e) {
+    res.json({ ok: false, error: e?.message, keyPreview });
+  }
+});
+
 /* GET /api/logo?team=X&sport=Y — devuelve URL de logo o 404.
  * Cliente lo llama async y reemplaza placeholder cuando llega.
  * Pasar ?debug=1 para diagnóstico (devuelve la respuesta cruda de ESPN). */
