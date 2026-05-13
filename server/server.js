@@ -488,11 +488,19 @@ app.post('/api/generator', express.json(), async (req, res) => {
   const mixSports = req.body?.mixSports !== false;
   const useAiBuilder = req.body?.useAiBuilder === true;
 
-  function buildOneCombo(targetType, excludeSigs) {
+  function buildOneCombo(targetType, excludeSigs, comboIdx = 0) {
     // Filtrar por tipo si lo pidieron (cons/eq/agg). Si no hay del tipo,
     // RELAJAMOS — mejor devolver un combo que ninguno.
     let candidates = pool.filter(p => p.sel.type === targetType);
     if (candidates.length < legs) candidates = pool;
+
+    // ROTACIÓN: para combo 0 → top picks, combo 1 → picks 2-5, combo 2 → picks 4-7
+    // Esto evita que las 3 combos llamadas seguidas devuelvan exactamente las mismas legs.
+    if (comboIdx > 0 && candidates.length > legs + comboIdx) {
+      // Rotar el array para empezar desde el siguiente "tier"
+      const skip = Math.min(comboIdx * 2, candidates.length - legs);
+      candidates = [...candidates.slice(skip), ...candidates.slice(0, skip)];
+    }
 
     const chosen = [];
     const usedByEvent = new Map();   // eventId → count
@@ -611,7 +619,7 @@ app.post('/api/generator', express.json(), async (req, res) => {
   const typeOrder = [risk, risk === 'cons' ? 'eq' : risk === 'eq' ? 'agg' : 'eq', 'eq'];
   for (let i = 0; i < count * 3 && combos.length < count; i++) {
     const t = typeOrder[i % typeOrder.length];
-    const combo = buildOneCombo(t, seenSigs);
+    const combo = buildOneCombo(t, seenSigs, combos.length);
     if (combo) combos.push(combo);
   }
 
