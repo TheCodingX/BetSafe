@@ -15,7 +15,7 @@
 
   function render(panel) {
     if (!BSAuth.isVip()) {
-      panel.innerHTML = `<div class="card card-vip card-pad-lg stack"><span class="badge-vip">VIP</span><h2 class="h3">Smart Money Alerts<a class="help-q" tabindex="0" data-tip="Smart Money es el dinero profesional/sharp que mueve las cuotas. Detectamos cuando una cuota se mueve 5%+ entre dos ciclos de scraping — eso suele indicar que apostadores grandes (sharps) tomaron posición. Te avisamos en tiempo real para que sigas el flujo del dinero serio."></a></h2><p class="muted">Detección de movimientos sharp >5% por ciclo.</p><a href="pricing.html" class="btn btn-gold">Ver planes</a></div>`;
+      panel.innerHTML = `<div class="card card-vip card-pad-lg stack"><span class="badge-vip">VIP</span><h2 class="h3">Smart Money Alerts<a class="help-q" tabindex="0" data-tip="Smart Money es el dinero profesional que mueve las cuotas. Detectamos cuando una cuota se mueve 5%+ — eso suele indicar que apostadores grandes tomaron posición. Te avisamos en tiempo real para que sigas el flujo del dinero serio."></a></h2><p class="muted">Detección de movimientos del mercado &gt;5%.</p><a href="pricing.html" class="btn btn-gold">Ver planes</a></div>`;
       return;
     }
     const alerts = BSStore.get(BSStore.KEYS.vipAlerts) || [];
@@ -23,8 +23,8 @@
     panel.innerHTML = `
       <div class="row between mb-3">
         <div>
-          <h2 class="h3">Smart Money Alerts<a class="help-q" tabindex="0" data-tip="Smart Money = dinero profesional/sharp. Detectamos cuando una cuota se mueve 5%+ entre dos ciclos de scraping (steam move) — señal de que sharps tomaron posición."></a></h2>
-          <p class="muted">Flujo real de movimientos sharp · cruce de casas argentinas · push en vivo via WebSocket.</p>
+          <h2 class="h3">Smart Money Alerts<a class="help-q" tabindex="0" data-tip="Smart Money = dinero profesional. Detectamos cuando una cuota se mueve 5%+ — señal de que apostadores grandes tomaron posición."></a></h2>
+          <p class="muted">Flujo real de movimientos del mercado · cruce de casas argentinas · alertas en vivo.</p>
         </div>
         <button class="btn btn-primary mag" id="newAlert">+ Crear alerta</button>
       </div>
@@ -49,7 +49,7 @@
       const host = panel.querySelector('#smStream');
       if (!host) return;
       if (!items.length) {
-        host.innerHTML = `<div class="empty" style="padding:30px;text-align:center"><strong>Sin movimientos sharp detectados</strong><p class="muted tiny">El backend compara cada ciclo de scraping con el anterior. Cuando una cuota se mueve ≥5% (steam move), aparece acá automáticamente.</p></div>`;
+        host.innerHTML = `<div class="empty" style="padding:30px;text-align:center"><strong>Sin movimientos del mercado detectados</strong><p class="muted tiny">Cuando una cuota se mueve ≥5% (señal de dinero profesional tomando posición), aparece acá automáticamente.</p></div>`;
         return;
       }
       host.innerHTML = items.slice(0, 30).map(it => {

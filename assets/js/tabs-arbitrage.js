@@ -286,7 +286,7 @@
           return;
         }
         target.style.display = '';
-        target.innerHTML = `<div class="card card-pad-sm card-tinted"><span class="shimmer-text muted tiny">Groq llama-3.3-70b explicando la surebet…</span></div>`;
+        target.innerHTML = `<div class="card card-pad-sm card-tinted"><span class="shimmer-text muted tiny">IA analizando la surebet…</span></div>`;
         b.disabled = true;
         try {
           const r = await BSLive.explainSurebet(key);

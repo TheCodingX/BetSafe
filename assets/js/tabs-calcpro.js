@@ -55,7 +55,7 @@
     panel.innerHTML = `
       <div class="row between mb-3">
         <div>
-          <h2 class="h3">CalcPro VIP · 24 herramientas cuantitativas<a class="help-q" tabindex="0" data-tip="La suite cuantitativa completa: Kelly Portfolio multi-bet, Bankroll Growth con compounding, Drawdown Estimator con 95% CI, Sharpe & Sortino, Monte Carlo 1000+ runs, Poisson xG, Elo update, EV multi/combinada, CLV agregado, Steam Moves detector, RLM analyzer y más. Cada herramienta con su categoría y descripción."></a></h2>
+          <h2 class="h3">CalcPro VIP · 24 herramientas profesionales<a class="help-q" tabindex="0" data-tip="Suite completa de cálculo: Kelly Portfolio multi-bet, Crecimiento de banca, Estimador de drawdown con intervalos de confianza, ratios de rendimiento, Monte Carlo 1000+ simulaciones, modelo de goles esperados, EV multi/combinada, CLV agregado, detector de movimientos del mercado y más."></a></h2>
           <p class="muted">Mesa de trading completa.</p>
         </div>
       </div>

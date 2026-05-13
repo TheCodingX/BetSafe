@@ -64,19 +64,24 @@ function isPremiumMatch(event, factors) {
   return false;
 }
 
-const SYSTEM_PROMPT = `Sos un analista senior de apuestas deportivas con datos en tiempo real.
-Tu rol: leer el partido EN PROFUNDIDAD usando IA — no solo matemática.
+const SYSTEM_PROMPT = `Sos un analista senior de apuestas deportivas con datos reales en tiempo real.
+Tu rol: leer el partido EN PROFUNDIDAD y dar 3 picks claros al usuario.
 
-Generá 3 picks coherentes (cons/eq/agg) favoreciendo la MISMA dirección.
-- cons: pick seguro (DC 1X o X2, o Under si bajo scoring) — alta prob, cuota baja
-- eq: pick principal (h2h favorito) — riesgo medio
-- agg: combinada multi-leg del MISMO partido (h2h + over/under + BTTS) — riesgo alto
+Generá 3 picks coherentes (cons/eq/agg) favoreciendo la MISMA dirección:
+- cons: pick seguro (doble oportunidad 1X o X2, o menos goles si juego cerrado) — alta probabilidad
+- eq: pick principal (ganador del partido) — riesgo medio
+- agg: combinada de varias apuestas del MISMO partido (ganador + más/menos + ambos marcan) — riesgo alto
 
-Reglas:
+Reglas IMPORTANTES de redacción:
 1) NO inventes datos: solo lo del input.
-2) Rationale 3-5 frases CADA pick. Lectura táctica + razones específicas + contexto.
-3) Si el LLM ve algo que la matemática no — destacalo (motivación, fixture, importancia).
-4) Synthesis: párrafo 80-140 palabras leyendo el partido como research note.
+2) Cada rationale: 3-5 frases. Análisis táctico + razones específicas + contexto del partido.
+3) Si ves algo que la matemática no — destacalo (motivación, fixture, importancia del partido).
+4) LENGUAJE NATURAL — hablá como un experto en apuestas argentino con el usuario. NUNCA menciones
+   nombres técnicos de modelos como "Poisson", "Elo", "Shin no-vig", "modelo cuantitativo",
+   "ensemble", "milliunits", "fair odds", etc. Usá: "goles esperados", "forma reciente",
+   "movimiento del mercado", "ventaja de local", "valor en la cuota", "edge sobre la casa".
+5) Synthesis: párrafo 80-140 palabras leyendo el partido. NO uses jerga técnica — leelo
+   como si fueras un comentarista profesional explicando el partido a un apostador.
 
 JSON estricto (sin markdown, sin prefijos):
 {
@@ -85,10 +90,10 @@ JSON estricto (sin markdown, sin prefijos):
     {"type":"eq","market":"h2h","outcome":"home"|"draw"|"away","modelProb":0..1,"rationale":"...","confidence":0..1},
     {"type":"agg","market":"h2h"|"totals"|"btts","outcome":"...","modelProb":0..1,"rationale":"...","confidence":0..1}
   ],
-  "synthesis":"<80-140 palabras>",
-  "keyFactor":"<una frase>",
-  "marketEdge":"<una frase>",
-  "modelConsensus":"<una frase>"
+  "synthesis":"<80-140 palabras de lectura del partido en lenguaje natural>",
+  "keyFactor":"<una frase: factor más importante de este partido>",
+  "marketEdge":"<una frase: dónde está el valor en la cuota>",
+  "modelConsensus":"<una frase: nivel de convicción del análisis>"
 }`;
 
 /** Pipeline principal para un partido. */
@@ -360,12 +365,17 @@ async function llmStructured(factors, poisson, elo) {
     clima: factors.weather,
     lesiones: trimmedInjuries,
     historico: trimmedHistorical,
-    sharp: factors.sharp,
-    modeloPoisson: poisson,
-    modeloElo: elo,
-    cuantitativo: factors.quantitative
+    movimientoMercado: factors.sharp,
+    golesEsperados: poisson,
+    rendimientoForma: elo,
+    analisisCuotas: factors.quantitative
   });
-  const prompt = `Análisis institucional — generá 3 picks coherentes (cons/eq/agg) favoreciendo la MISMA dirección que indica el modelo ensemble. agg = combinada multi-leg del mismo partido (h2h + over/under + BTTS), NO outcome contrario.\n\nDatos:\n${userMsg}`;
+  const prompt = `Análisis institucional — generá 3 picks coherentes (cons/eq/agg) favoreciendo la MISMA dirección. agg = combinada multi-leg del mismo partido (h2h + over/under + BTTS), NO outcome contrario.
+
+IMPORTANTE: tu rationale debe leerse como un análisis profesional NATURAL. NO menciones "Poisson", "Elo", "Shin", "modelo cuantitativo", "ensemble" ni nombres técnicos de modelos. Hablá en términos que entiende cualquier apostador: "goles esperados", "forma reciente", "movimiento del mercado", "ventaja de local", "valor en el pick", etc.
+
+Datos:
+${userMsg}`;
 
   // NEW CASCADA TIER STRATEGY:
   // - Gemini 2.5 Flash es PRIMARY (más barato + 1M context window)
@@ -762,7 +772,7 @@ function mergeSelections(event, factors, quant, poisson, elo, llm) {
         book: t.underBook,
         consensusProb: pUnder,
         confidence: Math.min(0.85, baseConfidence + 0.1),
-        rationale: llmU?.rationale || `Pick conservador en goles: el perfil ofensivo de ambos equipos sugiere un partido cerrado. Nuestra estimación cuantitativa (xG combinado bajo) muestra que el escenario más probable es un marcador conservador. Bajo ${line} goles es ${(pUnder * 100).toFixed(0)}% probable según nuestros modelos.`,
+        rationale: llmU?.rationale || `Pick conservador en goles: el perfil ofensivo de ambos equipos sugiere un partido cerrado. Nuestro análisis indica que el escenario más probable es un marcador bajo. Menos de ${line} goles tiene ${(pUnder * 100).toFixed(0)}% de probabilidad estimada.`,
         factors: buildFactorList({ outcome: 'under' }, factors)
       });
       consPushed = true;
@@ -778,7 +788,7 @@ function mergeSelections(event, factors, quant, poisson, elo, llm) {
         book: t.overBook,
         consensusProb: Math.min(0.95, poisson.pOver25 + 0.1),
         confidence: Math.min(0.85, baseConfidence + 0.1),
-        rationale: `Poisson predice ${(poisson.pOver25 * 100).toFixed(0)}% over ${line}. Bajar la línea aumenta certeza.`,
+        rationale: `Nuestro análisis estima ${(poisson.pOver25 * 100).toFixed(0)}% de probabilidad de superar los ${line} goles. Bajar la línea aumenta la certeza del pick.`,
         factors: buildFactorList({ outcome: 'over' }, factors)
       });
       consPushed = true;
@@ -901,8 +911,8 @@ function mergeSelections(event, factors, quant, poisson, elo, llm) {
         legs: legs.map(l => ({ market: l.market, outcome: l.outcome, line: l.line, label: l.label, odd: l.odd, book: l.book })),
         consensusProb: adjustedProb,
         confidence: Math.max(0.35, baseConfidence - 0.15),
-        rationale: `Combinada de ${legs.length} legs en favor de ${favoredTeam}. Modelo Poisson predice escenario coherente: ${legs.map(l => `${l.label} ${(l.prob * 100).toFixed(0)}%`).join(', ')}. Correlación positiva intra-partido — todas las legs apuntan a la misma narrativa.`,
-        tacticalNotes: `Cuota alta no viene de pick contradictorio sino de sumar legs justificadas por modelos cuantitativos del mismo partido.`,
+        rationale: `Combinada de ${legs.length} apuestas en favor de ${favoredTeam}. Nuestro análisis indica un escenario coherente: ${legs.map(l => `${l.label} ${(l.prob * 100).toFixed(0)}%`).join(', ')}. Las tres apuestas apuntan a la misma narrativa del partido — alta correlación positiva.`,
+        tacticalNotes: `La cuota alta no viene de elegir el outcome contrario, sino de sumar varias apuestas justificadas del mismo partido.`,
         factors: buildFactorList({ outcome: favored }, factors)
       });
     } else {
@@ -924,7 +934,7 @@ function mergeSelections(event, factors, quant, poisson, elo, llm) {
           book: favoredBook,
           consensusProb: favoredProb * 0.65,  // AH -1.5 baja prob ~35%
           confidence: Math.max(0.30, baseConfidence - 0.25),
-          rationale: `Pick agresivo con handicap asiático: ${ahLabel}. Cuota más alta a costa de exigir margen de victoria. Sustento: Poisson λ ${favored === 'home' ? poisson.lambdaH : poisson.lambdaA}.`,
+          rationale: `Pick agresivo con hándicap asiático: ${ahLabel}. Cuota más alta a costa de exigir margen de victoria. Sustentado por el análisis de goles esperados (${(favored === 'home' ? poisson.lambdaH : poisson.lambdaA).toFixed(2)} goles proyectados para ${favoredTeam}).`,
           tacticalNotes: `Handicap asiático para favoritos claros — paga premium por convicción de victoria amplia.`,
           factors: buildFactorList({ outcome: favored }, factors)
         });
@@ -964,7 +974,7 @@ function mergeSelections(event, factors, quant, poisson, elo, llm) {
             book: favoredBook,
             consensusProb: favoredProb,
             confidence: Math.max(0.4, baseConfidence - 0.1),
-            rationale: `Pick agresivo: el evento no expone mercados de totals/BTTS/AH/DC para combinar. Sin diversificación de mercado, agresivo coincide con equilibrado en favorito h2h.`,
+            rationale: `Pick agresivo: este partido no tiene mercados adicionales abiertos (más/menos, ambos marcan, hándicap, doble chance) para armar una combinada. Como alternativa, sostenemos el favorito directo con la cuota disponible.`,
             factors: buildFactorList({ outcome: favored }, factors)
           });
         }

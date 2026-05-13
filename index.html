@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>BetSafe — Análisis cuantitativo de apuestas deportivas | Argentina legal</title>
+<title>BetSafe — Análisis inteligente de apuestas deportivas | Argentina legal</title>
 <meta name="description" content="BetSafe es la plataforma argentina legal para apostadores serios: comparador de cuotas en las 6 casas LOTBA, IA para picks, banca, arbitraje y Mundial 2026. No somos casa de apuestas. +18." />
 <meta name="theme-color" content="#ffffff" />
 <meta name="color-scheme" content="light dark" />
-<meta property="og:title" content="BetSafe — Análisis cuantitativo de apuestas" />
+<meta property="og:title" content="BetSafe — Análisis inteligente de apuestas" />
 <meta property="og:description" content="La mesa de trading para apostadores legales en Argentina. Comparador, IA, arbitraje, banca." />
 <meta property="og:type" content="website" />
 <meta property="og:image" content="assets/img/og.svg" />
@@ -26,7 +26,7 @@
   "url": "/",
   "logo": "assets/img/icon-512.svg",
   "areaServed": "AR",
-  "description": "Plataforma argentina legal de análisis cuantitativo de apuestas deportivas."
+  "description": "Plataforma argentina legal de análisis inteligente de apuestas deportivas."
 }
 </script>
 </head>
@@ -93,7 +93,7 @@
               </div>
             </div>
             <div class="cmp-meta-row">
-              <span class="cmp-meta-item"><span class="dim">Backend:</span><strong id="heroBackendState">scraping…</strong></span>
+              <span class="cmp-meta-item"><span class="dim">Estado:</span><strong id="heroBackendState">conectando…</strong></span>
               <span class="cmp-meta-item"><span class="dim">Última actualización:</span><strong id="heroLastUpdate">—</strong></span>
             </div>
           </div>
@@ -307,7 +307,7 @@
       <div class="wc-mega__cmp-head">
         <div>
           <p class="wc-mega__cmp-title">Comparador de cuotas — Partidos del Mundial</p>
-          <p class="wc-mega__cmp-sub">Top 3 casas argentinas por resultado · Push en vivo del backend de scraping</p>
+          <p class="wc-mega__cmp-sub">Top 3 casas argentinas por resultado · Cuotas actualizadas en vivo</p>
         </div>
         <span class="wc-mega__cmp-badge">
           <svg width="6" height="6" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="3.5" fill="currentColor"/></svg>
@@ -317,7 +317,7 @@
       <div id="wcLiveComparator" class="wc-mega__cmp-grid">
         <div class="empty" style="grid-column:1/-1;padding:32px;text-align:center;border:1px dashed var(--border);border-radius:12px">
           <strong>Mercados del Mundial 2026 — pendiente apertura</strong>
-          <p class="muted tiny" style="max-width:560px;margin:8px auto 0">El sorteo de grupos se hizo el 5 diciembre 2025. A medida que las casas legales argentinas publiquen los mercados de cada partido, las cuotas reales aparecen acá automáticamente vía nuestro motor de scraping.</p>
+          <p class="muted tiny" style="max-width:560px;margin:8px auto 0">El sorteo de grupos se hizo el 5 diciembre 2025. A medida que las casas legales argentinas publiquen los mercados de cada partido, las cuotas reales aparecen acá automáticamente.</p>
         </div>
       </div>
       <div style="margin-top:16px;text-align:right">
@@ -424,7 +424,7 @@
         <div>
           <span class="eyebrow-elegant">Pick del día por IA</span>
           <h2 class="h2 mt-2">El partido con mayor EV de hoy, según el motor</h2>
-          <p class="muted mt-2">Groq <code class="tiny">llama-3.3-70b</code> analiza clima, lesiones, sharp money y modelos Poisson/Elo en vivo.</p>
+          <p class="muted mt-2">Nuestra IA analiza clima, lesiones, movimientos del mercado e histórico de cada partido en vivo.</p>
         </div>
         <a href="dashboard.html#ai" class="btn btn-primary">Ver todos los picks</a>
       </div>
@@ -493,7 +493,7 @@
         <div class="stack">
           <span class="badge-vip" style="align-self:flex-start">VIP · Gold tier</span>
           <h2 class="h2"><span class="vip-text">Arbitraje en tiempo real</span>, alertas de Smart Money, Monte Carlo, Kelly portfolio.</h2>
-          <p class="lead">Pasá al plan VIP y desbloqueá el motor cuantitativo completo: IA Pro VIP, Sharpe/Sortino, backtesting visual, multi-account portfolio, API REST.</p>
+          <p class="lead">Pasá al plan VIP y desbloqueá la suite completa: IA Pro, métricas avanzadas, backtesting visual, gestión multi-cuenta, API.</p>
           <ul class="vip-features-grid">
             <li class="vip-feat" style="--i:0">
               <span class="vip-feat-icon">
@@ -673,7 +673,7 @@
   <section class="section container">
     <div class="card card-pad-lg text-center reveal" style="background:linear-gradient(135deg, var(--brand-50), var(--surface));border-color: color-mix(in srgb, var(--brand-600) 24%, transparent)">
       <h2 class="h2">Listo para operar con datos.</h2>
-      <p class="lead mt-2">Sumate al panel cuantitativo argentino. +18, juego responsable, sin promesas vacías.</p>
+      <p class="lead mt-2">Sumate a la plataforma de análisis inteligente argentina. +18, juego responsable, sin promesas vacías.</p>
       <div class="row" style="justify-content:center;margin-top:18px">
         <a href="dashboard.html#overview" class="btn btn-primary btn-lg mag">Empezar gratis</a>
         <a href="pricing.html" class="btn btn-outline btn-lg">Ver planes</a>
@@ -863,7 +863,7 @@ document.addEventListener('DOMContentLoaded', () => {
       .filter(m => m.bestOdds?.h2h?.home)
       .slice(0, 14);
     if (!matches.length) {
-      ticker.innerHTML = `<span class="tk muted">Esperando primer ciclo del backend de scraping…</span>`;
+      ticker.innerHTML = `<span class="tk muted">Cargando cuotas en vivo…</span>`;
       return;
     }
     const items = matches.map(m => {
@@ -977,8 +977,8 @@ async function buildAiPickDaily() {
     const homeLogo = window.BSLogos?.teamCrest(ev.home.id, { size: 32, name: ev.home.name, sport: ev.sport }) || BSIcons.teamLogo(ev.home, { size: 32, sport: ev.sport });
     const awayLogo = window.BSLogos?.teamCrest(ev.away.id, { size: 32, name: ev.away.name, sport: ev.sport }) || BSIcons.teamLogo(ev.away, { size: 32, sport: ev.sport });
     const provider = p.llmProvider !== 'offline'
-      ? `<span class="badge ${p.llmProvider === 'claude' ? 'badge-gold' : 'badge-success'} tiny">${p.llmProvider === 'claude' ? '✨ Claude Sonnet 4.5' : p.llmProvider === 'gemini' ? 'Gemini 2.5 Flash' : `IA: ${p.llmProvider}`}</span>`
-      : `<span class="badge tiny">Análisis cuantitativo</span>`;
+      ? `<span class="badge badge-success tiny">Análisis IA</span>`
+      : `<span class="badge tiny">Análisis</span>`;
     const evPct = Number.isFinite(eq.consensusEv) ? eq.consensusEv.toFixed(2) : '—';
     const confPct = Number.isFinite(eq.confidence) ? (eq.confidence * 100).toFixed(0) : '—';
 
@@ -1013,7 +1013,7 @@ async function buildAiPickDaily() {
         <div class="card card-pad-sm">
           <span class="muted tiny">Confidence</span>
           <strong class="num" style="display:block;font-size:1.3rem;margin-top:4px">${confPct}%</strong>
-          <span class="muted tiny">Consistencia entre Poisson + Elo + IA</span>
+          <span class="muted tiny">Score de confianza del análisis</span>
         </div>
       </div>
 
@@ -1052,7 +1052,7 @@ function buildDemoComparator() {
       .filter(m => m.markets?.h2h && Object.keys(m.markets.h2h).length >= 2)
       .slice(0, 4);
     if (!matches.length) {
-      host.innerHTML = `<div class="card stack" style="padding:40px;text-align:center"><strong>Comparador en vivo</strong><p class="muted">Esperando el primer ciclo del backend de scraping de las casas argentinas legales. Cuando llegue el snapshot, las cuotas reales aparecen acá.</p><span class="muted tiny">Estado: ${BSData.liveFreshness()}</span></div>`;
+      host.innerHTML = `<div class="card stack" style="padding:40px;text-align:center"><strong>Comparador en vivo</strong><p class="muted">Cargando cuotas de las casas argentinas legales. En cuanto haya partidos con mercados abiertos, aparecen acá.</p><span class="muted tiny">Estado: ${BSData.liveFreshness()}</span></div>`;
       return;
     }
     host.innerHTML = `
@@ -1168,7 +1168,7 @@ function buildVipSurebets() {
       countEl.style.opacity = sb.length === 0 ? 0.6 : 1;
     }
     if (!sb.length) {
-      host.innerHTML = `<div class="empty" style="padding:14px"><strong>Esperando surebets en vivo</strong><div class="muted tiny">El motor cruza todas las casas en cada ciclo de scraping. Cuando aparece una oportunidad real (cuotas en casas distintas con sum 1/cuota &lt; 1), aparece acá automáticamente.</div></div>`;
+      host.innerHTML = `<div class="empty" style="padding:14px"><strong>Esperando surebets en vivo</strong><div class="muted tiny">Cruzamos todas las casas constantemente. Cuando aparece una oportunidad de arbitraje real, te aparece acá automáticamente.</div></div>`;
       return;
     }
     host.innerHTML = sb.slice(0, 4).map(s => `
@@ -1189,7 +1189,7 @@ function buildVipSurebets() {
 
 function buildFaq() {
   const items = [
-    { q: '¿BetSafe es una casa de apuestas?', a: 'No. Somos una herramienta de análisis cuantitativo. Vos operás en las casas legales argentinas (LOTBA / IPLyC) y nosotros te damos comparador, IA, banca y arbitraje. Nunca tocamos tu dinero ni tomamos apuestas.' },
+    { q: '¿BetSafe es una casa de apuestas?', a: 'No. Somos una herramienta de análisis inteligente. Vos operás en las casas legales argentinas (LOTBA / IPLyC) y nosotros te damos comparador, IA, banca y arbitraje. Nunca tocamos tu dinero ni tomamos apuestas.' },
     { q: '¿Es legal en Argentina?', a: 'Sí. Cumplimos con el marco LOTBA / IPLyC del Instituto Provincial de Lotería y Casinos. Verificación +18, juego responsable, datos bajo Ley 25.326 (Habeas Data). Mostramos disclaimers y links a SEDRONAR / FEJAR.' },
     { q: '¿Necesito cuenta en cada casa?', a: 'Sí. BetSafe te dice qué casa paga más por cada outcome; vos operás directamente desde tu cuenta en Bplay, Betano, BetWarrior, Bet365, Codere, etc. Soportamos las casas argentinas legales con licencia LOTBA y IPLyC.' },
     { q: '¿Qué diferencia hay con un grupo de Telegram?', a: 'Todo. En Telegram recibís "tips" sin contexto, sin responsabilidad, sin métricas. En BetSafe cada pick viene con probabilidad implícita, EV, value index, riesgo, contexto del partido y aviso explícito. Mediamos CLV, ROI, Yield, Sharpe, drawdown — auditable y reproducible.' },

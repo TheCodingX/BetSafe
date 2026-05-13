@@ -4,7 +4,7 @@
 
   async function render(panel) {
     // Mostrar skeleton, luego cargar eventos en vivo del backend
-    panel.innerHTML = `<div class="card stack" style="min-height:280px"><div class="row between"><strong>Cargando cuotas en vivo…</strong><span class="muted tiny">conectando con el scraper</span></div><div class="empty">Recibiendo cuotas de las casas argentinas legales.</div></div>`;
+    panel.innerHTML = `<div class="card stack" style="min-height:280px"><div class="row between"><strong>Cargando cuotas en vivo…</strong><span class="muted tiny">conectando</span></div><div class="empty">Recibiendo cuotas de las casas argentinas legales.</div></div>`;
     let matches = await BSData.awaitLive({ timeoutMs: 12000 });
     if (!matches.length) {
       panel.innerHTML = `<div class="card stack" style="min-height:280px;text-align:center;padding:40px"><strong>Sin cuotas todavía</strong><p class="muted">El primer ciclo del backend tarda unos segundos. Cuando termine, las cuotas reales aparecen acá.</p><span class="muted tiny">${BSData.liveFreshness()}</span></div>`;
@@ -226,8 +226,8 @@
         if (!btn || !host) return;
         btn.addEventListener('click', async () => {
           btn.disabled = true;
-          btn.innerHTML = `${BSIcons.svg('bolt', { size: 14 })} <span class="shimmer-text">Analizando con Groq...</span>`;
-          host.innerHTML = `<div class="card card-tinted card-pad-sm"><span class="muted tiny">llama-3.3-70b procesando clima + lesiones + sharp money + modelos quant...</span><div style="height:3px;background:linear-gradient(90deg,var(--brand-500),transparent,var(--brand-500));background-size:200% 100%;animation:shimmer 1.2s infinite;margin-top:6px;border-radius:2px"></div></div>`;
+          btn.innerHTML = `${BSIcons.svg('bolt', { size: 14 })} <span class="shimmer-text">Analizando con IA...</span>`;
+          host.innerHTML = `<div class="card card-tinted card-pad-sm"><span class="muted tiny">IA procesando clima, lesiones, movimientos del mercado y análisis táctico...</span><div style="height:3px;background:linear-gradient(90deg,var(--brand-500),transparent,var(--brand-500));background-size:200% 100%;animation:shimmer 1.2s infinite;margin-top:6px;border-radius:2px"></div></div>`;
           try {
             const r = await BSLive.deepAnalysis(m.id);
             renderMatchDeepAnalysis(host, r);
@@ -246,13 +246,13 @@
       const f = r.factors || {};
       const sel = (r.selections || []).slice(0, 3);
       const providerBadge = r.llmProvider !== 'offline'
-        ? `<span class="badge badge-success tiny">IA: ${r.llmProvider}</span>`
-        : `<span class="badge tiny">quant only</span>`;
+        ? `<span class="badge badge-success tiny">Análisis IA</span>`
+        : `<span class="badge tiny">Análisis</span>`;
       const factorChips = [];
       if (f.weather && !f.weather.unavailable) factorChips.push(`<span class="badge tiny">🌡 ${f.weather.tempC?.toFixed?.(0)}°C${f.weather.rainMm > 1 ? ' · ☔ ' + f.weather.rainMm.toFixed(1) + 'mm' : ''}${f.weather.windKmh > 0 ? ' · 💨 ' + f.weather.windKmh + 'km/h' : ''}</span>`);
-      if (f.injuries && (f.injuries.severityScore?.home > 0 || f.injuries.severityScore?.away > 0)) factorChips.push(`<span class="badge badge-warning tiny">🩹 Bajas H:${(f.injuries.severityScore?.home*100|0)}% A:${(f.injuries.severityScore?.away*100|0)}%</span>`);
-      if (f.sharp && f.sharp.score > 0) factorChips.push(`<span class="badge tiny">💰 Sharp ${(f.sharp.score*100|0)}%</span>`);
-      if (f.poisson) factorChips.push(`<span class="badge tiny">λ ${f.poisson.lambdaHome?.toFixed?.(2)} / ${f.poisson.lambdaAway?.toFixed?.(2)}</span>`);
+      if (f.injuries && (f.injuries.severityScore?.home > 0 || f.injuries.severityScore?.away > 0)) factorChips.push(`<span class="badge badge-warning tiny">🩹 Bajas Local:${(f.injuries.severityScore?.home*100|0)}% Visitante:${(f.injuries.severityScore?.away*100|0)}%</span>`);
+      if (f.sharp && f.sharp.score > 0) factorChips.push(`<span class="badge tiny">💰 Movimiento mercado ${(f.sharp.score*100|0)}%</span>`);
+      if (f.poisson) factorChips.push(`<span class="badge tiny">Goles esp. ${f.poisson.lambdaHome?.toFixed?.(2) || f.poisson.lambdaH?.toFixed?.(2)} / ${f.poisson.lambdaAway?.toFixed?.(2) || f.poisson.lambdaA?.toFixed?.(2)}</span>`);
       host.innerHTML = `
         <div class="card card-tinted card-pad-sm" style="border-left:3px solid var(--brand-500)">
           <div class="row between" style="align-items:center"><strong>Análisis IA profundo</strong>${providerBadge}</div>

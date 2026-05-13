@@ -315,7 +315,7 @@
           <div class="agx-config__item" style="grid-column:span 2">
             <label class="ag-toggle" style="cursor:pointer">
               <input type="checkbox" id="agUseAiBuilder" checked>
-              <span><strong>IA construye las combinadas</strong> · Groq selecciona legs por correlación negativa, edge estructural y momentum (no solo EV). <em class="muted tiny">Recomendado.</em></span>
+              <span><strong>IA construye las combinadas</strong> · La IA selecciona legs por correlación negativa, edge estructural y momentum (no solo EV). <em class="muted tiny">Recomendado.</em></span>
             </label>
           </div>
           <div class="agx-config__item">
@@ -987,7 +987,7 @@
             <div class="card stack-sm">
               <strong>Variables consideradas</strong>
               <ul style="font-size:.82rem;line-height:1.7;margin:0;padding-left:20px">
-                <li>Forma reciente últimos 5 partidos (xG diferencial)</li>
+                <li>Forma reciente últimos 5 partidos (diferencial de goles esperados)</li>
                 <li>Lesiones reportadas (feed live)</li>
                 <li>Clima en sede del partido</li>
                 <li>Histórico H2H 10 años</li>

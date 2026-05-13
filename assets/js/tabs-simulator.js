@@ -53,14 +53,14 @@
   async function render(panel) {
     // Esperar al primer snapshot del backend
     if (!BSData.liveReady()) {
-      panel.innerHTML = `<div class="card stack" style="min-height:240px;padding:40px;text-align:center"><strong>Cargando partidos del día…</strong><p class="muted tiny">El backend está scrapeando todas las casas legales legales argentinas.</p></div>`;
+      panel.innerHTML = `<div class="card stack" style="min-height:240px;padding:40px;text-align:center"><strong>Cargando partidos del día…</strong><p class="muted tiny">Conectando con las casas legales argentinas.</p></div>`;
       await BSData.awaitLive({ timeoutMs: 12000 });
     }
     const state = load();
     const isVip = BSAuth.isVip();
     const picks = buildPicks();
     if (!picks.length) {
-      panel.innerHTML = `<div class="card stack" style="min-height:240px;padding:40px;text-align:center"><strong>Sin partidos en vivo todavía</strong><p class="muted">Cuando el backend complete el primer ciclo de scraping, el simulador se habilita con cuotas reales.</p><span class="muted tiny">${BSData.liveFreshness()}</span></div>`;
+      panel.innerHTML = `<div class="card stack" style="min-height:240px;padding:40px;text-align:center"><strong>Sin partidos en vivo todavía</strong><p class="muted">Cuando estén disponibles los próximos partidos, el simulador se habilita con cuotas reales.</p><span class="muted tiny">${BSData.liveFreshness()}</span></div>`;
       const onSnap = () => { if (BSData.liveReady()) { window.removeEventListener('bs:live-snapshot', onSnap); render(panel); } };
       window.addEventListener('bs:live-snapshot', onSnap, { once: true });
       return;

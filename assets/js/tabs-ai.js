@@ -61,7 +61,7 @@
     return `
       <div class="row between mb-4">
         <div>
-          <h2 class="h3">AI Picks · análisis ultra profundo<a class="help-q" tabindex="0" data-tip="Cada pick combina cuotas reales de casas legales + clima del venue + lesiones reportadas + movimiento sharp del mercado + histórico H2H + 4 modelos cuantitativos (Shin no-vig, Poisson xG, Elo ajustado, LLM). Confidence score basado en consistencia entre modelos. Esto NO es ChatGPT diciéndote 'apostá a tal' — es análisis quant institucional."></a></h2>
+          <h2 class="h3">AI Picks · análisis ultra profundo<a class="help-q" tabindex="0" data-tip="Cada pick combina cuotas reales de casas legales + clima del estadio + lesiones reportadas + movimientos del mercado + histórico cara a cara + análisis IA. Score de confianza basado en consistencia entre múltiples señales."></a></h2>
           <p class="muted">${isVip ? `VIP — análisis ilimitado · backend a tiempo real` : `Standard — top ${limit} partidos por EV`}</p>
         </div>
         <div class="cluster">
@@ -72,7 +72,7 @@
       <!-- Filtros REALES (se aplican en backend) -->
       <div class="card stack mb-3">
         <div class="row between">
-          <strong>Filtros profesionales<a class="help-q" tabindex="0" data-tip="Los filtros se aplican EN EL BACKEND con datos reales: lesiones de ESPN/API-Football, clima de OpenWeatherMap, movimiento sharp detectado por nuestro motor en cada ciclo de scraping."></a></strong>
+          <strong>Filtros profesionales<a class="help-q" tabindex="0" data-tip="Los filtros se aplican con datos en tiempo real: lesiones, clima del estadio y movimientos del mercado detectados constantemente."></a></strong>
           <span class="muted tiny" id="aiFilterCount">Cargando…</span>
         </div>
 
@@ -222,7 +222,7 @@
           <div class="cluster" style="gap:6px;flex-wrap:wrap">
             <span class="badge badge-brand tiny">${leagueLogo} ${BSUI.esc(ev.leagueName || ev.league || '')}</span>
             <span class="muted tiny">${BSUI.dt(ev.start)}</span>
-            ${analysis.llmProvider !== 'offline' ? `<span class="badge ${analysis.llmProvider === 'claude' ? 'badge-gold' : 'badge-success'} tiny" title="Análisis IA por ${analysis.llmProvider}">${analysis.llmProvider === 'claude' ? '✨ Análisis premium · Claude Sonnet 4.5' : analysis.llmProvider === 'gemini' ? 'IA: Gemini 2.5 Flash' : analysis.llmProvider === 'groq' ? 'IA: Groq Llama' : `IA: ${analysis.llmProvider}`}</span>` : '<span class="badge tiny" title="Análisis cuantitativo determinístico (Poisson + Elo + Shin) — configurá BS_GEMINI_API_KEY o BS_ANTHROPIC_API_KEY en Render">Análisis quant</span>'}
+            ${analysis.llmProvider !== 'offline' ? `<span class="badge badge-success tiny" title="Análisis con IA">Análisis IA</span>` : '<span class="badge tiny">Análisis</span>'}
           </div>
         </header>
 
@@ -272,9 +272,9 @@
     const bookLogo = s.book && window.BSLogos ? BSLogos.bookLogo(s.book, { size: 18 }) : '';
 
     const probs = [];
-    if (s.fairProb != null)    probs.push({ label: 'Shin', v: s.fairProb });
-    if (s.poissonProb != null) probs.push({ label: 'Poisson', v: s.poissonProb });
-    if (s.eloProb != null)     probs.push({ label: 'Elo', v: s.eloProb });
+    if (s.fairProb != null)    probs.push({ label: 'Mercado', v: s.fairProb });
+    if (s.poissonProb != null) probs.push({ label: 'Modelo', v: s.poissonProb });
+    if (s.eloProb != null)     probs.push({ label: 'Forma', v: s.eloProb });
     if (s.llmProb != null)     probs.push({ label: 'IA', v: s.llmProb });
     if (s.consensusProb != null) probs.push({ label: 'Consenso', v: s.consensusProb, highlight: true });
 
@@ -301,7 +301,7 @@
       <div class="ai-pick" data-type="${s.type}"${isCombo ? ' data-combo="1"' : ''}>
         <div class="row between">
           <span class="risk-pill ${typeClass}">${typeLabel}${isCombo ? ` · ${s.legs.length} legs` : ''}</span>
-          <span class="badge badge-${confClass} tiny" title="Confidence basado en consistencia entre Shin/Poisson/Elo/IA">Conf ${(conf*100).toFixed(0)}%</span>
+          <span class="badge badge-${confClass} tiny" title="Score de confianza del análisis">Conf ${(conf*100).toFixed(0)}%</span>
         </div>
         ${isCombo ? legsHtml : `<strong style="display:block;margin:8px 0">${BSUI.esc(s.label || s.outcome)}</strong>`}
         <div class="cluster" style="justify-content:space-between;align-items:baseline">
@@ -357,9 +357,9 @@
       items.push(`<span class="ai-factor"><span class="ai-factor-ic">📊</span><strong class="tiny">H2H</strong><span class="muted tiny">${h.matches} partidos · local ${(h.homeWinRate*100).toFixed(0)}%</span></span>`);
     }
 
-    // Quant / modelo Poisson
+    // Modelo de goles esperados (xG)
     if (f.poisson && !f.poisson.unavailable) {
-      items.push(`<span class="ai-factor"><span class="ai-factor-ic">🎯</span><strong class="tiny">Poisson</strong><span class="muted tiny">μH ${f.poisson.lambdaH} · μA ${f.poisson.lambdaA}</span></span>`);
+      items.push(`<span class="ai-factor"><span class="ai-factor-ic">🎯</span><strong class="tiny">Goles esperados</strong><span class="muted tiny">Local ${f.poisson.lambdaH} · Visitante ${f.poisson.lambdaA}</span></span>`);
     }
 
     // Margen libro
@@ -455,7 +455,7 @@
     if (f.quantitative && !f.quantitative.unavailable) {
       const q = f.quantitative;
       sections.push(`<div class="card stack">
-        <strong>🧮 Modelo cuantitativo</strong>
+        <strong>🧮 Análisis del mercado</strong>
         <div class="grid grid-3 gap-2">
           <div><span class="muted tiny">Margen libro</span><div class="num">${q.margin?.toFixed(2)}%</div></div>
           <div><span class="muted tiny">Cuotas fair</span><div class="tiny">${(q.fairOdds || []).map(o => o?.toFixed(2) || '—').join(' / ')}</div></div>

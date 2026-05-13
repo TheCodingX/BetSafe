@@ -6,7 +6,7 @@
     const slip = BSStore.get(BSStore.KEYS.slip) || { legs: [], stake: 1000 };
 
     // Mostrar skeleton mientras llega el snapshot del backend
-    panel.innerHTML = `<div class="card stack" style="min-height:240px"><div class="row between"><strong>Cargando partidos en vivo…</strong><span class="muted tiny" id="bdrSt">conectando con el scraper</span></div><div class="empty">Recibiendo datos de las casas argentinas legales.</div></div>`;
+    panel.innerHTML = `<div class="card stack" style="min-height:240px"><div class="row between"><strong>Cargando partidos en vivo…</strong><span class="muted tiny" id="bdrSt">conectando</span></div><div class="empty">Recibiendo datos de las casas argentinas legales.</div></div>`;
 
     // Esperar a que el backend nos entregue eventos reales.
     // Filtramos: requiere h2h con al menos 1 book; excluye esports por default
@@ -167,7 +167,7 @@
       const aiBtn = panel.querySelector('#bAiAnalyze');
       if (aiBtn) {
         aiBtn.disabled = slip.legs.length < 2;
-        aiBtn.title = slip.legs.length < 2 ? 'Necesitás al menos 2 legs para analizar' : 'Análisis IA Groq (llama-3.3-70b)';
+        aiBtn.title = slip.legs.length < 2 ? 'Necesitás al menos 2 legs para analizar' : 'Análisis IA de la combinada';
       }
 
       // Best book overall (sum of legs by book)
@@ -249,7 +249,7 @@
       btn.disabled = true;
       btn.innerHTML = `${BSIcons.svg('bolt', { size: 14 })} <span class="shimmer-text">Analizando con IA...</span>`;
       aiHost.style.display = 'block';
-      aiHost.innerHTML = `<div class="card card-tinted card-pad-sm" style="margin-top:8px"><div class="muted tiny">Groq llama-3.3-70b analizando tu combinada...</div><div style="height:3px;background:linear-gradient(90deg,var(--brand-500),transparent,var(--brand-500));background-size:200% 100%;animation:shimmer 1.2s infinite;margin-top:6px;border-radius:2px"></div></div>`;
+      aiHost.innerHTML = `<div class="card card-tinted card-pad-sm" style="margin-top:8px"><div class="muted tiny">IA analizando tu combinada...</div><div style="height:3px;background:linear-gradient(90deg,var(--brand-500),transparent,var(--brand-500));background-size:200% 100%;animation:shimmer 1.2s infinite;margin-top:6px;border-radius:2px"></div></div>`;
       try {
         const stake = Number(panel.querySelector('#bStake').value) || 1000;
         const result = await BSLive.analyzeCombo(slip.legs, stake);
