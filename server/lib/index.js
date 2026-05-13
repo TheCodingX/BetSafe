@@ -486,15 +486,32 @@ function normalizeTeam(name) {
   // ̀-ͯ = bloque Unicode "Combining Diacritical Marks" (acentos).
   // Usar el escape Unicode garantiza la portabilidad del regex sin importar
   // cómo se guarde el archivo.
-  const key = trimmed.toLowerCase()
+  const baseKey = trimmed.toLowerCase()
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .replace(/\s+/g, ' ')
     .replace(/[.,]/g, '');
-  const id = TEAM_ALIASES[key] || key
+  // Lookup alias del nombre completo primero (preserva precisi\u00f3n)
+  if (TEAM_ALIASES[baseKey]) return { id: TEAM_ALIASES[baseKey], name: trimmed };
+  // Strip noise patterns para dedup robusto entre casas que usan distintos
+  // formatos: "Sevilla" vs "Sevilla FC", "Inter" vs "SS Inter de Mil\u00e1n",
+  // "Villarreal" vs "Villarreal CF", "Lazio" vs "SS Lazio".
+  let cleaned = baseKey;
+  for (const re of TEAM_NOISE_PATTERNS) cleaned = cleaned.replace(re, '');
+  cleaned = cleaned.replace(/\s+/g, ' ').trim();
+  if (TEAM_ALIASES[cleaned]) return { id: TEAM_ALIASES[cleaned], name: trimmed };
+  const id = (cleaned || baseKey)
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '');
   return { id, name: trimmed };
 }
+
+/* Strip de sufijos/prefijos comunes \u2014 antes del lookup de aliases. */
+const TEAM_NOISE_PATTERNS = [
+  /\b(fc|cf|sc|ac|ca|ss|as|ff|cd|sd|ksc|bsc|sv|tv|tsg|vfb|vfl|psv|usl)\b/g,
+  /\b(club|ssd|usd)\b/g,
+  /\b(de mexico|de milan|de mil\u00e1n|de la plata|la plata|de avellaneda|de buenos aires)\b/g,
+  /\bjrs?\b/g
+];
 
 function parseDecimal(text) {
   if (text == null) return null;

@@ -1,5 +1,5 @@
 // BetSafe Service Worker — cache strategy: cache-first for assets, network-first for HTML/data
-const VERSION = 'betsafe-v3.6.0';   // bump: esports excluido by default + whitelist relajada + blocklist agresiva
+const VERSION = 'betsafe-v3.7.0';   // bump: dedup robusto entre casas (Sevilla = Sevilla FC = SS Sevilla)
 const STATIC_CACHE = `${VERSION}-static`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 
