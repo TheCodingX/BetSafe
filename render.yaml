@@ -82,18 +82,36 @@ services:
         sync: false
       - key: RAPIDAPI_KEY
         sync: false
-      # IA (cascada client-side) — se inyectan al frontend via build/inject-env.js
-      - key: BS_GROQ_API_KEY
-        sync: false
-      # Modelo Groq: llama-3.1-8b-instant tiene 30K TPM (vs 14400 TPM del 70b)
-      # — clave para que /api/picks con 12 eventos no exceda rate limit. Calidad
-      # del 8b es buena para nuestro use case (rationale + lectura analítica).
-      # Cambiar a llama-3.3-70b-versatile si querés más profundidad y aceptás
-      # menos picks analizados por request (~5 vs 12).
-      - key: BS_GROQ_MODEL
-        value: 'llama-3.1-8b-instant'
+      # ═══════════════════════════════════════════════════════════════════
+      # AI CASCADE — TIER STRATEGY
+      # ═══════════════════════════════════════════════════════════════════
+      # PRIMARY: Gemini 2.5 Flash ($0.075/$0.30 per 1M, 1M context window).
+      # Más barato + 1M context que cualquier alternativa. Free tier: 1M tokens/día.
+      # Get key: https://aistudio.google.com/app/apikey (instantáneo, sin tarjeta)
       - key: BS_GEMINI_API_KEY
         sync: false
+      - key: BS_GEMINI_MODEL
+        value: 'gemini-2.5-flash'
+      #
+      # PREMIUM TIER: Claude Sonnet 4.5 ($3/$15 per 1M).
+      # Solo se usa para matches "premium" — top leagues (UCL, Premier, LaLiga, Serie A,
+      # Bundesliga, Ligue 1, Libertadores, Copa Argentina, LPF) o top teams (Boca, River,
+      # Real Madrid, Barcelona, etc). Análisis EXTREMO de calidad sportbook-research.
+      # Cost-controlled: solo ~5-15% de los matches califican como premium.
+      # Get key: https://console.anthropic.com/settings/keys
+      - key: BS_ANTHROPIC_API_KEY
+        sync: false
+      - key: BS_ANTHROPIC_MODEL
+        value: 'claude-sonnet-4-5'
+      #
+      # FALLBACK ULTRA-RÁPIDO: Groq llama-3.1-8b-instant (gratis, 30K TPM).
+      # Para cuando Gemini/Claude fallan o están rate-limited.
+      - key: BS_GROQ_API_KEY
+        sync: false
+      - key: BS_GROQ_MODEL
+        value: 'llama-3.1-8b-instant'
+      #
+      # ÚLTIMO RECURSO: OpenRouter (cascada de modelos free).
       - key: BS_OPENROUTER_API_KEY
         sync: false
       - key: BS_FOOTBALL_DATA_API_KEY

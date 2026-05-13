@@ -34,9 +34,35 @@ const brierTracker = require('./brier-tracker');
 
 const cache = new LRUCache({ max: 200, ttl: 5 * 60 * 1000 });
 
-const GROQ_KEY     = process.env.BS_GROQ_API_KEY     || process.env.GROQ_API_KEY     || '';
-const GEMINI_KEY   = process.env.BS_GEMINI_API_KEY   || process.env.GEMINI_API_KEY   || '';
-const OPENROUTER_KEY = process.env.BS_OPENROUTER_API_KEY || process.env.OPENROUTER_API_KEY || '';
+const GROQ_KEY        = process.env.BS_GROQ_API_KEY        || process.env.GROQ_API_KEY        || '';
+const GEMINI_KEY      = process.env.BS_GEMINI_API_KEY      || process.env.GEMINI_API_KEY      || '';
+const ANTHROPIC_KEY   = process.env.BS_ANTHROPIC_API_KEY   || process.env.ANTHROPIC_API_KEY   || '';
+const OPENROUTER_KEY  = process.env.BS_OPENROUTER_API_KEY  || process.env.OPENROUTER_API_KEY  || '';
+
+// Modelos configurables vía env (defaults: gama económica + 1M context)
+const GEMINI_MODEL    = process.env.BS_GEMINI_MODEL    || 'gemini-2.5-flash';        // $0.075/$0.30 per 1M, 1M context
+const ANTHROPIC_MODEL = process.env.BS_ANTHROPIC_MODEL || 'claude-sonnet-4-5';       // $3/$15 per 1M — premium tier
+const GROQ_MODEL      = process.env.BS_GROQ_MODEL      || 'llama-3.1-8b-instant';   // 30K TPM free
+
+/* TIER STRATEGY:
+ * - Gemini 2.5 Flash es PRIMARY (todos los matches) — barato + 1M context window
+ * - Claude Sonnet 4.5 se usa SOLO para matches "premium" (top-tier leagues,
+ *   top teams, high-priority picks) — análisis extremo cuando vale la pena
+ * - Groq llama-3.1-8b fallback rápido si los pagos fallan
+ * - OpenRouter último recurso (claude/llama via OpenRouter free tier)
+ */
+function isPremiumMatch(event, factors) {
+  if (!event) return false;
+  // Top leagues mundiales
+  const lg = (event.leagueName || event.league || '').toLowerCase();
+  const TOP_LEAGUES = /\b(champions league|uefa champions|europa league|premier league|la ?liga|primera divisi|serie a|bundesliga|ligue 1|copa libertadores|copa america|world cup|copa mundial|liga profesional argentina|copa argentina)\b/i;
+  if (TOP_LEAGUES.test(lg)) return true;
+  // Top teams mundiales (uno de los dos debe ser un top team)
+  const teams = `${event.home?.name || ''} ${event.away?.name || ''}`.toLowerCase();
+  const TOP_TEAMS = /\b(boca|river|racing|independiente|liverpool|arsenal|manchester|chelsea|tottenham|real madrid|barcelona|atletico|sevilla|villarreal|napoli|juventus|inter|milan|roma|lazio|atalanta|bayern|dortmund|psg|marseille|flamengo|palmeiras|santos|sao paulo|corinthians|gremio)\b/i;
+  if (TOP_TEAMS.test(teams)) return true;
+  return false;
+}
 
 const SYSTEM_PROMPT = `Sos un analista senior de apuestas deportivas con datos en tiempo real.
 Tu rol: leer el partido EN PROFUNDIDAD usando IA — no solo matemática.
@@ -341,16 +367,34 @@ async function llmStructured(factors, poisson, elo) {
   });
   const prompt = `Análisis institucional — generá 3 picks coherentes (cons/eq/agg) favoreciendo la MISMA dirección que indica el modelo ensemble. agg = combinada multi-leg del mismo partido (h2h + over/under + BTTS), NO outcome contrario.\n\nDatos:\n${userMsg}`;
 
-  // Cascada con retry agresivo: Groq es primary (free tier rápido). Reintentamos
-  // hasta 3 veces antes de saltar a Gemini/OpenRouter. La mayoría de fails son
-  // transients (rate limit, network blip).
-  const providers2 = [
-    { name: 'groq', fn: () => groqJson(SYSTEM_PROMPT, prompt) },
-    { name: 'groq', fn: () => groqJson(SYSTEM_PROMPT, prompt) },
-    { name: 'groq', fn: () => groqJson(SYSTEM_PROMPT, prompt) },
-    { name: 'gemini', fn: () => geminiJson(SYSTEM_PROMPT, prompt) },
-    { name: 'openrouter', fn: () => openrouterJson(SYSTEM_PROMPT, prompt) }
-  ];
+  // NEW CASCADA TIER STRATEGY:
+  // - Gemini 2.5 Flash es PRIMARY (más barato + 1M context window)
+  // - Claude Sonnet 4.5 PREMIUM: solo para top-league matches (análisis extremo
+  //   en partidos que importan — UCL, top teams, Argentina top)
+  // - Groq llama-3.1-8b: fallback ultra-rápido si los pagos fallan
+  // - OpenRouter: último recurso (free tier de llama/claude)
+  const isPremium = isPremiumMatch(factors.event, factors);
+  const providers2 = [];
+
+  if (isPremium && ANTHROPIC_KEY) {
+    // Match PREMIUM: Claude PRIMERO (análisis extremo), Gemini fallback
+    providers2.push({ name: 'claude', fn: () => anthropicJson(SYSTEM_PROMPT, prompt) });
+    providers2.push({ name: 'gemini', fn: () => geminiJson(SYSTEM_PROMPT, prompt) });
+  } else if (GEMINI_KEY) {
+    // Match normal: Gemini PRIMERO (barato), Claude fallback si premium key
+    providers2.push({ name: 'gemini', fn: () => geminiJson(SYSTEM_PROMPT, prompt) });
+    providers2.push({ name: 'gemini', fn: () => geminiJson(SYSTEM_PROMPT, prompt) });   // retry Gemini
+    if (ANTHROPIC_KEY) providers2.push({ name: 'claude', fn: () => anthropicJson(SYSTEM_PROMPT, prompt) });
+  } else if (ANTHROPIC_KEY) {
+    // Si no hay Gemini, Claude pasa a primary
+    providers2.push({ name: 'claude', fn: () => anthropicJson(SYSTEM_PROMPT, prompt) });
+  }
+  // Fallbacks rápidos: Groq + OpenRouter
+  if (GROQ_KEY) {
+    providers2.push({ name: 'groq', fn: () => groqJson(SYSTEM_PROMPT, prompt) });
+    providers2.push({ name: 'groq', fn: () => groqJson(SYSTEM_PROMPT, prompt) });
+  }
+  if (OPENROUTER_KEY) providers2.push({ name: 'openrouter', fn: () => openrouterJson(SYSTEM_PROMPT, prompt) });
   let lastErr2 = null;
   const debug = [];
   for (let i = 0; i < providers2.length; i++) {
@@ -519,17 +563,55 @@ async function groqJsonGeneric(systemPrompt, userPrompt, opts = {}) {
 
 async function geminiJson(system, user) {
   if (!GEMINI_KEY) throw new Error('no-key');
-  const res = await fetchWithTimeout(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_KEY}`, {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_KEY}`;
+  const res = await fetchWithTimeout(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      contents: [{ role: 'user', parts: [{ text: system + '\n\n' + user + '\n\nRespond strictly in JSON.' }] }],
-      generationConfig: { temperature: 0.3, maxOutputTokens: 1600, responseMimeType: 'application/json' }
+      contents: [{ role: 'user', parts: [{ text: system + '\n\n' + user + '\n\nRespondé estrictamente en JSON, sin markdown.' }] }],
+      generationConfig: {
+        temperature: 0.4,
+        maxOutputTokens: 1600,
+        responseMimeType: 'application/json'
+      }
     })
   });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '');
+    throw new Error(`HTTP ${res.status}: ${txt.slice(0, 120)}`);
+  }
   const data = await res.json();
   return safeJsonParse(data.candidates?.[0]?.content?.parts?.[0]?.text);
+}
+
+/* Claude Sonnet 4.5 (Anthropic Messages API) — análisis premium para top picks.
+ * Costo: $3 / $15 per 1M tokens. Calidad sportbook-research grade.
+ * Reservado para matches "premium" (UCL, top teams, Argentina top). */
+async function anthropicJson(system, user) {
+  if (!ANTHROPIC_KEY) throw new Error('no-key');
+  const res = await fetchWithTimeout('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': ANTHROPIC_KEY,
+      'anthropic-version': '2023-06-01'
+    },
+    body: JSON.stringify({
+      model: ANTHROPIC_MODEL,
+      max_tokens: 2000,
+      temperature: 0.4,
+      system: system + '\n\nIMPORTANTE: respondé ÚNICAMENTE el JSON estricto, sin texto antes ni después, sin markdown ni \\`\\`\\`json wrapper.',
+      messages: [{ role: 'user', content: user }]
+    })
+  });
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '');
+    throw new Error(`HTTP ${res.status}: ${txt.slice(0, 200)}`);
+  }
+  const data = await res.json();
+  // Anthropic response shape: { content: [{ type:'text', text: '...' }] }
+  const text = data.content?.[0]?.text;
+  return safeJsonParse(text);
 }
 
 async function openrouterJson(system, user) {
