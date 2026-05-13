@@ -98,6 +98,7 @@
   }
 
   function applySnapshot(snap) {
+    const wasReady = state.events && state.events.length > 0;
     if (Array.isArray(snap.events))    state.events   = snap.events;
     if (Array.isArray(snap.surebets))  state.surebets = snap.surebets;
     if (Array.isArray(snap.steam))     state.steam    = snap.steam;
@@ -106,6 +107,10 @@
     state.lastUpdate = snap.ts || Date.now();
     emit('snapshot', { events: state.events, surebets: state.surebets, steam: state.steam, books: state.books });
     emit('status', { connected: state.connected, lastUpdate: state.lastUpdate, cycles: state.cycles });
+    // PRIMER snapshot listo → disparar bs:live-ready para el preloader inicial
+    if (!wasReady && state.events && state.events.length > 0) {
+      emit('ready', { events: state.events.length, lastUpdate: state.lastUpdate });
+    }
   }
 
   // ── WebSocket ───────────────────────────────────────────────────────────
@@ -434,6 +439,16 @@
     return await jget('/api/picks?' + q.toString());
   }
 
+  /* AI-curated combos: 2-5 legs cada uno, la IA decide cuántos.
+   * Reemplaza el modelo viejo de "un pick por partido". */
+  async function getCuratedCombos(opts = {}) {
+    const q = new URLSearchParams();
+    if (opts.sport && opts.sport !== 'all') q.set('sport', opts.sport);
+    if (opts.count) q.set('count', String(opts.count));
+    if (opts.includeEsports) q.set('includeEsports', 'true');
+    return await jget('/api/picks/curated?' + q.toString());
+  }
+
   async function getPicksForMatch(matchId) {
     return await jget('/api/picks/' + encodeURIComponent(matchId));
   }
@@ -517,7 +532,7 @@
     isRelevantLeague, eventPriority, looksLikeEsports, effectiveSport,
     timeSinceUpdate, freshnessLabel,
     // API extendida
-    getPicks, getPicksForMatch, getFactors,
+    getPicks, getPicksForMatch, getCuratedCombos, getFactors,
     getArbitrageSnapshot,
     generate,
     checkCorrelation,

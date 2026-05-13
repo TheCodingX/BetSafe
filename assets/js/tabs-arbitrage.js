@@ -89,12 +89,10 @@
       return;
     }
 
-    const hist = BSStore.get(BSStore.KEYS.arbHistory) || [];
-
     panel.innerHTML = `
       <div class="row between mb-3">
         <div>
-          <h2 class="h3">Arbitraje en vivo · motor hiper-preciso<a class="help-q" tabindex="0" data-tip="Motor dedicado que escanea las casas argentinas cada 5 segundos. Detecta surebets en Ganador (1X2 y 2 vías), Más/Menos goles (cada línea), Ambos marcan, Hándicap asiático y Doble Vía. Cada surebet trae score de confianza basado en margen, tiempo al inicio y deslizamiento histórico por casa."></a></h2>
+          <h2 class="h3">Arbitraje en vivo · motor hiper-preciso<a class="help-q" tabindex="0" data-tip="Motor dedicado que escanea las casas argentinas cada 5 segundos. Detecta surebets en Ganador (1X2 y 2 vías), Más/Menos goles (cada línea), Ambos marcan, Hándicap asiático y Doble Vía. Las surebets son matemáticamente seguras — el riesgo principal es que la cuota cambie antes de ejecutar."></a></h2>
           <p class="muted">Escaneo cada 5s · Ganador + Más/Menos + Ambos marcan + Hándicap + Doble Vía · monto óptimo con deslizamiento real · 100% datos en vivo</p>
         </div>
         <div class="cluster">
@@ -130,9 +128,12 @@
             <span class="field-label">Rentabilidad mín. %</span>
             <input class="input input-sm" id="arbMinRoi" type="number" step="0.1" min="0" value="0.5">
           </label>
+          <!-- "Confianza" eliminado: el arbitraje bien calculado es matemáticamente
+               seguro. En su lugar, filtramos por frescura de la cuota — surebets
+               con datos viejos pueden cerrarse antes de poder ejecutarlas. -->
           <label class="field" style="margin:0;min-width:160px">
-            <span class="field-label">Confianza mín. %</span>
-            <input class="input input-sm" id="arbMinConf" type="number" step="5" min="0" max="100" value="50">
+            <span class="field-label">Frescura máx. (segundos)</span>
+            <input class="input input-sm" id="arbMaxAge" type="number" step="5" min="5" max="120" value="60">
           </label>
           <label class="field" style="margin:0;min-width:160px">
             <span class="field-label">Deporte</span>
@@ -157,11 +158,12 @@
         </div>
       </div>
 
-      <!-- KPIs motor -->
+      <!-- KPIs motor (sin "Confianza" porque arbitraje matemáticamente seguro
+           tiene riesgo 0; reemplazamos por métricas de actividad del motor) -->
       <div class="grid grid-4 mb-4">
-        <div class="kpi"><div class="kpi-label">Activas</div><div class="kpi-value" id="arbActive">0</div></div>
+        <div class="kpi"><div class="kpi-label">Surebets activas</div><div class="kpi-value" id="arbActive">0</div></div>
         <div class="kpi"><div class="kpi-label">Mejor rentabilidad neta</div><div class="kpi-value" id="arbBestRoi">—</div></div>
-        <div class="kpi"><div class="kpi-label">Confianza promedio</div><div class="kpi-value" id="arbAvgConf">—</div></div>
+        <div class="kpi"><div class="kpi-label">Ganancia mín. asegurada</div><div class="kpi-value" id="arbMinGuaranteed">—</div></div>
         <div class="kpi"><div class="kpi-label">Ciclos de análisis</div><div class="kpi-value" id="arbCycles">0</div></div>
       </div>
 
@@ -172,6 +174,13 @@
             <span class="muted tiny" id="arbLastUpd">—</span>
           </div>
           <div id="arbList" class="stack-sm" style="min-height:240px"></div>
+          <!-- Paginación: cuando hay más de PAGE_SIZE surebets, este botón
+               carga las siguientes en batches para que la UI no se trabe. -->
+          <div id="arbLoadMoreWrap" class="row" style="justify-content:center;display:none;margin-top:8px">
+            <button class="btn btn-outline btn-sm" id="arbLoadMore">
+              <span id="arbLoadMoreLabel">Mostrar más surebets</span>
+            </button>
+          </div>
         </div>
 
         <div class="card stack">
@@ -185,20 +194,7 @@
         </div>
       </div>
 
-      <div class="card stack mt-4">
-        <div class="row between">
-          <strong>Histórico (últimas ${Math.min(500, hist.length+30)})</strong>
-          <div class="cluster">
-            <button class="btn btn-outline btn-sm" id="arbExport">${BSIcons.svg('download',{size:14})} CSV</button>
-            <button class="btn btn-ghost btn-sm" id="arbClearHist">Limpiar</button>
-          </div>
-        </div>
-        <div class="table-wrap"><table class="table">
-          <thead><tr><th>Hora</th><th>Evento</th><th>Mercado</th><th>Casas</th><th>Rentabilidad</th><th>Confianza</th><th></th></tr></thead>
-          <tbody id="arbHist"></tbody>
-        </table></div>
-      </div>
-
+      <!-- Consola del motor (debug profesional) -->
       <div class="card stack mt-4">
         <strong>Consola del motor</strong>
         <pre id="arbConsole" class="mono tiny" style="background:var(--surface-2);padding:12px;border-radius:8px;height:140px;overflow-y:auto"></pre>
@@ -274,10 +270,16 @@
       cons.scrollTop = cons.scrollHeight;
     }
 
+    // ── Paginación ──
+    // Mostrar PAGE_SIZE surebets por defecto y botón "Mostrar más" para
+    // cargar siguientes batches. Evita render de 467 items de golpe.
+    const PAGE_SIZE = 12;
+    let visibleCount = PAGE_SIZE;
+
     function getFilters() {
       return {
         minRoi:        Number(panel.querySelector('#arbMinRoi').value) || 0,
-        minConfidence: (Number(panel.querySelector('#arbMinConf').value) || 0) / 100,
+        maxAgeSec:     Number(panel.querySelector('#arbMaxAge').value) || 60,
         sport:         panel.querySelector('#arbSport').value || '',
         market:        panel.querySelector('#arbMarket').value || 'all',
         bankrollFit:   panel.querySelector('#arbBankrollFit').checked,
@@ -295,6 +297,10 @@
         if (f.market === 'cross' && !sb.market.startsWith('cross')) return false;
       }
       if (f.bankrollFit && sb.bankrollFit === false) return false;
+      // Filtro de frescura: descartar surebets con cuotas más viejas que maxAgeSec
+      const sbTs = bestTimestamp(sb, lastSnapshotAt);
+      const ageSec = (Date.now() - sbTs) / 1000;
+      if (f.maxAgeSec && ageSec > f.maxAgeSec) return false;
       return true;
     }
 
@@ -318,8 +324,7 @@
       try {
         const r = await BSLive.getArbitrageSnapshot({
           minRoi: f.minRoi,
-          sport: f.sport,
-          minConfidence: f.minConfidence
+          sport: f.sport
         });
         const all = (r.surebets || []).filter(sb => matchesFilters(sb, f));
         lastList = all;
@@ -336,36 +341,58 @@
     // y al final de cada refresh().
     function localRender(f) {
       if (!f) f = getFilters();
-      // Re-aplicar filtro de cuenta (puede cambiar con el banco si en el
-      // futuro lo hacemos dinámico — por ahora es flag, OK).
       const list = lastList.filter(sb => matchesFilters(sb, f));
 
       renderSurebets(list, f);
 
-      // KPIs (con banco actual)
+      // KPIs (con banco actual) — "Confianza promedio" reemplazado por
+      // "Ganancia mín. asegurada" porque en arbitraje el riesgo es 0 por
+      // definición; lo que importa es cuánto ganás como mínimo.
       panel.querySelector('#arbActive').textContent = list.length;
       if (list.length) {
         const best = Math.max(...list.map(s => s.netRoi || 0));
-        const avg  = list.reduce((s, x) => s + (x.confidence || 0), 0) / list.length;
+        // Ganancia mínima asegurada = el peor de los mejores ROI × banco
+        const worstOfTop = list.slice(0, Math.min(10, list.length))
+          .reduce((m, s) => Math.min(m, s.netRoi || Infinity), Infinity);
+        const minGuaranteed = Number.isFinite(worstOfTop)
+          ? Math.round(f.bankroll * worstOfTop / 10) * 10
+          : 0;
         panel.querySelector('#arbBestRoi').textContent = (best * 100).toFixed(2) + '%';
-        panel.querySelector('#arbAvgConf').textContent = (avg * 100).toFixed(0) + '%';
+        panel.querySelector('#arbMinGuaranteed').textContent = '+' + BSUI.money(minGuaranteed);
       } else {
         panel.querySelector('#arbBestRoi').textContent = '—';
-        panel.querySelector('#arbAvgConf').textContent = '—';
+        panel.querySelector('#arbMinGuaranteed').textContent = '—';
       }
       panel.querySelector('#arbCycles').textContent = lastMeta?.cycles || 0;
       const intervalS = ((lastMeta?.interval || 5000) / 1000);
-      panel.querySelector('#arbLastUpd').textContent = `El motor analiza cada ${intervalS}s · ${list.length}/${lastList.length} pasaron filtros · ${freshnessLabel(lastSnapshotAt)}`;
+      const showing = Math.min(visibleCount, list.length);
+      panel.querySelector('#arbLastUpd').textContent = `El motor analiza cada ${intervalS}s · mostrando ${showing}/${list.length} · ${freshnessLabel(lastSnapshotAt)}`;
       panel.querySelector('#arbFilterCount').textContent = `${list.length} surebets vigentes`;
+
+      // Botón "Mostrar más" — visible si hay más para cargar
+      const wrap = panel.querySelector('#arbLoadMoreWrap');
+      const label = panel.querySelector('#arbLoadMoreLabel');
+      if (wrap && label) {
+        if (list.length > visibleCount) {
+          wrap.style.display = '';
+          const remaining = list.length - visibleCount;
+          const next = Math.min(PAGE_SIZE, remaining);
+          label.textContent = `Mostrar ${next} más (quedan ${remaining})`;
+        } else {
+          wrap.style.display = 'none';
+        }
+      }
     }
 
     function renderSurebets(list, f) {
       const host = panel.querySelector('#arbList');
       if (!list.length) {
-        host.innerHTML = `<div class="empty" style="padding:30px;text-align:center"><strong>No hay surebets activas en este momento</strong><p class="muted tiny">El motor sigue escaneando cada 5s. Las surebets aparecen acá apenas se detectan y se cierran cuando una casa mueve la cuota. Probá bajar la rentabilidad mínima o sacar el filtro de "Solo las que entran en mi cuenta".</p></div>`;
+        host.innerHTML = `<div class="empty" style="padding:30px;text-align:center"><strong>No hay surebets activas en este momento</strong><p class="muted tiny">El motor sigue escaneando cada 5s. Las surebets aparecen acá apenas se detectan y se cierran cuando una casa mueve la cuota. Probá bajar la rentabilidad mínima, ampliar el límite de frescura o sacar el filtro de "Solo las que entran en mi cuenta".</p></div>`;
         return;
       }
-      host.innerHTML = list.slice(0, 10).map(sb => surebetCard(sb, f)).join('');
+      // Paginación: solo renderizamos las primeras `visibleCount` para que la UI
+      // no se trabe con 400+ items. El botón "Mostrar más" amplía visibleCount.
+      host.innerHTML = list.slice(0, visibleCount).map(sb => surebetCard(sb, f)).join('');
 
       // Bindings click
       host.querySelectorAll('[data-copy-sb]').forEach(b => b.addEventListener('click', () => {
@@ -412,9 +439,6 @@
     }
 
     function surebetCard(sb, f) {
-      const conf = sb.confidence || 0;
-      const confCls = conf > 0.7 ? 'success' : conf > 0.4 ? 'warning' : 'danger';
-
       // Recalcular montos/ganancia para el banco actual del usuario
       const computed = computeStakesFor(sb, f.bankroll) || {};
       const profitARS = computed.profit ?? Math.round((f.bankroll * (sb.netRoi || 0)) / 10) * 10;
@@ -430,8 +454,6 @@
 
       // Re-mapear stakes al banco actual usando la misma proporción de cuotas
       const stakesByLeg = baseLegs.map((leg, i) => {
-        // Encontrar el índice original en sb.odds que corresponde a esta leg
-        // (latencyOrder está reordenado, pero leg.odd identifica la cuota original)
         const idxInOdds = sb.odds ? sb.odds.findIndex((o, j) => o === leg.odd && sb.books[j] === leg.book) : i;
         const newStake = computed.stakes ? (computed.stakes[idxInOdds] ?? leg.stake) : leg.stake;
         return { ...leg, stake: newStake };
@@ -440,11 +462,24 @@
       const mktLabel = marketLabel(sb.market);
       const warnFit = sb.bankrollFit === false;
 
-      // Stale flag: usar timestamp por surebet si vino del backend (lastSeenAt),
-      // sino el del snapshot global. Avisar si tiene más de 30s.
+      // Frescura por surebet: usar timestamp del backend (lastSeenAt) si vino,
+      // sino el snapshot global. En arbitraje no hay "riesgo del análisis" porque
+      // es matemáticamente seguro — el único riesgo real es que la cuota cambie
+      // antes de ejecutar. Por eso reemplazamos "Confianza X%" por:
+      //   - "Verificada" si está fresca (< 15s)
+      //   - "Margen actualizado · hace Xs" si tiene <30s
+      //   - "⚠ cuotas pueden haber cambiado" si > 30s
       const sbTs = bestTimestamp(sb, lastSnapshotAt);
       const ageSec = Math.max(0, Math.round((Date.now() - sbTs) / 1000));
       const stale = ageSec > 30;
+      const veryFresh = ageSec <= 15;
+
+      // Indicador profesional de estado (reemplaza "Confianza X%"):
+      const statusBadge = veryFresh
+        ? `<span class="badge badge-success tiny" title="Cuotas verificadas en los últimos 15s. Surebet matemáticamente sólida — ejecutá rápido."><svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" style="margin-right:3px;vertical-align:-1px"><path d="M13.854 3.146a.5.5 0 010 .708l-7 7a.5.5 0 01-.708 0l-3.5-3.5a.5.5 0 11.708-.708L6.5 9.793l6.646-6.647a.5.5 0 01.708 0z"/></svg>Surebet verificada</span>`
+        : stale
+          ? `<span class="badge badge-warning tiny" title="Datos con más de 30s. Reconfirmá la cuota en la casa antes de apostar.">⚠ Cuotas pueden haber cambiado</span>`
+          : `<span class="badge badge-info tiny" title="Cuotas confirmadas hace ${ageSec}s.">Margen actualizado · hace ${ageSec}s</span>`;
 
       // Pct distribución por casa
       const totalStake = stakesByLeg.reduce((s, l) => s + (l.stake || 0), 0) || 1;
@@ -455,9 +490,8 @@
             <div>
               <div class="cluster">
                 <strong>${BSUI.esc(sb.event)}</strong>
-                <span class="badge badge-${confCls} tiny">Confianza ${(conf*100).toFixed(0)}%</span>
+                ${statusBadge}
                 ${warnFit ? '<span class="badge badge-warning tiny">⚠ monto &gt; tope típico de cuenta</span>' : ''}
-                ${stale ? '<span class="badge badge-warning tiny" title="Datos con más de 30s. Confirmá la cuota antes de apostar.">⚠ cuotas pueden haber cambiado</span>' : ''}
               </div>
               <div class="muted tiny">${BSUI.esc(mktLabel)} · ${minLabel}</div>
             </div>
@@ -515,33 +549,12 @@
       ];
       navigator.clipboard.writeText(lines.join('\n'));
       BSUI.toast({ title: 'Instrucciones copiadas', message: 'Pegalas donde las necesites para apostar.', type: 'success' });
-      const hist = BSStore.get(BSStore.KEYS.arbHistory) || [];
-      const histItem = {
-        id: 'sb' + Date.now(),
-        at: Date.now(),
-        event: sb.event,
-        market: sb.market,
-        marketLabel: marketLabel(sb.market),
-        books: sb.books.map(bookName).join(' / '),
-        roi: +(sb.netRoi * 100).toFixed(2),
-        conf: sb.confidence
-      };
-      const merged = [histItem, ...hist].slice(0, 500);
-      BSStore.set(BSStore.KEYS.arbHistory, merged);
-      renderHist();
-    }
-
-    function renderHist() {
-      const list = (BSStore.get(BSStore.KEYS.arbHistory) || []).slice(0, 30);
-      panel.querySelector('#arbHist').innerHTML = list.map(s => `
-        <tr><td class="mono tiny">${new Date(s.at).toLocaleTimeString('es-AR')}</td><td>${BSUI.esc(s.event)}</td><td class="tiny">${BSUI.esc(s.marketLabel || marketLabel(s.market))}</td><td>${BSUI.esc(s.books)}</td><td class="num text-success">+${s.roi}%</td><td class="num">${s.conf ? (s.conf*100).toFixed(0)+'%' : '—'}</td><td></td></tr>
-      `).join('');
     }
 
     // ── Push en vivo via WebSocket ─────────────────────────────────────
     const onSurebet = (e) => {
       const ev = e.detail || {};
-      log(`SUREBET ${ev.event || ''} · ${marketLabel(ev.market || '')} · +${((ev.netRoi||0)*100).toFixed(2)}% · confianza ${((ev.confidence||0)*100).toFixed(0)}%`);
+      log(`SUREBET ${ev.event || ''} · ${marketLabel(ev.market || '')} · +${((ev.netRoi||0)*100).toFixed(2)}% neto`);
       if (panel.querySelector('#arbAudio').checked) beep();
       refresh();
     };
@@ -559,11 +572,23 @@
 
     panel.querySelector('#arbOn').addEventListener('change', e => { running = e.target.checked; });
 
-    // Filtros: ROI/conf/sport/market/bankrollFit → cambian el conjunto visible
-    // Importante: estos NO refetchean (el snapshot ya está cacheado).
-    ['#arbMinRoi', '#arbMinConf', '#arbSport', '#arbMarket', '#arbBankrollFit'].forEach(sel => {
-      panel.querySelector(sel)?.addEventListener('input', () => localRender(getFilters()));
-      panel.querySelector(sel)?.addEventListener('change', () => localRender(getFilters()));
+    // Filtros: cuando cambian, reseteamos paginación a la primera página.
+    // Los filtros NO refetchean (el snapshot ya está cacheado).
+    ['#arbMinRoi', '#arbMaxAge', '#arbSport', '#arbMarket', '#arbBankrollFit'].forEach(sel => {
+      panel.querySelector(sel)?.addEventListener('input', () => {
+        visibleCount = PAGE_SIZE;
+        localRender(getFilters());
+      });
+      panel.querySelector(sel)?.addEventListener('change', () => {
+        visibleCount = PAGE_SIZE;
+        localRender(getFilters());
+      });
+    });
+
+    // Botón "Mostrar más" — carga la siguiente tanda de surebets
+    panel.querySelector('#arbLoadMore')?.addEventListener('click', () => {
+      visibleCount += PAGE_SIZE;
+      localRender(getFilters());
     });
 
     function beep() {
@@ -575,17 +600,6 @@
         o.start(); o.stop(ctx.currentTime + 0.12);
       } catch {}
     }
-
-    panel.querySelector('#arbExport').addEventListener('click', () => {
-      const list = BSStore.get(BSStore.KEYS.arbHistory) || [];
-      const rows = [['hora','evento','mercado','casas','rentabilidad','confianza'].join(',')].concat(list.map(s => [new Date(s.at).toISOString(), s.event, s.marketLabel || marketLabel(s.market), s.books, s.roi, s.conf || ''].join(',')));
-      const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
-      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'betsafe-surebets.csv'; a.click();
-    });
-    panel.querySelector('#arbClearHist').addEventListener('click', () => {
-      BSStore.set(BSStore.KEYS.arbHistory, []);
-      renderHist(); BSUI.toast({ title: 'Histórico vaciado', type: 'info' });
-    });
 
     // ── Bankroll: recálculo LOCAL al instante (sin refetch, sin flicker) ──
     const bankEl = panel.querySelector('#arbBankroll');
@@ -663,7 +677,6 @@
 
     log('Motor de arbitraje conectado · escaneando casas legales AR cada 5s');
     refresh();
-    renderHist();
 
     panel.__cleanup = () => {
       window.removeEventListener('bs:live-surebet', onSurebet);

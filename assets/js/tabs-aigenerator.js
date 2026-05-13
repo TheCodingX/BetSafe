@@ -358,8 +358,9 @@
         </div>
       </section>
 
-      <!-- Output -->
-      <div id="agOutput" class="reveal-stagger"></div>
+      <!-- Output (sin reveal-stagger porque las cards se inyectan dinámicamente y
+           el IntersectionObserver inicial no las observa → quedarían invisibles) -->
+      <div id="agOutput"></div>
     `;
 
     // ─────── State ───────
@@ -834,7 +835,7 @@
           ${combos.map((c, ci) => {
             const top3 = top3Books(c.total, c.marketsUsed);
             return `
-            <div class="card card-tinted stack-sm reveal ag-combo">
+            <div class="card card-tinted stack-sm ag-combo">
               <div class="row between" style="align-items:center">
                 <strong>Combinada #${ci+1} · ${c.legCount || c.legs.length} legs${c.sportsCount > 1 ? ' · ' + c.sportsCount + ' deportes' : ''}</strong>
                 <span class="risk-pill ${c.total<2?'low':c.total<6?'mid':'high'}">${c.total<2?'Bajo':c.total<6?'Medio':'Alto'} riesgo</span>

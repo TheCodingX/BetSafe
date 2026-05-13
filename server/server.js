@@ -593,6 +593,224 @@ app.get('/api/picks', async (req, res) => {
   });
 });
 
+/* ═══════════════════════════════════════════════════════════════════════════
+ * GET /api/picks/curated
+ * ═══════════════════════════════════════════════════════════════════════════
+ * Devuelve combinadas CURADAS por IA. NO un pick por partido — combinadas
+ * inteligentes con 2-5 legs cada una, donde la IA decide:
+ *   - Qué partidos combinar (solo los que tienen señales fuertes y data profunda)
+ *   - Cuántas legs (2-5) según la calidad de las señales
+ *   - Qué tipo de combo (segura/equilibrada/agresiva) según contexto
+ *
+ * Filosofía: CALIDAD > cantidad. Es preferible 3 combinadas brillantes que 8
+ * mediocres. Si un día no hay suficiente data fuerte, devolvemos menos combos
+ * con la disclosure correspondiente.
+ *
+ * Query params:
+ *   - sport=soccer|basketball|tennis|amfootball|baseball|esports (default all)
+ *   - count=N (default 4, max 6) — máximo de combinadas a devolver
+ *   - includeEsports=true (default false: NUNCA esports a menos que se pida)
+ * ═══════════════════════════════════════════════════════════════════════════ */
+app.get('/api/picks/curated', async (req, res) => {
+  const sport = req.query.sport || 'all';
+  const count = Math.min(6, Math.max(2, Number(req.query.count) || 4));
+  const includeEsports = req.query.includeEsports === 'true' || sport === 'esports';
+
+  // 1) Pool de eventos del día — FILTRO ESTRICTO por deporte
+  let events = orchestrator.events({ sport: sport === 'all' ? 'all' : sport })
+    .filter(e => e.bestOdds?.h2h);
+  if (!includeEsports) {
+    events = events.filter(e => e.sport !== 'esports' && !orchestrator.looksLikeEsports?.(e));
+  }
+  // Solo partidos que empiezan en las próximas 36hs
+  const now = Date.now();
+  events = events.filter(e => Number.isFinite(e.start) && e.start >= now && e.start <= now + 36*3600*1000);
+
+  if (!events.length) {
+    return res.json({
+      combos: [],
+      meta: { reason: 'no-events', sport, message: `No hay partidos${sport!=='all'?` de ${sport}`:''} en las próximas 36hs.` }
+    });
+  }
+
+  // 2) Profundidad de data — priorizar eventos con MÚLTIPLES casas, factores
+  //    completos y eventos top (más data = mejor análisis).
+  function dataDepth(ev) {
+    const bookCount = Object.keys(ev.markets?.h2h || {}).length;
+    const hasFactors = !!(ev.factors || ev.weather || ev.lineup);
+    const priority = orchestrator.eventPriority?.(ev) || 0;
+    return bookCount * 2 + (hasFactors ? 5 : 0) + priority * 3;
+  }
+  events.sort((a, b) => dataDepth(b) - dataDepth(a));
+
+  // 3) Analizar top N — más pool = mejor curado. Cap 16 por timeout.
+  const TOP_N = Math.min(16, events.length);
+  const top = events.slice(0, TOP_N);
+  const steam = orchestrator.steamMoves();
+  const surebets = arbEngine.snapshot().detected;
+  const analyzeLimit = pLimit(Number(process.env.PICKS_CONCURRENCY || 2));
+  const analyzed = await Promise.allSettled(
+    top.map(ev => analyzeLimit(() => analyzeMatch(ev, { steamMoves: steam, surebets })))
+  );
+
+  // 4) Construir pool de picks con EV positivo. Cada evento aporta sus mejores
+  //    selections (h2h, totals, btts según riesgo).
+  const pool = [];
+  for (const r of analyzed) {
+    if (r.status !== 'fulfilled' || !r.value) continue;
+    const a = r.value;
+    if (!a.llmProvider || a.llmProvider === 'offline') continue;
+    for (const sel of (a.selections || [])) {
+      if (!sel.odd || sel.market === 'combo') continue;  // combos del eq se manejan distinto
+      const ev = sel.consensusEv;
+      const vg = sel.valueGap;
+      // Solo picks con valor positivo y prob real ≥ 30% (no apuestas locas)
+      if (ev == null || ev <= 0) continue;
+      if (sel.consensusProb && sel.consensusProb < 0.30) continue;
+      pool.push({
+        event: a.event,
+        factors: a.factors,
+        sel,
+        score: ev + (vg || 0) * 0.5 + (sel.confidence || 0) * 30
+      });
+    }
+  }
+
+  if (pool.length < 4) {
+    return res.json({
+      combos: [],
+      meta: {
+        reason: 'pool-too-small',
+        analyzed: analyzed.length,
+        poolSize: pool.length,
+        message: `Solo encontramos ${pool.length} picks con valor positivo + data profunda. Hoy no hay suficientes señales fuertes para armar combinadas de calidad.`
+      }
+    });
+  }
+
+  // 5) Sort pool por calidad
+  pool.sort((a, b) => b.score - a.score);
+  const topPool = pool.slice(0, Math.min(20, pool.length));
+
+  // 6) Pedirle a la IA que arme las combinadas curadas
+  const poolSummary = topPool.map((p, i) =>
+    `[${i}] ${p.event.home?.name} vs ${p.event.away?.name} | ${p.event.leagueName || p.event.sport} | ${p.sel.market}:${p.sel.outcome} (${p.sel.label}) @ ${p.sel.odd} | EV ${p.sel.consensusEv?.toFixed(1)}% | conf ${(p.sel.confidence*100)?.toFixed(0)}% | book ${p.sel.book}`
+  ).join('\n');
+
+  const systemPrompt = `Sos un analista cuantitativo SENIOR de apuestas deportivas que arma combinadas curadas para usuarios serios.
+
+Tu trabajo: del pool de picks (todos con EV positivo y data profunda), elegir las MEJORES ${count} COMBINADAS posibles. NO un combo por partido. NO repetir el mismo evento entre legs. NO combos genéricos.
+
+REGLAS:
+- Cada combinada tiene 2 a 5 legs (vos decidís cuántas según calidad de las señales disponibles).
+- NUNCA combos de 1 leg (eso es una single).
+- Mezclá perfil de riesgo: al menos 1 combo seguro (cuota total ≤ 4), 1-2 equilibrados (cuota 4-12), y opcionalmente 1 agresivo (cuota 12-50).
+- Los partidos en una misma combinada NO deben estar correlacionados estructuralmente (ej: no combines "Local A gana" + "Local A marca primero" del mismo partido).
+- Si no podés armar combos de alta calidad, devolvé MENOS combos — preferible 2 brillantes que 5 mediocres.
+- Cada combo necesita una NARRATIVA que explique por qué esos partidos juntos tienen sentido.
+
+Devolvés JSON estricto:
+{
+  "combos": [
+    {
+      "legs": [<índices del pool, ej [3, 7, 12]>],
+      "risk": "seguro" | "equilibrado" | "agresivo",
+      "narrative": "<2-3 frases que expliquen la lógica de unir estos partidos>",
+      "edge": "<frase corta: por qué esta combinada tiene valor real vs el mercado>",
+      "keyFactor": "<el factor más importante a vigilar antes del kickoff>"
+    },
+    ...
+  ]
+}`;
+
+  const userPrompt = `POOL DE PICKS DE ALTA CALIDAD (top ${topPool.length} con EV positivo + data profunda):
+
+${poolSummary}
+
+Generá las ${count} mejores combinadas posibles. Usá los índices del pool. Recordá: calidad > cantidad.`;
+
+  let aiResp = null;
+  try {
+    aiResp = await preferredJson(systemPrompt, userPrompt, { maxTokens: 2500, temperature: 0.5 });
+  } catch (e) {
+    log(`[curated] AI err: ${e?.message?.slice(0, 100)}`);
+  }
+
+  const aiCombos = Array.isArray(aiResp?.combos) ? aiResp.combos : [];
+  if (!aiCombos.length) {
+    return res.json({
+      combos: [],
+      meta: {
+        reason: 'ai-empty',
+        analyzed: analyzed.length,
+        poolSize: pool.length,
+        message: 'La IA no pudo armar combinadas con confianza suficiente del pool actual.'
+      }
+    });
+  }
+
+  // 7) Hidratar las combinadas con datos reales
+  const combos = aiCombos
+    .map((c, idx) => {
+      const indices = Array.isArray(c.legs) ? c.legs.map(Number).filter(i => i >= 0 && i < topPool.length) : [];
+      if (indices.length < 2 || indices.length > 5) return null;
+      // Evitar duplicados de mismo evento
+      const seenEvents = new Set();
+      const legs = [];
+      for (const i of indices) {
+        const p = topPool[i];
+        if (seenEvents.has(p.event.id)) continue;
+        seenEvents.add(p.event.id);
+        legs.push({
+          eventId: p.event.id,
+          home: p.event.home?.name,
+          away: p.event.away?.name,
+          sport: p.event.sport,
+          league: p.event.leagueName || p.event.league,
+          start: p.event.start,
+          market: p.sel.market,
+          outcome: p.sel.outcome,
+          line: p.sel.line || null,
+          label: p.sel.label,
+          odd: p.sel.odd,
+          book: p.sel.book,
+          confidence: p.sel.confidence,
+          ev: p.sel.consensusEv,
+          rationale: p.sel.rationale || '',
+          factors: (p.sel.factors || []).slice(0, 3)
+        });
+      }
+      if (legs.length < 2) return null;
+      const totalOdd = legs.reduce((a, l) => a * l.odd, 1);
+      return {
+        id: `curated-${idx}-${Date.now()}`,
+        legs,
+        legCount: legs.length,
+        totalOdd: Number(totalOdd.toFixed(2)),
+        avgConfidence: Number((legs.reduce((a, l) => a + (l.confidence || 0), 0) / legs.length).toFixed(3)),
+        avgEv: Number((legs.reduce((a, l) => a + (l.ev || 0), 0) / legs.length).toFixed(2)),
+        risk: c.risk || (totalOdd < 4 ? 'seguro' : totalOdd < 12 ? 'equilibrado' : 'agresivo'),
+        narrative: String(c.narrative || '').slice(0, 600),
+        edge: String(c.edge || '').slice(0, 250),
+        keyFactor: String(c.keyFactor || '').slice(0, 200),
+        sportsCount: new Set(legs.map(l => l.sport)).size
+      };
+    })
+    .filter(Boolean);
+
+  res.json({
+    combos: combos.slice(0, count),
+    meta: {
+      analyzedEvents: analyzed.length,
+      poolSize: pool.length,
+      topPoolSize: topPool.length,
+      sport,
+      includeEsports,
+      generatedAt: Date.now()
+    }
+  });
+});
+
 // Generador IA: misma pipeline pero con knobs (riesgo, ligas, mercados, n combinadas)
 app.post('/api/generator', express.json(), async (req, res) => {
   const {

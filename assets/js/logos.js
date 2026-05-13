@@ -271,8 +271,11 @@
     bahia: 'https://a.espncdn.com/i/teamlogos/soccer/500/9967.png',
     banfield: 'https://a.espncdn.com/i/teamlogos/soccer/500/235.png',
     barca: 'https://a.espncdn.com/i/teamlogos/soccer/500/83.png',
-    barcelona: 'https://a.espncdn.com/i/teamlogos/soccer/500/2686.png',
-    barcelonasc: 'https://a.espncdn.com/i/teamlogos/soccer/500/2686.png',
+    barcelona: 'https://a.espncdn.com/i/teamlogos/soccer/500/83.png',          // FC Barcelona (España) — id 83
+    fcbarcelona: 'https://a.espncdn.com/i/teamlogos/soccer/500/83.png',        // FC Barcelona alias
+    barcelonafc: 'https://a.espncdn.com/i/teamlogos/soccer/500/83.png',
+    barcelonasc: 'https://a.espncdn.com/i/teamlogos/soccer/500/2686.png',      // Barcelona SC (Ecuador) — id 2686
+    barcelonaecuador: 'https://a.espncdn.com/i/teamlogos/soccer/500/2686.png',
     barracas: 'https://a.espncdn.com/i/teamlogos/soccer/500/10060.png',
     barracascentral: 'https://a.espncdn.com/i/teamlogos/soccer/500/10060.png',
     bayerleverkusen: 'https://a.espncdn.com/i/teamlogos/soccer/500/131.png',
@@ -1538,7 +1541,36 @@
     'racingclub': 'racing',
     'clubatleticoindependiente': 'independiente',
     'sanlorenzodealmagro': 'sanlorenzo',
-    'velezsarsfield': 'velez'
+    'velezsarsfield': 'velez',
+    // ── Argentine teams with ambiguous "Gimnasia y Esgrima" names ──
+    // Sin estos aliases, "Gimnasia y Esgrima" (sin sufijo de ciudad) caía a
+    // resolución remota y a veces matcheaba el equipo equivocado (ej: Jujuy).
+    // Ahora "Gimnasia y Esgrima" SIEMPRE matchea Gimnasia La Plata (el más
+    // conocido), y cada variante específica matchea su ciudad.
+    'gimnasiayesgrima': 'gimnasialaplata',           // default = LP (el más famoso)
+    'gimnasiaesgrima': 'gimnasialaplata',
+    'gimnasiayesgrimalaplata': 'gimnasialaplata',
+    'gimnasiaesgrimalaplata': 'gimnasialaplata',
+    'gelp': 'gimnasialaplata',                       // acrónimo común
+    'gyelaplata': 'gimnasialaplata',
+    'gimnasiayesgrimamendoza': 'gimnasiamendoza',
+    'gimnasiaesgrimamendoza': 'gimnasiamendoza',
+    'gem': 'gimnasiamendoza',
+    'gimnasiayesgrimajujuy': 'gimnasiaj',
+    'gimnasiaesgrimajujuy': 'gimnasiaj',
+    'gimnasiajujuy': 'gimnasiaj',
+    'gyejujuy': 'gimnasiaj',
+    'gimnasiaytirosalta': 'gimnasiaytirosalta',
+    'gytsalta': 'gimnasiaytirosalta',
+    // ── Estudiantes — varias instituciones distintas ──
+    'estudiantesdelaplata': 'estudiantes',          // Estudiantes LP (Primera) → 8.png
+    'estudiantesdelp': 'estudiantes',
+    'estudiantescaseros': 'estudiantesbuenosaires', // Estudiantes Caseros (B Nacional) → 17352.png
+    'estudiantesdecaseros': 'estudiantesbuenosaires',
+    // ── Independiente — varios equipos en Sudamérica ──
+    'independienterivadaviadelacarlosa': 'independienterivadavia',
+    'independienterivadavia': 'independienterivadavia',
+    'cairivadavia': 'independienterivadavia'
   };
 
   function teamCrest(key, opts = {}) {

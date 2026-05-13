@@ -1,23 +1,19 @@
-/* BetSafe — AI Picks tab (hyper-detailed)
+/* BetSafe — AI Picks tab (curated combos)
  * ============================================================================
- * Pide picks completos al backend (cuotas reales + clima + lesiones + sharp
- * money + histórico + modelos cuantitativos + LLM analysis).
+ * Re-diseño completo: en lugar de mostrar un pick por partido, la IA analiza
+ * TODOS los partidos del día y devuelve las MEJORES COMBINADAS POSIBLES (2-5
+ * legs cada una, la IA decide cuántas). Foco en CALIDAD, no cantidad.
  *
- * Cada pick muestra:
- *   - Selección + cuota + casa que MEJOR paga
- *   - 4 probabilidades: fair (Shin), Poisson xG, Elo ajustado, LLM
- *   - Consenso + EV vs cierre del mercado
- *   - Stake Kelly recomendado
- *   - Confidence score (0-1) en base a divergencia entre modelos
- *   - Factores que pesan: clima, lesiones, sharp money, histórico
- *   - Warnings (lesiones críticas, clima adverso)
- *   - Justificación LLM en lenguaje natural
+ * Cada combinada incluye:
+ *   - 2 a 5 legs cuidadosamente seleccionadas
+ *   - Narrativa de por qué esos partidos juntos tienen sentido
+ *   - Edge sobre el mercado (en lenguaje claro)
+ *   - Factor clave a vigilar antes del kickoff
+ *   - Cuota total + ganancia esperada
+ *   - Nivel de riesgo: seguro / equilibrado / agresivo
  *
- * Filtros REALES que se aplican en el backend:
- *   - Sharp ≥ N: solo partidos con movimiento de dinero pro
- *   - Skip injured: descarta partidos con bajas severas
- *   - Skip bad weather: descarta partidos con clima muy adverso
- *   - Deporte + ligas
+ * Filtro principal:
+ *   - Deporte (estricto: si elegís fútbol, NO mostramos esports)
  * ============================================================================
  */
 (function () {
@@ -25,14 +21,10 @@
 
   // Estado local
   let state = {
-    picks: [],
+    combos: [],
     loading: false,
     filters: {
-      sport: 'all',
-      league: null,
-      minSharp: 0,
-      skipInjured: false,
-      skipBadWeather: false
+      sport: 'all'
     },
     error: null,
     meta: null
@@ -40,76 +32,54 @@
 
   async function render(panel) {
     const isVip = BSAuth.isVip();
-    const limit = isVip ? 20 : 6;
+    const count = isVip ? 6 : 3;
 
-    panel.innerHTML = baseLayout(isVip, limit);
+    panel.innerHTML = baseLayout(isVip, count);
     bindFilters(panel);
 
     // Cargar primera tanda
-    await reload(panel, limit);
+    await reload(panel, count);
 
     // Re-render cuando se actualiza el snapshot del backend
-    const onLive = () => { if (state.picks.length === 0) reload(panel, limit); };
+    const onLive = () => { if (state.combos.length === 0) reload(panel, count); };
     window.addEventListener('bs:live-snapshot', onLive);
     panel.__cleanup = () => window.removeEventListener('bs:live-snapshot', onLive);
   }
 
-  function baseLayout(isVip, limit) {
+  function baseLayout(isVip, count) {
     // Mostramos los 8 deportes principales incluyendo eSports (que es una
     // categoría independiente: NO mezclar con fútbol).
     const SPORTS = (BSData.SPORTS || []).slice(0, 8);
     return `
       <div class="row between mb-4">
         <div>
-          <h2 class="h3">AI Picks · análisis ultra profundo<a class="help-q" tabindex="0" data-tip="Cada pick combina cuotas reales de casas legales + clima del estadio + lesiones reportadas + movimientos del mercado + histórico cara a cara + análisis IA. Score de confianza basado en consistencia entre múltiples señales."></a></h2>
-          <p class="muted">${isVip ? `VIP — análisis ilimitado · backend a tiempo real` : `Standard — top ${limit} partidos por EV`}</p>
+          <h2 class="h3">AI Picks · top combinadas curadas<a class="help-q" tabindex="0" data-tip="La IA analiza TODOS los partidos del día y devuelve solo las MEJORES combinadas posibles. Cada una con 2 a 5 legs (la IA decide cuántas según la calidad de las señales). Foco en calidad, no cantidad. Mezcla de riesgos: 1 segura, 1-2 equilibradas, opcionalmente 1 agresiva."></a></h2>
+          <p class="muted">${isVip ? `VIP — hasta ${count} combinadas curadas por día` : `Standard — top ${count} combinadas curadas (VIP desbloquea más)`}</p>
         </div>
         <div class="cluster">
           <button class="btn btn-primary mag" id="aiAnalyze">${BSIcons.svg('bolt', { size: 16 })} Reanalizar</button>
         </div>
       </div>
 
-      <!-- Filtros REALES (se aplican en backend) -->
+      <!-- Filtro DEPORTIVO ESTRICTO -->
       <div class="card stack mb-3">
         <div class="row between">
-          <strong>Filtros profesionales<a class="help-q" tabindex="0" data-tip="Los filtros se aplican con datos en tiempo real: lesiones, clima del estadio y movimientos del mercado detectados constantemente."></a></strong>
+          <strong>Filtrar por deporte<a class="help-q" tabindex="0" data-tip="Si elegís un deporte específico, la IA solo analiza partidos de ese deporte. NUNCA se mezclan esports con fútbol salvo que pidas esports explícitamente."></a></strong>
           <span class="muted tiny" id="aiFilterCount">Cargando…</span>
         </div>
 
         <div>
-          <span class="muted tiny" style="display:block;margin-bottom:6px">Deporte</span>
           <div class="cluster" id="aiSportChips">
-            <button class="league-chip active" data-sport="all">Todos</button>
+            <button class="league-chip active" data-sport="all">Todos los deportes</button>
             ${SPORTS.map(s => `<button class="league-chip${s.accent ? ' is-' + s.accent : ''}" data-sport="${s.key}" title="${s.key === 'esports' ? 'Apuestas sobre videojuegos competitivos (CS:GO, LoL, Dota 2, Valorant)' : s.name}">${BSIcons.svg(s.icon || 'soccer', {size:14})}<span>${s.name}</span></button>`).join('')}
           </div>
-        </div>
-
-        <div class="row gap-2" style="flex-wrap:wrap;align-items:center">
-          <label class="field" style="margin:0;flex:1;min-width:200px">
-            <span class="field-label">Sharp money mínimo</span>
-            <div class="cluster">
-              <input type="range" class="slider" id="aiMinSharp" min="0" max="1" step="0.05" value="0" style="flex:1">
-              <strong class="num" id="aiMinSharpVal" style="min-width:42px">0.00</strong>
-            </div>
-          </label>
-          <label class="cluster" style="cursor:pointer;margin:0">
-            <input type="checkbox" id="aiSkipInjured">
-            <span class="tiny">Saltear partidos con bajas severas</span>
-            <a class="help-q" tabindex="0" data-tip="Descarta partidos donde algún equipo tiene severityScore > 0.5 (típicamente 3+ bajas confirmadas incluyendo posiciones críticas como portero/defensa central)."></a>
-          </label>
-          <label class="cluster" style="cursor:pointer;margin:0">
-            <input type="checkbox" id="aiSkipWeather">
-            <span class="tiny">Saltear clima adverso</span>
-            <a class="help-q" tabindex="0" data-tip="Descarta partidos con multiplicador de goles ESPERADO por clima &lt; 0.90 (típicamente lluvia intensa + viento fuerte combinado)."></a>
-          </label>
-          <button class="btn btn-outline btn-sm" id="aiApplyFilters">Aplicar filtros</button>
         </div>
       </div>
 
       <!-- Estado del backend -->
       <div class="card card-tinted card-pad-sm mb-3" id="aiBackendStatus">
         <div class="row between">
-          <span class="tiny"><strong>Backend AI</strong> · ${BSData.liveFreshness()}</span>
+          <span class="tiny"><strong>Motor IA · análisis curado</strong></span>
           <span class="tiny muted" id="aiMeta">—</span>
         </div>
       </div>
@@ -131,32 +101,20 @@
         panel.querySelectorAll('#aiSportChips button').forEach(x => x.classList.remove('active'));
         b.classList.add('active');
         state.filters.sport = b.dataset.sport;
-        // Auto-reload: antes el chip solo cambiaba state pero NO refrescaba los
-        // picks. Usuario clickeaba "Fútbol" y seguía viendo esports/otros.
+        // Auto-reload con filtro estricto: si elige fútbol, NUNCA esports.
         reload(panel);
       });
     });
-    const slider = panel.querySelector('#aiMinSharp');
-    const sliderVal = panel.querySelector('#aiMinSharpVal');
-    slider?.addEventListener('input', e => {
-      state.filters.minSharp = Number(e.target.value);
-      sliderVal.textContent = state.filters.minSharp.toFixed(2);
-    });
-    panel.querySelector('#aiSkipInjured')?.addEventListener('change', e => { state.filters.skipInjured = e.target.checked; });
-    panel.querySelector('#aiSkipWeather')?.addEventListener('change', e => { state.filters.skipBadWeather = e.target.checked; });
-    panel.querySelector('#aiApplyFilters')?.addEventListener('click', () => reload(panel));
   }
 
-  async function reload(panel, limit) {
-    // VIP: hasta 20 picks. Standard: solo 3 (teaser para VIP).
+  async function reload(panel, count) {
     const isVip = BSAuth.isVip();
-    // Standard: 3 picks. VIP: 12 (cap server-side por timeout).
-    limit = limit || (isVip ? 12 : 3);
+    count = count || (isVip ? 6 : 3);
     if (state.loading) return;
     state.loading = true;
     const host = panel.querySelector('#aiPicks');
-    if (host) host.innerHTML = renderLoadingState(limit);
-    // Iniciar contador visual de tiempo transcurrido + activar pasos secuenciales
+    if (host) host.innerHTML = renderLoadingState(count);
+    // Contador visual + steps
     const startedAt = Date.now();
     let stepIdx = 0;
     const timer = setInterval(() => {
@@ -165,11 +123,10 @@
         const s = Math.floor((Date.now() - startedAt) / 1000);
         el.textContent = `${s}s`;
       }
-      // Avanzar a la siguiente step cada ~8s (proporcional al tiempo esperado)
       const steps = host?.querySelectorAll('.ai-loading__steps li');
       if (steps && steps.length) {
         const elapsedS = (Date.now() - startedAt) / 1000;
-        const targetIdx = Math.min(steps.length - 1, Math.floor(elapsedS / 8));
+        const targetIdx = Math.min(steps.length - 1, Math.floor(elapsedS / 10));
         while (stepIdx < targetIdx) {
           steps[stepIdx].classList.remove('is-active');
           steps[stepIdx].classList.add('is-done');
@@ -179,12 +136,16 @@
       }
     }, 1000);
     try {
-      const res = await BSLive.getPicks({ ...state.filters, limit });
-      state.picks = res.picks || [];
+      // Filtro deportivo ESTRICTO: si el usuario elige fútbol, jamás se incluyen
+      // esports. El backend respeta esto en /api/picks/curated.
+      const res = await BSLive.getCuratedCombos({
+        sport: state.filters.sport,
+        count
+      });
+      state.combos = res.combos || [];
       state.meta = res.meta;
       state.error = null;
     } catch (e) {
-      // Mensaje amigable según el tipo de error
       const msg = e?.message || String(e);
       if (msg.includes('aborted') || msg.includes('abort')) {
         state.error = 'El análisis tardó más de lo esperado. Intentá de nuevo en unos segundos.';
@@ -195,11 +156,11 @@
       } else {
         state.error = msg;
       }
-      state.picks = [];
+      state.combos = [];
     } finally {
       clearInterval(timer);
       state.loading = false;
-      renderPicks(panel);
+      renderCombos(panel);
     }
   }
 
@@ -239,11 +200,16 @@
     `;
   }
 
-  function renderPicks(panel) {
+  function renderCombos(panel) {
     const host = panel.querySelector('#aiPicks');
     if (!host) return;
     const meta = panel.querySelector('#aiMeta');
-    if (meta && state.meta) meta.textContent = `${state.meta.filtered}/${state.meta.analyzed} pasaron filtros · ${state.picks.length} picks`;
+    if (meta && state.meta) {
+      const m = state.meta;
+      meta.textContent = m.analyzedEvents
+        ? `${m.analyzedEvents} partidos analizados · ${m.poolSize} picks con valor · ${state.combos.length} combinadas curadas`
+        : (m.message || '—');
+    }
 
     if (state.error) {
       host.innerHTML = `
@@ -251,48 +217,35 @@
           <div class="ai-empty-icon ai-empty-icon--err">
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
           </div>
-          <strong>No pudimos cargar el análisis</strong>
+          <strong>No pudimos cargar las combinadas</strong>
           <p class="muted tiny">${BSUI.esc(state.error)}</p>
           <button class="btn btn-primary btn-sm" id="aiRetry">Reintentar</button>
         </div>`;
       panel.querySelector('#aiRetry')?.addEventListener('click', () => reload(panel));
       return;
     }
-    if (!state.picks.length) {
-      // Distinguir: "AI procesando aún" vs "Sin picks por filtros"
-      const aiPending = state.meta?.aiPending || 0;
-      if (aiPending > 0) {
-        host.innerHTML = `
-          <div class="ai-empty-card ai-empty-card--processing">
-            <div class="ai-empty-icon">
-              <span class="ai-empty-ring"></span>
-              <span class="ai-empty-ring ai-empty-ring--2"></span>
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
-            </div>
-            <strong>La IA está analizando los partidos…</strong>
-            <p class="muted tiny" style="max-width:480px;margin:0 auto">${aiPending} análisis en proceso. Esperá <strong>20-40 segundos</strong> y refrescá. Una vez analizados, los siguientes picks aparecen instantáneo (cache 5min).</p>
-            <button class="btn btn-primary btn-sm mag" id="aiRetry">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><path d="M3 12a9 9 0 1 0 9-9 9.74 9.74 0 0 0-6.74 2.74L3 8"/><polyline points="3 3 3 8 8 8"/></svg>
-              Refrescar
-            </button>
-          </div>`;
-      } else {
-        host.innerHTML = `
-          <div class="ai-empty-card">
-            <div class="ai-empty-icon">
-              <span class="ai-empty-ring"></span>
-              <span class="ai-empty-ring ai-empty-ring--2"></span>
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            </div>
-            <strong>Sin picks por ahora</strong>
-            <p class="muted tiny" style="max-width:380px;margin:0 auto">Estamos esperando partidos que cumplan tus filtros. Probá <em>bajar el sharp mínimo</em>, destildar <em>saltear lesiones</em>, o cambiar el deporte.</p>
-          </div>`;
-      }
+    if (!state.combos.length) {
+      const reason = state.meta?.reason;
+      const message = state.meta?.message;
+      host.innerHTML = `
+        <div class="ai-empty-card">
+          <div class="ai-empty-icon">
+            <span class="ai-empty-ring"></span>
+            <span class="ai-empty-ring ai-empty-ring--2"></span>
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          </div>
+          <strong>Hoy no hay combinadas curadas con la calidad suficiente</strong>
+          <p class="muted tiny" style="max-width:520px;margin:0 auto">${BSUI.esc(message || 'La IA prefirió no mostrar combinadas mediocres antes que armar cualquier cosa. Volvé en un rato — el motor analiza constantemente los partidos del día.')}</p>
+          <button class="btn btn-primary btn-sm mag" id="aiRetry">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><path d="M3 12a9 9 0 1 0 9-9 9.74 9.74 0 0 0-6.74 2.74L3 8"/><polyline points="3 3 3 8 8 8"/></svg>
+            Reintentar
+          </button>
+        </div>`;
       panel.querySelector('#aiRetry')?.addEventListener('click', () => reload(panel));
       return;
     }
     const isVip = BSAuth.isVip();
-    let html = state.picks.map(p => pickAnalysisCard(p)).join('');
+    let html = state.combos.map((c, idx) => comboCard(c, idx)).join('');
     // Teaser VIP al final si no-VIP (limit 3) para tentarlo
     if (!isVip) {
       html += `
@@ -313,44 +266,57 @@
         </div>`;
     }
     host.innerHTML = html;
-    // Bind clicks de "Ver factores" / "Agregar a slip"
-    host.querySelectorAll('[data-add-slip]').forEach(b => b.addEventListener('click', () => {
-      const data = JSON.parse(b.dataset.addSlip);
-      BSDash.addToSlip(data);
-    }));
-    host.querySelectorAll('[data-open-factors]').forEach(b => b.addEventListener('click', () => openFactorsModal(b.dataset.openFactors)));
-    // Share pick: usa Web Share API o clipboard fallback
-    host.querySelectorAll('[data-share-pick]').forEach(b => b.addEventListener('click', () => {
-      const eventId = b.dataset.sharePick;
-      const pick = state.picks.find(p => p.event?.id === eventId);
-      if (!pick) return;
-      const ev = pick.event;
-      const eqSel = pick.selections?.find(s => s.type === 'eq') || pick.selections?.[0];
-      const txt = `📊 Análisis IA · BetSafe
-
-${ev.home.name} vs ${ev.away.name}
-${ev.leagueName || ''} · ${BSUI.dt(ev.start)}
-
-Pick principal: ${eqSel?.label || eqSel?.outcome || '?'} @ ${eqSel?.odd?.toFixed?.(2) || '?'}
-EV: ${eqSel?.consensusEv != null ? `${eqSel.consensusEv > 0 ? '+' : ''}${eqSel.consensusEv.toFixed(1)}%` : '?'}
-Confianza: ${eqSel?.confidence ? (eqSel.confidence * 100).toFixed(0) + '%' : '?'}
-
-${pick.llmKeyFactor ? '⚡ ' + pick.llmKeyFactor : ''}
-
-— Análisis generado en betsafe.bet`;
-      const shareData = { title: `${ev.home.name} vs ${ev.away.name}`, text: txt, url: location.href };
-      (async () => {
+    // Bind "Agregar combinada al builder": agrega TODAS las legs al slip
+    host.querySelectorAll('[data-add-combo]').forEach(b => b.addEventListener('click', () => {
+      const idx = Number(b.dataset.addCombo);
+      const c = state.combos[idx];
+      if (!c || !c.legs) return;
+      let added = 0;
+      c.legs.forEach(l => {
         try {
-          if (navigator.share && navigator.canShare?.(shareData)) {
-            await navigator.share(shareData);
-          } else {
-            await navigator.clipboard.writeText(txt);
-            BSUI.toast?.({ title: 'Pick copiado', message: 'Pegalo en redes o WhatsApp.', type: 'success' });
-          }
-        } catch (e) {
-          if (e.name !== 'AbortError') BSUI.toast?.({ title: 'No se pudo compartir', type: 'error' });
+          BSDash.addToSlip({
+            matchId: l.eventId,
+            eventId: l.eventId,
+            label: l.label,
+            odd: l.odd,
+            book: l.book,
+            market: l.market,
+            outcome: l.outcome
+          });
+          added++;
+        } catch (_) {}
+      });
+      BSUI.toast?.({ title: 'Combinada agregada', message: `${added} legs sumadas al builder.`, type: 'success' });
+    }));
+    // Bind "Compartir combinada"
+    host.querySelectorAll('[data-share-combo]').forEach(b => b.addEventListener('click', async () => {
+      const idx = Number(b.dataset.shareCombo);
+      const c = state.combos[idx];
+      if (!c) return;
+      const legsText = c.legs.map((l, i) =>
+        `${i+1}. ${l.home} vs ${l.away} · ${l.label} @ ${l.odd.toFixed(2)} (${l.book})`
+      ).join('\n');
+      const txt = `🎯 BetSafe · Combinada IA curada · Riesgo ${c.risk}
+
+${c.legs.length} legs · cuota total ${c.totalOdd.toFixed(2)}
+
+${legsText}
+
+💡 ${c.narrative}
+
+⚡ Edge: ${c.edge}
+
+— Análisis generado por BetSafe`;
+      try {
+        if (navigator.share && navigator.canShare?.({ text: txt })) {
+          await navigator.share({ title: `Combinada IA · cuota ${c.totalOdd}`, text: txt, url: location.href });
+        } else {
+          await navigator.clipboard.writeText(txt);
+          BSUI.toast?.({ title: 'Combinada copiada', message: 'Pegala donde quieras compartirla.', type: 'success' });
         }
-      })();
+      } catch (e) {
+        if (e.name !== 'AbortError') BSUI.toast?.({ title: 'No se pudo compartir', type: 'error' });
+      }
     }));
   }
 
@@ -358,6 +324,114 @@ ${pick.llmKeyFactor ? '⚡ ' + pick.llmKeyFactor : ''}
     return Array.from({ length: n }, () => `
       <div class="card card-pad-md skeleton-card" style="height:200px;background:linear-gradient(90deg,var(--surface) 25%,var(--surface-2) 50%,var(--surface) 75%);background-size:200% 100%;animation:shimmer 1.5s infinite"></div>
     `).join('');
+  }
+
+  // ─────────────────────────────────────────────────────────────────────
+  // comboCard: nueva visualización para combinadas curadas por IA.
+  // Cada combo trae 2-5 legs, narrativa, edge, factor clave, riesgo.
+  // ─────────────────────────────────────────────────────────────────────
+  function comboCard(c, idx) {
+    const bookName = (k) => BSData.ALL_BOOKS.find(b => b.key === k)?.name || k;
+    const riskClass = c.risk === 'seguro' ? 'low' : c.risk === 'agresivo' ? 'high' : 'mid';
+    const riskColor = c.risk === 'seguro' ? '#1f8a4c' : c.risk === 'agresivo' ? '#c49a1a' : '#3a6cd6';
+    const riskLabel = c.risk === 'seguro' ? 'SEGURA' : c.risk === 'agresivo' ? 'AGRESIVA' : 'EQUILIBRADA';
+
+    // Probabilidad combinada conservadora (multiplica las prob ajustadas por confianza)
+    const combinedProb = c.legs.reduce((a, l) => a * (l.confidence || 0.5), 1);
+    const expectedPayout = c.totalOdd;
+    const profitMultiplier = c.totalOdd - 1;
+
+    const legsHtml = c.legs.map((l, i) => {
+      const home = { id: (l.home||'').toLowerCase().replace(/[^a-z]/g,''), name: l.home };
+      const away = { id: (l.away||'').toLowerCase().replace(/[^a-z]/g,''), name: l.away };
+      const homeLogo = window.BSLogos?.teamCrest ? BSLogos.teamCrest(home.id, { size: 22, name: l.home, sport: l.sport }) : BSIcons.teamLogo(home, { size: 22, sport: l.sport });
+      const awayLogo = window.BSLogos?.teamCrest ? BSLogos.teamCrest(away.id, { size: 22, name: l.away, sport: l.sport }) : BSIcons.teamLogo(away, { size: 22, sport: l.sport });
+      const bookLogo = window.BSLogos && l.book ? BSLogos.bookLogo(l.book, { size: 14 }) : '';
+      const evClass = (l.ev || 0) > 0 ? 'text-success' : 'muted';
+      return `
+        <div class="ai-combo-leg" style="display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:10px 12px;background:rgba(255,255,255,0.02);border-radius:8px;border-left:3px solid ${riskColor}">
+          <div style="display:flex;align-items:center;gap:6px;min-width:0">
+            <span style="font-weight:700;font-size:.72rem;color:var(--muted);min-width:14px">${i+1}.</span>
+            ${homeLogo}
+            <strong style="font-size:.85rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${BSUI.esc(l.home)}</strong>
+            <span class="dim" style="font-size:.72rem">vs</span>
+            <strong style="font-size:.85rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${BSUI.esc(l.away)}</strong>
+            ${awayLogo}
+          </div>
+          <div style="display:flex;flex-direction:column;min-width:0;gap:2px">
+            <span class="tiny" style="font-weight:600">${BSUI.esc(l.label)}</span>
+            <span class="muted" style="font-size:.7rem">${BSUI.esc(l.league || '')} · ${l.start ? BSUI.dt(l.start) : ''}</span>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;min-width:80px">
+            <strong class="num text-brand" style="font-size:1.05rem">${l.odd.toFixed(2)}</strong>
+            <div class="cluster" style="gap:3px;font-size:.65rem">
+              ${bookLogo}<span class="muted">${BSUI.esc(bookName(l.book))}</span>
+            </div>
+            ${l.ev != null ? `<span class="${evClass}" style="font-size:.65rem">EV ${l.ev > 0 ? '+' : ''}${l.ev.toFixed(1)}%</span>` : ''}
+          </div>
+        </div>`;
+    }).join('');
+
+    return `
+      <article class="card card-pad-md ai-combo-card" data-combo-idx="${idx}" style="border-left:3px solid ${riskColor}">
+        <header class="row between" style="margin-bottom:10px;flex-wrap:wrap;gap:8px">
+          <div class="cluster" style="gap:8px;flex-wrap:wrap">
+            <strong style="font-size:1.05rem">Combinada IA #${idx+1}</strong>
+            <span class="badge tiny" style="background:${riskColor};color:white;font-weight:700;letter-spacing:.04em">${riskLabel}</span>
+            <span class="tiny muted">${c.legCount} legs${c.sportsCount > 1 ? ` · ${c.sportsCount} deportes` : ''}</span>
+          </div>
+          <div class="text-right">
+            <strong class="num text-brand" style="font-size:1.4rem">${c.totalOdd.toFixed(2)}</strong>
+            <div class="muted tiny">cuota total</div>
+          </div>
+        </header>
+
+        ${c.narrative ? `<div class="card card-pad-sm" style="background:rgba(30,75,200,0.05);border-left:3px solid var(--brand-500);margin-bottom:10px">
+          <strong class="tiny" style="color:var(--brand-500)">💡 Por qué esta combinada</strong>
+          <p class="tiny" style="margin-top:4px;line-height:1.5">${BSUI.esc(c.narrative)}</p>
+        </div>` : ''}
+
+        <div class="stack-sm" style="margin-bottom:10px">
+          ${legsHtml}
+        </div>
+
+        ${c.edge ? `<div class="card card-pad-sm" style="background:rgba(212,160,23,0.08);border-left:3px solid var(--gold-700,#c49a1a);margin-bottom:8px">
+          <strong class="tiny" style="color:var(--gold-700,#c49a1a)">⚡ Edge vs mercado</strong>
+          <p class="tiny" style="margin-top:4px;line-height:1.45">${BSUI.esc(c.edge)}</p>
+        </div>` : ''}
+
+        ${c.keyFactor ? `<div class="row between" style="font-size:.72rem;margin-bottom:8px;padding:6px 10px;background:var(--surface-2);border-radius:6px;align-items:center">
+          <strong style="color:var(--muted)">🎯 Factor clave a vigilar</strong>
+          <span class="muted" style="text-align:right;max-width:60%">${BSUI.esc(c.keyFactor)}</span>
+        </div>` : ''}
+
+        <div class="row between" style="font-size:.72rem;padding:8px 10px;background:rgba(255,255,255,0.03);border-radius:6px;margin-bottom:10px">
+          <div>
+            <div class="muted">Confianza promedio</div>
+            <strong>${(c.avgConfidence * 100).toFixed(0)}%</strong>
+          </div>
+          <div>
+            <div class="muted">EV promedio</div>
+            <strong class="${c.avgEv > 0 ? 'text-success' : 'muted'}">${c.avgEv > 0 ? '+' : ''}${c.avgEv.toFixed(1)}%</strong>
+          </div>
+          <div class="text-right">
+            <div class="muted">Si ganás × $10.000</div>
+            <strong class="text-success num">${BSUI.money(10000 * c.totalOdd)}</strong>
+          </div>
+        </div>
+
+        <div class="row between" style="margin-top:8px;flex-wrap:wrap;gap:6px">
+          <button class="btn btn-primary btn-sm" data-add-combo="${idx}">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Agregar al builder
+          </button>
+          <button class="btn btn-ghost btn-sm" data-share-combo="${idx}">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+            Compartir
+          </button>
+        </div>
+      </article>
+    `;
   }
 
   function pickAnalysisCard(analysis) {

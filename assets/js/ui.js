@@ -216,20 +216,85 @@
   }
 
   // ---- Reveal observer ----
-  function bindReveal(root = document) {
-    if (!('IntersectionObserver' in window)) {
-      root.querySelectorAll('.reveal,.reveal-stagger').forEach(el => el.classList.add('in'));
-      return;
-    }
-    const io = new IntersectionObserver((ents) => {
+  // Observer singleton compartido entre llamadas a bindReveal y el
+  // MutationObserver global. Esto garantiza que cualquier elemento `.reveal`
+  // agregado dinámicamente al DOM (combos de Generador IA, AI Picks, BetSafe
+  // AI, etc.) sea observado y se muestre cuando entra al viewport.
+  let _revealIO = null;
+  function getRevealIO() {
+    if (_revealIO) return _revealIO;
+    if (!('IntersectionObserver' in window)) return null;
+    _revealIO = new IntersectionObserver((ents) => {
       ents.forEach(en => {
         if (en.isIntersecting) {
           en.target.classList.add('in');
-          io.unobserve(en.target);
+          _revealIO.unobserve(en.target);
         }
       });
-    }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
-    root.querySelectorAll('.reveal,.reveal-stagger').forEach(el => io.observe(el));
+    }, { threshold: 0.04, rootMargin: '0px 0px 0px 0px' });
+    return _revealIO;
+  }
+
+  function bindReveal(root = document) {
+    const io = getRevealIO();
+    const elems = root.querySelectorAll('.reveal,.reveal-stagger');
+    if (!io) {
+      // Sin IntersectionObserver → mostrar todo de una.
+      elems.forEach(el => el.classList.add('in'));
+      return;
+    }
+    elems.forEach(el => {
+      // Si ya está visible al momento de bind, marcar inmediatamente.
+      const r = el.getBoundingClientRect();
+      if (r.top < (window.innerHeight || 0) && r.bottom > 0) {
+        el.classList.add('in');
+      } else {
+        io.observe(el);
+      }
+    });
+  }
+
+  // ── GLOBAL: auto-bind a cualquier .reveal/.reveal-stagger insertado al DOM ──
+  // Esto resuelve el bug donde contenido dinámico (combinadas generadas,
+  // picks de IA, surebets, etc.) quedaba con opacity:0 porque el observer
+  // original solo corría una vez al cargar la sección.
+  function startGlobalRevealAutoBind() {
+    if (typeof MutationObserver === 'undefined') return;
+    const mo = new MutationObserver((muts) => {
+      const io = getRevealIO();
+      if (!io) return;
+      for (const m of muts) {
+        for (const node of m.addedNodes) {
+          if (node.nodeType !== 1) continue;
+          // El propio nodo
+          if (node.classList && (node.classList.contains('reveal') || node.classList.contains('reveal-stagger'))) {
+            const r = node.getBoundingClientRect();
+            if (r.top < (window.innerHeight || 0) && r.bottom > 0) {
+              node.classList.add('in');
+            } else {
+              io.observe(node);
+            }
+          }
+          // Sus hijos
+          if (node.querySelectorAll) {
+            node.querySelectorAll('.reveal,.reveal-stagger').forEach(el => {
+              const r = el.getBoundingClientRect();
+              if (r.top < (window.innerHeight || 0) && r.bottom > 0) {
+                el.classList.add('in');
+              } else {
+                io.observe(el);
+              }
+            });
+          }
+        }
+      }
+    });
+    mo.observe(document.body, { childList: true, subtree: true });
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', startGlobalRevealAutoBind);
+  } else {
+    startGlobalRevealAutoBind();
   }
 
   // ---- Count-up ----

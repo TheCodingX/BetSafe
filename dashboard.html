@@ -9,9 +9,119 @@
 <meta name="robots" content="noindex" />
 <link rel="manifest" href="manifest.webmanifest" />
 <link rel="icon" href="assets/img/icon-192.svg" type="image/svg+xml" />
-<link rel="stylesheet" href="assets/css/main.css?v=4.8.1" />
+<link rel="stylesheet" href="assets/css/main.css?v=4.9.0" />
+<!-- Premium initial loader inline para que aparezca antes de cualquier JS.
+     Se oculta automáticamente cuando BSLive snapshot está listo + logos cargaron. -->
+<style id="bs-preloader-styles">
+  html.bs-preloading body { overflow: hidden; }
+  #bs-preloader {
+    position: fixed; inset: 0;
+    background: radial-gradient(ellipse at center, #112147 0%, #0a1530 55%, #050a1e 100%);
+    z-index: 99999;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 20px;
+    transition: opacity .55s cubic-bezier(.4,0,.2,1);
+    font-family: -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif;
+    color: rgba(255,255,255,0.92);
+  }
+  #bs-preloader.is-hidden { opacity: 0; pointer-events: none; }
+  .bs-preloader__mark {
+    width: 84px; height: 84px;
+    position: relative;
+    animation: bs-mark-pulse 2.4s ease-in-out infinite;
+  }
+  .bs-preloader__mark svg { width: 100%; height: 100%; display: block; }
+  @keyframes bs-mark-pulse {
+    0%, 100% { transform: scale(1); filter: drop-shadow(0 4px 22px rgba(196,154,26,.32)); }
+    50% { transform: scale(1.05); filter: drop-shadow(0 6px 32px rgba(196,154,26,.52)); }
+  }
+  .bs-preloader__brand {
+    font-size: 1.35rem; font-weight: 800; letter-spacing: -.02em;
+    display: flex; gap: 2px;
+  }
+  .bs-preloader__brand .bet { color: #ffffff; }
+  .bs-preloader__brand .safe { color: #ffd76b; }
+  .bs-preloader__bar {
+    width: 220px; height: 3px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 3px; overflow: hidden;
+    position: relative;
+  }
+  .bs-preloader__bar::after {
+    content: '';
+    position: absolute; left: -40%; top: 0; bottom: 0; width: 40%;
+    background: linear-gradient(90deg, transparent, rgba(255,215,107,0.85), transparent);
+    animation: bs-bar-sweep 1.4s cubic-bezier(.4,0,.2,1) infinite;
+  }
+  @keyframes bs-bar-sweep {
+    0% { left: -40%; }
+    100% { left: 100%; }
+  }
+  .bs-preloader__hint {
+    font-size: .78rem; color: rgba(255,255,255,0.55);
+    letter-spacing: .03em; text-transform: uppercase;
+    transition: opacity .3s ease;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .bs-preloader__mark { animation: none; }
+    .bs-preloader__bar::after { animation: none; left: 0; width: 100%; opacity: .3; }
+  }
+</style>
+<script>
+  document.documentElement.classList.add('bs-preloading');
+  (function () {
+    var maxWaitMs = 5500;  // hard cap: nunca esperamos más de 5.5s
+    var minShowMs = 600;    // mostramos al menos 600ms para que no parpadee
+    var startedAt = Date.now();
+    function hide() {
+      var loader = document.getElementById('bs-preloader');
+      if (!loader) return;
+      var elapsed = Date.now() - startedAt;
+      var wait = Math.max(0, minShowMs - elapsed);
+      setTimeout(function () {
+        loader.classList.add('is-hidden');
+        document.documentElement.classList.remove('bs-preloading');
+        setTimeout(function () { loader && loader.parentNode && loader.parentNode.removeChild(loader); }, 600);
+      }, wait);
+    }
+    // Hard cap: si algo se cuelga, igual sacamos el loader
+    setTimeout(hide, maxWaitMs);
+    // Cuando el snapshot del backend está listo, ocultamos
+    window.addEventListener('bs:live-ready', hide, { once: true });
+    // Fallback: DOMContentLoaded + 800ms (logos suelen cargar en ese rango)
+    if (document.readyState === 'complete') {
+      setTimeout(hide, 800);
+    } else {
+      window.addEventListener('load', function () { setTimeout(hide, 400); }, { once: true });
+    }
+  })();
+</script>
 </head>
 <body class="has-bottom-nav">
+
+<!-- Premium initial loader -->
+<div id="bs-preloader" aria-hidden="true" aria-busy="true">
+  <div class="bs-preloader__mark">
+    <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <radialGradient id="bs-pre-glow" cx="50%" cy="18%" r="75%">
+          <stop offset="0%" stop-color="rgba(255,215,107,.40)"/>
+          <stop offset="100%" stop-color="rgba(255,215,107,0)"/>
+        </radialGradient>
+      </defs>
+      <ellipse cx="32" cy="36" rx="26" ry="30" fill="url(#bs-pre-glow)"/>
+      <path d="M32 4 L57 13 L57 36 C57 50 44 59 32 63 C20 59 7 50 7 36 L7 13 Z"
+            fill="rgba(255,215,107,.08)" stroke="#ffd76b" stroke-width="3.5" stroke-linejoin="round"/>
+      <path d="M17 37 L27 50" fill="none" stroke="#ffffff" stroke-width="5.8"
+            stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M27 50 L47 24" fill="none" stroke="#ffd76b" stroke-width="5.8"
+            stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </div>
+  <div class="bs-preloader__brand"><span class="bet">Bet</span><span class="safe">Safe</span></div>
+  <div class="bs-preloader__bar"></div>
+  <div class="bs-preloader__hint">Preparando tu análisis</div>
+</div>
 
 <div data-shell-header></div>
 
@@ -72,36 +182,36 @@
 
 <div data-shell-footer></div>
 
-<script src="assets/js/env.js?v=4.8.1"></script>
-<script src="assets/js/live.js?v=4.8.1"></script>
-<script src="assets/js/data.js?v=4.8.1"></script>
-<script src="assets/js/logos.js?v=4.8.1"></script>
-<script src="assets/js/icons.js?v=4.8.1"></script>
-<script src="assets/js/engine.js?v=4.8.1"></script>
-<script src="assets/js/store.js?v=4.8.1"></script>
-<script src="assets/js/supabase-client.js?v=4.8.1"></script>
-<script src="assets/js/auth.js?v=4.8.1"></script>
-<script src="assets/js/api.js?v=4.8.1"></script>
-<script src="assets/js/math.js?v=4.8.1"></script>
-<script src="assets/js/ui.js?v=4.8.1"></script>
-<script src="assets/js/shell.js?v=4.8.1"></script>
-<script src="assets/js/app.js?v=4.8.1"></script>
-<script src="assets/js/onboarding.js?v=4.8.1"></script>
-<script src="assets/js/dashboard.js?v=4.8.1"></script>
-<script src="assets/js/tabs-overview.js?v=4.8.1"></script>
-<script src="assets/js/tabs-builder.js?v=4.8.1"></script>
-<script src="assets/js/tabs-ai.js?v=4.8.1"></script>
-<script src="assets/js/tabs-aigenerator.js?v=4.8.1"></script>
-<script src="assets/js/tabs-betsafeai.js?v=4.8.1"></script>
-<script src="assets/js/tabs-simulator.js?v=4.8.1"></script>
-<script src="assets/js/tabs-comparator.js?v=4.8.1"></script>
-<script src="assets/js/tabs-calc.js?v=4.8.1"></script>
-<script src="assets/js/tabs-calcpro.js?v=4.8.1"></script>
-<script src="assets/js/tabs-arbitrage.js?v=4.8.1"></script>
-<script src="assets/js/tabs-smartmoney.js?v=4.8.1"></script>
-<script src="assets/js/tabs-whatif.js?v=4.8.1"></script>
-<script src="assets/js/tabs-worldcup.js?v=4.8.1"></script>
-<script src="assets/js/tabs-tracker.js?v=4.8.1"></script>
-<script src="assets/js/tabs-settings.js?v=4.8.1"></script>
+<script src="assets/js/env.js?v=4.9.0"></script>
+<script src="assets/js/live.js?v=4.9.0"></script>
+<script src="assets/js/data.js?v=4.9.0"></script>
+<script src="assets/js/logos.js?v=4.9.0"></script>
+<script src="assets/js/icons.js?v=4.9.0"></script>
+<script src="assets/js/engine.js?v=4.9.0"></script>
+<script src="assets/js/store.js?v=4.9.0"></script>
+<script src="assets/js/supabase-client.js?v=4.9.0"></script>
+<script src="assets/js/auth.js?v=4.9.0"></script>
+<script src="assets/js/api.js?v=4.9.0"></script>
+<script src="assets/js/math.js?v=4.9.0"></script>
+<script src="assets/js/ui.js?v=4.9.0"></script>
+<script src="assets/js/shell.js?v=4.9.0"></script>
+<script src="assets/js/app.js?v=4.9.0"></script>
+<script src="assets/js/onboarding.js?v=4.9.0"></script>
+<script src="assets/js/dashboard.js?v=4.9.0"></script>
+<script src="assets/js/tabs-overview.js?v=4.9.0"></script>
+<script src="assets/js/tabs-builder.js?v=4.9.0"></script>
+<script src="assets/js/tabs-ai.js?v=4.9.0"></script>
+<script src="assets/js/tabs-aigenerator.js?v=4.9.0"></script>
+<script src="assets/js/tabs-betsafeai.js?v=4.9.0"></script>
+<script src="assets/js/tabs-simulator.js?v=4.9.0"></script>
+<script src="assets/js/tabs-comparator.js?v=4.9.0"></script>
+<script src="assets/js/tabs-calc.js?v=4.9.0"></script>
+<script src="assets/js/tabs-calcpro.js?v=4.9.0"></script>
+<script src="assets/js/tabs-arbitrage.js?v=4.9.0"></script>
+<script src="assets/js/tabs-smartmoney.js?v=4.9.0"></script>
+<script src="assets/js/tabs-whatif.js?v=4.9.0"></script>
+<script src="assets/js/tabs-worldcup.js?v=4.9.0"></script>
+<script src="assets/js/tabs-tracker.js?v=4.9.0"></script>
+<script src="assets/js/tabs-settings.js?v=4.9.0"></script>
 </body>
 </html>
