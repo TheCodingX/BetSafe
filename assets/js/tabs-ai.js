@@ -461,8 +461,12 @@ ${pick.llmKeyFactor ? '⚡ ' + pick.llmKeyFactor : ''}
           <span class="cluster tiny">${bookLogo}<span class="muted">${BSUI.esc(bookName(s.book))}</span></span>
         </div>
         ${probs.length ? `<div class="ai-probs">${probs.map(p => `<span class="ai-prob${p.highlight?' is-consensus':''}"><span class="muted tiny">${p.label}</span><strong>${(p.v*100).toFixed(0)}%</strong></span>`).join('')}</div>` : ''}
-        ${ev_pct != null ? `<div class="row between tiny" style="margin-top:6px"><span class="muted">EV</span><strong class="${evClass}">${ev_pct > 0 ? '+' : ''}${ev_pct.toFixed(2)}%</strong></div>` : ''}
-        ${s.kellyHalf ? `<div class="row between tiny"><span class="muted">Stake ½ Kelly</span><strong>${s.kellyHalf.toFixed(2)}% banca</strong></div>` : ''}
+        <div class="ai-metrics-grid">
+          ${ev_pct != null ? `<div class="ai-metric"><span class="muted tiny">EV</span><strong class="${evClass}">${ev_pct > 0 ? '+' : ''}${ev_pct.toFixed(2)}%</strong></div>` : ''}
+          ${s.valueGap != null ? `<div class="ai-metric" title="Diferencia entre la probabilidad real y la implícita por la cuota"><span class="muted tiny">Valor</span><strong class="${s.valueGap > 0 ? 'text-success' : 'muted'}">${s.valueGap > 0 ? '+' : ''}${s.valueGap.toFixed(1)}%</strong></div>` : ''}
+          ${s.modelConvergence ? `<div class="ai-metric" title="Qué tan de acuerdo están los 4 modelos entre sí"><span class="muted tiny">Convergencia</span><strong class="${s.modelConvergence === 'alta' ? 'text-success' : s.modelConvergence === 'baja' ? 'text-warning' : ''}">${s.modelConvergence}</strong></div>` : ''}
+          ${s.kellyFractional ? `<div class="ai-metric" title="Stake recomendado según Kelly fraccional 1/4 (conservador)"><span class="muted tiny">Stake</span><strong>${(s.kellyFractional*100).toFixed(1)}% banca</strong></div>` : ''}
+        </div>
         ${s.rationale ? `<p class="muted tiny" style="margin-top:6px;line-height:1.4">${BSUI.esc(s.rationale).slice(0, 180)}${s.rationale.length > 180 ? '…' : ''}</p>` : ''}
         ${(s.warnings || []).length ? `<div class="cluster tiny" style="margin-top:6px;flex-wrap:wrap">${s.warnings.map(w => `<span class="badge badge-warning tiny">⚠ ${BSUI.esc(w)}</span>`).join('')}</div>` : ''}
         <button class="btn btn-primary btn-sm w-full" style="margin-top:8px" data-add-slip='${addPayload}'>Agregar al slip</button>

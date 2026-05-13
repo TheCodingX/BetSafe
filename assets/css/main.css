@@ -11433,3 +11433,32 @@ html.reduce-motion *::after {
 .wc-insight-dot--yellow { background: #eab308; }
 .wc-insight-dot--orange { background: #f97316; }
 .wc-insight-dot--red    { background: var(--danger, #dc2626); }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   AI Picks — Metrics grid (EV / Value / Convergencia / Kelly)
+   ───────────────────────────────────────────────────────────────────────── */
+.ai-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(85px, 1fr));
+  gap: 6px;
+  margin-top: 6px;
+  padding: 6px 8px;
+  background: var(--surface-2);
+  border-radius: 8px;
+}
+.ai-metric {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+}
+.ai-metric strong {
+  font-size: 0.92rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+.ai-metric .muted.tiny {
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+}
