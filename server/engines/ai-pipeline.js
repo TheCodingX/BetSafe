@@ -39,23 +39,45 @@ const GEMINI_KEY   = process.env.BS_GEMINI_API_KEY   || process.env.GEMINI_API_K
 const OPENROUTER_KEY = process.env.BS_OPENROUTER_API_KEY || process.env.OPENROUTER_API_KEY || '';
 
 const SYSTEM_PROMPT = `Sos un analista cuantitativo SENIOR especializado en apuestas deportivas con foco AR.
-Tenés acceso a: cuotas de 6+ casas legales AR (Bplay, Betano, BetWarrior, Codere, Bet365 AR, Betsson),
-clima por venue, lista de lesiones de ambos equipos con severityScore, histórico H2H + forma reciente,
-movimientos sharp del mercado (steam moves >5%), y modelos cuantitativos propios (Poisson xG ajustado,
-Elo dinámico, Shin no-vig).
+Tenés acceso a un STACK DE DATOS irreproducible para un usuario normal:
+- Cuotas en tiempo real de 6 casas legales AR (Bplay, Betano, BetWarrior, Codere, Bet365 AR, Betsson)
+- Clima por venue (mm lluvia, temp, viento)
+- Lista de lesiones por equipo con severityScore (API-Sports / API-Football)
+- Alineaciones confirmadas (formación táctica + jugadores titulares)
+- Histórico H2H últimos 10 partidos + forma reciente (último 5 partidos)
+- Movimientos sharp del mercado (steam moves >5% en última hora)
+- League tier (importancia 1-10 de la competición)
+- Home advantage histórico del equipo local
+- Modelos cuantitativos propios: Poisson xG ajustado por factores, Elo dinámico con K variable,
+  Shin no-vig (remueve margen del book), todos calibrados con histórico de Brier score.
 
-Tu rol (en este orden de prioridad):
-1) Procesar TODOS los factores que te paso. NO inventes datos: cita números reales del input.
-2) Estimar probabilidades verdaderas calibradas para cada outcome (home/draw/away, over/under, btts, dc).
-3) Identificar el outcome con mayor EV positivo vs cuotas actuales (descontando margen de la casa).
-4) Justificar con factores específicos del input — citá nombres de jugadores lesionados, mm de lluvia,
-   delta% del steam move, números de Poisson lambda, etc. Nada genérico.
-5) Calificar confianza (0-1) según CONSISTENCIA entre modelos quant + LLM + factores. Baja confianza
-   si Poisson y Elo divergen >15 puntos en probabilidad.
-6) Marcar warnings tácticos: lesión de portero/defensa central, suspensiones, fixture congestion,
-   clima que cambia >0.15× los goles esperados, etc.
+DISTINCIÓN CRÍTICA: tu output debe ser IMPOSIBLE de generar con un ChatGPT normal porque vos
+tenés acceso a NÚMEROS REALES en tiempo real. Si un usuario con ChatGPT puede dar la misma
+respuesta sin ver tus datos, fallaste. Cada frase de tu rationale debe citar al menos un
+NÚMERO ESPECÍFICO del input (no decir 'mucho sharp money' — decir 'sharp +7.3% en última hora').
 
-Respondé SIEMPRE en JSON estricto con este shape exacto (sin markdown, sin texto adicional):
+REGLAS DURAS:
+1) Procesar TODOS los factores. NO inventes datos: cita números reales del input.
+2) Estimar prob calibrada para cada outcome considerando ENSEMBLE de Poisson + Elo + Shin.
+3) Identificar outcome con mayor EV positivo (Prob_real × cuota - 1) > +3%.
+4) Generar EXACTAMENTE 3 selections — COHERENTES entre sí (las 3 favorecen el mismo equipo):
+   - cons: DC home_or_draw / draw_or_away O Under bajo (bajo riesgo, alta prob ~70%+)
+   - eq: h2h sobre el favorito (riesgo medio, prob 45-65%)
+   - agg: combinada multi-leg en favor del MISMO favorito (h2h + over/under
+     según Poisson + BTTS si correlaciona). NO PUEDE ser el outcome opuesto al cons.
+5) RATIONALE de cada pick (4-6 frases) DEBE incluir:
+   - Probabilidad estimada vs probabilidad implícita del mercado (gap = edge)
+   - Número específico del Poisson (λ home, λ away, prob over 2.5)
+   - Mención de lesión clave si severityScore > 0.3
+   - Impact del clima si goalsMultiplier desvía >5%
+   - Sharp money delta % si > 3%
+   - League importance + home advantage explícitos
+6) Calificar confianza según CONSISTENCIA: alta = todos los modelos coinciden (stdev <0.05),
+   media = stdev 0.05-0.12, baja = stdev >0.12.
+7) Warnings ESPECÍFICOS: portero lesionado, suspensión titular, fixture congestion, weather
+   extremo, sharp contra tu pick, divergencia Poisson vs Elo > 15pts.
+
+Respondé SIEMPRE en JSON estricto (sin markdown, sin texto adicional):
 {
   "selections": [
     {
@@ -64,14 +86,16 @@ Respondé SIEMPRE en JSON estricto con este shape exacto (sin markdown, sin text
       "outcome": "home" | "draw" | "away" | "over" | "under" | "yes" | "no" | "home_or_draw" | ...,
       "line": null | número (solo totals/ah),
       "modelProb": 0..1,
-      "rationale": "<3-5 frases citando factores ESPECÍFICOS del input — números, nombres, %s>",
-      "tacticalNotes": "<1-2 frases con lectura táctica: presión alta/baja, ritmo, debilidad rival>",
-      "warnings": ["lesión clave: <nombre>", "clima: <mm lluvia>", "steam: <delta%>", ...] | [],
+      "rationale": "<4-6 frases citando NÚMEROS REALES — λ Poisson, % steam, nombre del lesionado, mm de lluvia, tier de liga>",
+      "tacticalNotes": "<2-3 frases con lectura táctica: formación, presión, debilidad rival, contexto del partido>",
+      "warnings": ["<warning específico con número>", ...] | [],
       "confidence": 0..1
     }
   ],
-  "synthesis": "<1 párrafo 80-120 palabras: lectura cuantitativa del partido + por qué el outcome elegido es asimétrico vs el mercado>",
-  "keyFactor": "<una frase: el factor MÁS IMPORTANTE para el resultado de este partido>"
+  "synthesis": "<1 párrafo 100-160 palabras: lectura cuantitativa institucional. Debe leer como un research note de un sportsbook — citando λ, prob real vs implícita, edge %, factor más impactante. Imposible de generar sin ver los datos>",
+  "keyFactor": "<una frase: el factor cuantitativo MÁS IMPORTANTE con su número (ej: 'λ Poisson home 2.18 + lesión clave del defensor rival = edge +6.2% en home win')>",
+  "marketEdge": "<una frase: dónde está la asimetría mercado-vs-modelo (ej: 'mercado pricing Lazio @2.30, modelo @1.95 → casas sobrevaloran rival')>",
+  "modelConsensus": "<una frase: están todos los modelos de acuerdo? (ej: 'Poisson 48% / Elo 52% / Shin 50% — convergencia fuerte, alta confianza')>"
 }`;
 
 /** Pipeline principal para un partido. */
@@ -108,6 +132,8 @@ async function analyzeMatch(event, ctx = {}) {
     selections,
     llmSynthesis: llm.synthesis || null,
     llmKeyFactor: llm.keyFactor || null,
+    llmMarketEdge: llm.marketEdge || null,
+    llmModelConsensus: llm.modelConsensus || null,
     llmProvider: llm.provider || 'offline',
     ts: Date.now()
   };
@@ -231,20 +257,76 @@ function eloAdjustment(f) {
 // ─────────────────────────────────────────────────────────────────────────
 // LLM call con prompt estructurado
 // ─────────────────────────────────────────────────────────────────────────
+/* League importance tier 1-10 — pondera cuánto importa el partido contextualmente.
+ * UCL semis = 10, friendlies = 1. Sirve para ajustar el rationale del LLM y la
+ * calibración de la probabilidad (equipos suelen jugar diferente según importancia). */
+function leagueImportance(leagueName, sport) {
+  if (!leagueName) return 5;
+  const ln = leagueName.toLowerCase();
+  // Tier 10: finales, semis, mundiales
+  if (/\b(final|semifinal|world cup|copa mundial|final.*champions)\b/.test(ln)) return 10;
+  // Tier 9: UCL, Europa, Copa America
+  if (/\b(champions league|uefa champions|europa league|copa america|libertadores)\b/.test(ln)) return 9;
+  // Tier 8: Top 5 europeas + LPF + NBA/NFL/MLB regular
+  if (/\b(premier league|la ?liga|serie a|bundesliga|ligue 1|liga profesional)\b/.test(ln)) return 8;
+  if (/\b(\bnba\b|\bnfl\b|\bmlb\b|\bnhl\b)\b/.test(ln)) return 8;
+  // Tier 7: Sudamericana, Coppa Italia, FA Cup, Liga MX
+  if (/\b(sudamericana|coppa italia|fa cup|copa del rey|dfb pokal|coupe de france|liga mx)\b/.test(ln)) return 7;
+  // Tier 6: Brasileirão, Primeira Liga, Eredivisie, MLS
+  if (/\b(brasileir.o|primeira liga|eredivisie|\bmls\b)\b/.test(ln)) return 6;
+  // Tier 5: Otras primeras divisiones sudamericanas
+  if (/\b(chile.*primera|colombia|peru|ecuador|paraguay|uruguay|bolivia)\b/.test(ln)) return 5;
+  // Tier 4: Segundas divisiones
+  if (/\b(segunda|championship|serie b|primera nacional|liga ?2)\b/.test(ln)) return 4;
+  // Tier 3: tenis grand slam, ufc / mma
+  if (/\b(grand slam|wimbledon|us open|australian open|french open|ufc|mma|bellator)\b/.test(ln)) return 7;
+  // Tier 1-2: amistosos, reservas
+  if (/\b(amistoso|friendly|reservas|reserve|youth|sub-?\d+|primavera)\b/.test(ln)) return 2;
+  return 5;  // default — liga desconocida
+}
+
+/* Home advantage histórico aproximado por liga y sport. */
+function homeAdvantage(leagueName, sport) {
+  if (sport === 'soccer') return 0.55;       // ~55% locales ganan en soccer
+  if (sport === 'basketball') return 0.60;   // home advantage más fuerte en basket
+  if (sport === 'amfootball') return 0.57;
+  if (sport === 'hockey') return 0.55;
+  if (sport === 'baseball') return 0.54;
+  return 0.55;
+}
+
 async function llmStructured(factors, poisson, elo) {
-  // Construir un prompt MUY rico con todos los factores
+  // Construir un prompt MUY rico con todos los factores — incluye contexto
+  // sintetizado por el orchestrator (league tier, home advantage) que NO
+  // está en los factors crudos.
+  const liga = factors.event?.leagueName || factors.event?.league;
+  const sport = factors.event?.sport;
+  const tier = leagueImportance(liga, sport);
+  const homeAdv = homeAdvantage(liga, sport);
+
   const userMsg = JSON.stringify({
     event: factors.event,
+    contextoCompetitivo: {
+      leagueImportance: tier,
+      leagueImportanceLabel: tier >= 8 ? 'TIER 1 — competición top mundial'
+        : tier >= 6 ? 'TIER 2 — top regional'
+        : tier >= 4 ? 'TIER 3 — competición secundaria'
+        : 'TIER 4 — competición menor (motivación baja esperada)',
+      homeAdvantageBase: homeAdv,
+      nota: 'Equipos en TIER alto suelen mostrar formaciones titulares y máxima motivación. TIER bajo → rotación, fixture poco motivante.'
+    },
     cuotas: factors.market,
     clima: factors.weather,
     lesiones: factors.injuries,
+    alineaciones: factors.lineups,
     historico: factors.historical,
     sharp: factors.sharp,
     modeloPoisson: poisson,
     modeloElo: elo,
-    cuantitativo: factors.quantitative
+    cuantitativo: factors.quantitative,
+    instruccionFinal: 'Generá 3 picks COHERENTES (cons/eq/agg) todos favoreciendo la MISMA dirección que indica el modelo ensemble. agg debe combinar 2-3 mercados del mismo partido, NO elegir el outcome contrario. Cada rationale debe citar AL MENOS 2 números específicos del input.'
   });
-  const prompt = `Analizá el siguiente partido. Generá 3 picks (conservador/equilibrado/agresivo) en JSON estricto.\n\n${userMsg}`;
+  const prompt = `Análisis institucional — generá 3 picks coherentes en JSON.\n\nDatos:\n${userMsg}`;
 
   // Cascada: Groq es el primario (rápido, free tier generoso). 1 retry sobre
   // Groq antes de caer a otros providers — la mayoría de fallas son transient
@@ -304,9 +386,11 @@ function safeJsonParse(text, defaultValue = {}) {
  */
 function validateLlmOutput(j) {
   if (!j || typeof j !== 'object') return {};
-  const out = { selections: [], synthesis: null, keyFactor: null };
-  if (typeof j.synthesis === 'string') out.synthesis = j.synthesis.slice(0, 1200);
-  if (typeof j.keyFactor === 'string') out.keyFactor = j.keyFactor.slice(0, 250);
+  const out = { selections: [], synthesis: null, keyFactor: null, marketEdge: null, modelConsensus: null };
+  if (typeof j.synthesis === 'string') out.synthesis = j.synthesis.slice(0, 1500);
+  if (typeof j.keyFactor === 'string') out.keyFactor = j.keyFactor.slice(0, 350);
+  if (typeof j.marketEdge === 'string') out.marketEdge = j.marketEdge.slice(0, 300);
+  if (typeof j.modelConsensus === 'string') out.modelConsensus = j.modelConsensus.slice(0, 300);
   if (!Array.isArray(j.selections)) return out;
   const VALID_MARKETS = new Set(['h2h', 'totals', 'btts', 'dc', 'ah']);
   const VALID_OUTCOMES = new Set([

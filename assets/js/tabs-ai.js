@@ -228,14 +228,30 @@
 
         ${renderFactorsStrip(f)}
 
+        ${analysis.llmKeyFactor ? `<div class="card card-pad-sm" style="background:rgba(212,160,23,0.08);border-left:3px solid var(--gold-700,#c49a1a);margin:10px 0">
+          <strong class="tiny" style="color:var(--gold-700,#c49a1a)">⚡ Factor clave (IA)</strong>
+          <p class="tiny" style="margin-top:4px;line-height:1.45">${BSUI.esc(analysis.llmKeyFactor)}</p>
+        </div>` : ''}
+
+        ${analysis.llmModelConsensus ? `<div class="row between tiny muted" style="margin:6px 0;padding:5px 8px;background:var(--surface-2);border-radius:6px">
+          <strong>Consenso modelos:</strong><span>${BSUI.esc(analysis.llmModelConsensus)}</span>
+        </div>` : ''}
+
         <div class="ai-picks-grid">
           ${sel.map(s => renderSelection(s, ev)).join('')}
         </div>
 
-        ${analysis.llmSynthesis ? `<div class="card card-tinted card-pad-sm" style="margin-top:12px;border-left:3px solid var(--brand-500)">
-          <strong class="tiny">Síntesis IA</strong>
-          <p class="muted tiny" style="margin-top:4px">${BSUI.esc(analysis.llmSynthesis).slice(0, 320)}${analysis.llmSynthesis.length > 320 ? '…' : ''}</p>
+        ${analysis.llmMarketEdge ? `<div class="card card-pad-sm" style="margin-top:10px;background:rgba(30,75,200,0.05);border-left:3px solid var(--brand-500)">
+          <strong class="tiny">🎯 Edge vs mercado</strong>
+          <p class="tiny" style="margin-top:4px;line-height:1.45">${BSUI.esc(analysis.llmMarketEdge)}</p>
         </div>` : ''}
+
+        ${analysis.llmSynthesis ? `<details style="margin-top:10px">
+          <summary style="cursor:pointer;padding:6px 0"><strong class="tiny">📋 Lectura institucional completa</strong></summary>
+          <div class="card card-tinted card-pad-sm" style="margin-top:6px;border-left:3px solid var(--brand-500)">
+            <p class="muted tiny" style="line-height:1.55">${BSUI.esc(analysis.llmSynthesis)}</p>
+          </div>
+        </details>` : ''}
 
         <div class="row between" style="margin-top:10px">
           <button class="btn btn-ghost btn-sm" data-open-factors="${ev.id}">Ver todos los factores</button>
