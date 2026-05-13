@@ -79,11 +79,11 @@
             <span class="field-label">Mercado</span>
             <select class="select input-sm" id="arbMarket">
               <option value="all">Todos</option>
-              <option value="h2h">1X2 (h2h-2way, h2h-3way)</option>
-              <option value="totals">Totales (over/under)</option>
-              <option value="btts">BTTS sí/no</option>
+              <option value="h2h">Ganador del partido</option>
+              <option value="totals">Más / Menos goles</option>
+              <option value="btts">Ambos marcan</option>
               <option value="ah">Hándicap asiático</option>
-              <option value="cross">Cross-market (1+X2, 2+1X)</option>
+              <option value="cross">Doble vía (combinaciones de outcome)</option>
             </select>
           </label>
           <label class="cluster" style="cursor:pointer;margin:0">
@@ -325,12 +325,12 @@
       const stakesByLeg = sb.latencyOrder || sb.books.map((b, i) => ({ book: b, outcome: sb.outcomes[i], odd: sb.odds[i], stake: sb.stakes?.[i] || 0 }));
 
       const marketLabel = ({
-        'h2h-3way':  '1X2 — 3-way',
-        'h2h-2way':  '1X2 — 2-way',
-        'btts':      'BTTS sí/no',
-        'cross-1+X2':'Cross-market 1 + X2',
-        'cross-2+1X':'Cross-market 2 + 1X',
-        'cross-X+12':'Cross-market X + 12'
+        'h2h-3way':  'Ganador (1X2)',
+        'h2h-2way':  'Ganador (sin empate)',
+        'btts':      'Ambos marcan',
+        'cross-1+X2':'Local + Empate/Visitante',
+        'cross-2+1X':'Visitante + Local/Empate',
+        'cross-X+12':'Empate + Local/Visitante'
       })[sb.market] || (sb.market.startsWith('totals-') ? `Over/Under ${sb.market.replace('totals-', '')}`
                                                        : sb.market.startsWith('ah-') ? `Hándicap ${sb.market.replace('ah-', '')}`
                                                        : sb.market.startsWith('cross-') ? sb.market.replace('cross-', 'Cross-market ').replace(/\+/g, ' + ')

@@ -109,13 +109,30 @@
             maxlength="500"></textarea>
           <div class="bsai-prompt-actions">
             <span class="muted tiny" id="bsaiCharCount">0 / 500</span>
-            <button class="btn btn-gold mag" id="bsaiBuild">
-              <span class="bsai-build-label">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/></svg>
-                Armar combinada
-              </span>
-            </button>
+            <div class="bsai-prompt-btns">
+              <button class="btn btn-outline btn-icon" id="bsaiVoice" title="Hablale a la IA (dictado por voz)" aria-label="Dictar por voz">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+              </button>
+              <button class="btn btn-outline btn-icon" id="bsaiHistory" title="Ver mis pedidos anteriores" aria-label="Historial">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.74 9.74 0 0 0-6.74 2.74L3 8"/><polyline points="3 3 3 8 8 8"/><polyline points="12 7 12 12 15 14"/></svg>
+              </button>
+              <button class="btn btn-gold mag" id="bsaiBuild">
+                <span class="bsai-build-label">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/></svg>
+                  Armar combinada
+                </span>
+              </button>
+            </div>
           </div>
+        </section>
+
+        <!-- History drawer (oculto por default) -->
+        <section class="bsai-history-drawer" id="bsaiHistoryDrawer" hidden>
+          <div class="bsai-history-head">
+            <strong>Tus pedidos anteriores</strong>
+            <button class="btn-ghost btn-icon btn-sm" id="bsaiHistoryClose" aria-label="Cerrar">×</button>
+          </div>
+          <div id="bsaiHistoryList" class="bsai-history-list"></div>
         </section>
 
         <section class="bsai-suggestions" id="bsaiSuggestions" aria-label="Ejemplos rápidos">
@@ -142,6 +159,8 @@
     const promptEl = panel.querySelector('#bsaiPrompt');
     const charEl = panel.querySelector('#bsaiCharCount');
     const buildBtn = panel.querySelector('#bsaiBuild');
+    const voiceBtn = panel.querySelector('#bsaiVoice');
+    const historyBtn = panel.querySelector('#bsaiHistory');
     const suggestionsHost = panel.querySelector('#bsaiSuggestions');
 
     promptEl.addEventListener('input', () => {
@@ -156,7 +175,6 @@
         promptEl.value = s.text;
         charEl.textContent = `${s.text.length} / 500`;
         promptEl.focus();
-        // Scroll suave al prompt si está fuera de vista
         promptEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
       });
     });
@@ -181,6 +199,109 @@
         e.preventDefault();
         buildBtn.click();
       }
+    });
+
+    // ── VOICE INPUT (Web Speech API) ─────────────────────────────────
+    voiceBtn?.addEventListener('click', () => {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        BSUI.toast?.({
+          title: 'Tu navegador no soporta dictado',
+          message: 'Usá Chrome o Safari recientes para dictar por voz.',
+          type: 'info'
+        });
+        return;
+      }
+      if (voiceBtn.classList.contains('is-listening')) {
+        // Si ya está escuchando, detener
+        voiceBtn._recognition?.stop?.();
+        return;
+      }
+      const rec = new SpeechRecognition();
+      rec.lang = 'es-AR';
+      rec.continuous = false;
+      rec.interimResults = true;
+      rec.maxAlternatives = 1;
+      voiceBtn._recognition = rec;
+      voiceBtn.classList.add('is-listening');
+      const originalIcon = voiceBtn.innerHTML;
+      voiceBtn.innerHTML = `<span class="bsai-voice-pulse"></span>`;
+      promptEl.placeholder = 'Te estoy escuchando…';
+      let finalText = promptEl.value ? promptEl.value + ' ' : '';
+      rec.onresult = (e) => {
+        let interim = '';
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+          const t = e.results[i][0].transcript;
+          if (e.results[i].isFinal) finalText += t + ' ';
+          else interim += t;
+        }
+        promptEl.value = (finalText + interim).trim();
+        charEl.textContent = `${promptEl.value.length} / 500`;
+      };
+      rec.onend = () => {
+        voiceBtn.classList.remove('is-listening');
+        voiceBtn.innerHTML = originalIcon;
+        promptEl.placeholder = 'Ejemplo: haceme una combinada de 4 partidos de mañana de la Premier, no tan riesgosa, con una cuota de 5.5 o más, dentro de todo segura';
+      };
+      rec.onerror = (e) => {
+        voiceBtn.classList.remove('is-listening');
+        voiceBtn.innerHTML = originalIcon;
+        promptEl.placeholder = 'Ejemplo: haceme una combinada de 4 partidos de mañana de la Premier, no tan riesgosa, con una cuota de 5.5 o más, dentro de todo segura';
+        if (e.error === 'not-allowed') {
+          BSUI.toast?.({ title: 'Permiso de micrófono denegado', message: 'Habilitá el micrófono en tu navegador para usar el dictado.', type: 'error' });
+        } else if (e.error !== 'aborted' && e.error !== 'no-speech') {
+          BSUI.toast?.({ title: 'Error en el dictado', message: e.error, type: 'error' });
+        }
+      };
+      rec.start();
+    });
+
+    // ── HISTORY DRAWER ────────────────────────────────────────────────
+    historyBtn?.addEventListener('click', () => {
+      const drawer = panel.querySelector('#bsaiHistoryDrawer');
+      if (!drawer) return;
+      const list = panel.querySelector('#bsaiHistoryList');
+      if (!state.history.length) {
+        list.innerHTML = `<div class="empty" style="padding:24px;text-align:center"><p class="muted">Tu primer pedido va a quedar guardado acá.</p></div>`;
+      } else {
+        list.innerHTML = state.history.map((h, i) => `
+          <button class="bsai-history-item" data-history-idx="${i}">
+            <div class="bsai-history-item__text">${BSUI.esc(h.prompt)}</div>
+            <div class="bsai-history-item__meta">
+              <span>${h.legs || '?'} legs</span>
+              <span>·</span>
+              <span class="num">${(h.totalOdd || 0).toFixed(2)}</span>
+              <span>·</span>
+              <span class="muted">${BSUI.dt ? BSUI.dt(h.ts) : new Date(h.ts).toLocaleString('es-AR')}</span>
+            </div>
+          </button>
+        `).join('') + `
+          <button class="btn btn-outline btn-sm" id="bsaiHistoryClear" style="align-self:flex-start;margin-top:6px">Vaciar historial</button>
+        `;
+        list.querySelectorAll('[data-history-idx]').forEach(b => b.addEventListener('click', () => {
+          const idx = Number(b.dataset.historyIdx);
+          const h = state.history[idx];
+          if (!h) return;
+          promptEl.value = h.prompt;
+          charEl.textContent = `${h.prompt.length} / 500`;
+          drawer.hidden = true;
+          promptEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          promptEl.focus();
+        }));
+        list.querySelector('#bsaiHistoryClear')?.addEventListener('click', () => {
+          if (confirm('¿Borrar todos los pedidos guardados?')) {
+            state.history = [];
+            localStorage.setItem('bs:betsafe-ai:history', '[]');
+            drawer.hidden = true;
+          }
+        });
+      }
+      drawer.hidden = !drawer.hidden;
+      if (!drawer.hidden) drawer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+
+    panel.querySelector('#bsaiHistoryClose')?.addEventListener('click', () => {
+      panel.querySelector('#bsaiHistoryDrawer').hidden = true;
     });
   }
 

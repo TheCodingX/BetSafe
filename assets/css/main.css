@@ -10622,3 +10622,104 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .vip-tag--flagship { animation: none; }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   BetSafe AI — Voice button + history drawer
+   ───────────────────────────────────────────────────────────────────────── */
+.bsai-prompt-btns {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+.btn-icon {
+  width: 36px;
+  height: 36px;
+  padding: 0 !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+#bsaiVoice.is-listening {
+  background: linear-gradient(135deg, var(--danger, #dc2626), #b91c1c);
+  border-color: var(--danger, #dc2626);
+  color: #fff;
+}
+.bsai-voice-pulse {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  animation: bsai-voice-pulse 0.85s ease-in-out infinite;
+}
+@keyframes bsai-voice-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50%      { transform: scale(1.35); opacity: 0.55; }
+}
+
+/* History drawer */
+.bsai-history-drawer {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  animation: bsai-drawer-in .25s cubic-bezier(.2,.7,.2,1);
+}
+@keyframes bsai-drawer-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.bsai-history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.bsai-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.bsai-history-item {
+  text-align: left;
+  background: var(--surface-2);
+  border: 1px solid transparent;
+  border-radius: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: all .2s;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.bsai-history-item:hover {
+  background: var(--surface);
+  border-color: var(--gold-500);
+  transform: translateY(-1px);
+}
+.bsai-history-item__text {
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.4;
+}
+.bsai-history-item__meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+.bsai-history-item__meta .num {
+  color: var(--gold-700, #c49a1a);
+  font-weight: 700;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bsai-voice-pulse, .bsai-history-drawer { animation: none; }
+}
