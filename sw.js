@@ -1,5 +1,5 @@
 // BetSafe Service Worker — cache strategy: cache-first for assets, network-first for HTML/data
-const VERSION = 'betsafe-v3.8.0';   // bump: dedup +60 aliases + noise patterns ampliados
+const VERSION = 'betsafe-v3.9.0';   // bump: chips full-width en Generator + dedup +60 aliases
 const STATIC_CACHE = `${VERSION}-static`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 

@@ -2979,6 +2979,32 @@ html[data-theme=dark] .hero-orbs span:nth-child(1) {
 }
 @media (max-width: 880px) { .ag-advanced-grid { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 560px) { .ag-advanced-grid { grid-template-columns: 1fr; } }
+/* Las filas de chips de deporte y de ligas necesitan TODO el ancho del card
+ * (no apretadas en 1/3 col) — sin esto los chips se cortaban y se veía
+ * "desordenado y horrible" según el user. */
+.ag-advanced-grid .ag-mkt-set,
+.ag-advanced-grid .ag-toggle-grid,
+.ag-advanced-grid > .row,
+.ag-advanced-grid > div:has(#agSportChips),
+.ag-advanced-grid > div:has(#agLeagueChips) {
+  grid-column: 1 / -1;
+}
+/* Chips horizontales con scroll suave cuando overflow */
+.agx-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+#agSportChips, #agLeagueChips {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  padding: 4px 0;
+}
+#agSportChips .league-chip, #agLeagueChips .league-chip {
+  padding: 7px 12px;
+  font-size: .82rem;
+  white-space: nowrap;
+}
 
 .ag-mkt-set {
   border: 0;
