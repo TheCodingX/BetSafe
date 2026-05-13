@@ -72,6 +72,10 @@
           </div>
           <div id="bBestBook" class="card card-tinted card-pad-sm"></div>
           <div class="row gap-2">
+            <button class="btn btn-outline btn-sm" id="bAiAnalyze" disabled style="flex:1">${BSIcons.svg('bolt', { size: 14 })} Analizar con IA</button>
+          </div>
+          <div id="bAiAnalysis" style="display:none"></div>
+          <div class="row gap-2">
             <button class="btn btn-outline btn-sm w-full" id="bClear">Limpiar</button>
             <button class="btn btn-primary btn-sm w-full mag" id="bShare">Compartir</button>
           </div>
@@ -155,6 +159,13 @@
       riskEl.className = `risk-pill ${lvl}`;
       panel.querySelectorAll('[data-rm]').forEach(b => b.addEventListener('click', () => { slip.legs.splice(Number(b.dataset.rm), 1); BSStore.set(BSStore.KEYS.slip, slip); renderSlip(); BSDash.renderSlipBar(); }));
 
+      // Enable AI analysis button cuando hay 2+ legs
+      const aiBtn = panel.querySelector('#bAiAnalyze');
+      if (aiBtn) {
+        aiBtn.disabled = slip.legs.length < 2;
+        aiBtn.title = slip.legs.length < 2 ? 'Necesitás al menos 2 legs para analizar' : 'Análisis IA Groq (llama-3.3-70b)';
+      }
+
       // Best book overall (sum of legs by book)
       const bestHost = panel.querySelector('#bBestBook');
       if (!slip.legs.length) { bestHost.innerHTML = '<span class="muted tiny">Mejor casa para tu combinada aparecerá acá.</span>'; return; }
@@ -218,7 +229,69 @@
       const cleaned = String(bStakeEl.value).replace(/[^\d]/g, '');
       if (cleaned !== bStakeEl.value) bStakeEl.value = cleaned;
     });
-    panel.querySelector('#bClear').addEventListener('click', () => { slip.legs = []; BSStore.set(BSStore.KEYS.slip, slip); renderSlip(); BSDash.renderSlipBar(); });
+    panel.querySelector('#bClear').addEventListener('click', () => {
+      slip.legs = []; BSStore.set(BSStore.KEYS.slip, slip); renderSlip(); BSDash.renderSlipBar();
+      const aiHost = panel.querySelector('#bAiAnalysis');
+      if (aiHost) { aiHost.style.display = 'none'; aiHost.innerHTML = ''; }
+    });
+
+    /* AI Combo Analysis (Groq llama-3.3-70b vía /api/combo/analyze).
+     * Pasa el slip completo al backend, recibe lectura cualitativa:
+     * riesgo, leg débil, leg fuerte, correlación, sugerencia, narrativa. */
+    panel.querySelector('#bAiAnalyze').addEventListener('click', async () => {
+      if (slip.legs.length < 2) return;
+      const btn = panel.querySelector('#bAiAnalyze');
+      const aiHost = panel.querySelector('#bAiAnalysis');
+      btn.disabled = true;
+      btn.innerHTML = `${BSIcons.svg('bolt', { size: 14 })} <span class="shimmer-text">Analizando con IA...</span>`;
+      aiHost.style.display = 'block';
+      aiHost.innerHTML = `<div class="card card-tinted card-pad-sm" style="margin-top:8px"><div class="muted tiny">Groq llama-3.3-70b analizando tu combinada...</div><div style="height:3px;background:linear-gradient(90deg,var(--brand-500),transparent,var(--brand-500));background-size:200% 100%;animation:shimmer 1.2s infinite;margin-top:6px;border-radius:2px"></div></div>`;
+      try {
+        const stake = Number(panel.querySelector('#bStake').value) || 1000;
+        const result = await BSLive.analyzeCombo(slip.legs, stake);
+        renderAiAnalysis(aiHost, result);
+      } catch (e) {
+        aiHost.innerHTML = `<div class="card card-tinted card-pad-sm" style="margin-top:8px"><strong class="text-danger tiny">Error</strong><p class="muted tiny">${BSUI.esc(e?.message || 'IA no disponible')}</p></div>`;
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = `${BSIcons.svg('bolt', { size: 14 })} Analizar con IA`;
+      }
+    });
+
+    function renderAiAnalysis(host, r) {
+      if (!r) return;
+      const riskColor = { low: 'success', mid: 'warning', high: 'danger', extreme: 'danger' }[r.riskAssessment] || 'warning';
+      const riskLabel = { low: 'Bajo', mid: 'Medio', high: 'Alto', extreme: 'Extremo' }[r.riskAssessment] || 'Medio';
+      const provider = r.provider === 'groq' ? '<span class="badge badge-success tiny" style="margin-left:6px">IA: groq</span>' : '<span class="badge tiny" style="margin-left:6px">offline</span>';
+      const corrHtml = (r.correlationWarnings || []).length
+        ? `<div class="cluster" style="flex-wrap:wrap;gap:4px;margin-top:6px">${r.correlationWarnings.map(w => `<span class="badge badge-warning tiny">⚠ ${BSUI.esc(w)}</span>`).join('')}</div>`
+        : '';
+      const weakest = r.weakestLeg && r.weakestLeg.index != null
+        ? `<div class="row between tiny" style="margin-top:6px"><span class="muted">Leg más débil</span><span><strong>#${r.weakestLeg.index + 1}</strong> — ${BSUI.esc(r.weakestLeg.reason || '')}</span></div>`
+        : '';
+      const strongest = r.strongestLeg && r.strongestLeg.index != null
+        ? `<div class="row between tiny"><span class="muted">Leg más sólida</span><span><strong>#${r.strongestLeg.index + 1}</strong> — ${BSUI.esc(r.strongestLeg.reason || '')}</span></div>`
+        : '';
+      host.innerHTML = `
+        <div class="card card-tinted card-pad-sm" style="margin-top:8px;border-left:3px solid var(--brand-500)">
+          <div class="row between" style="align-items:center">
+            <strong class="tiny">Análisis IA${provider}</strong>
+            <span class="badge badge-${riskColor} tiny">Riesgo ${riskLabel}</span>
+          </div>
+          <div class="row between tiny" style="margin-top:6px">
+            <span class="muted">Prob. real estimada</span>
+            <strong class="num">${r.probWinPct?.toFixed(1)}%</strong>
+          </div>
+          <div class="row between tiny">
+            <span class="muted">Prob. ingenua (1/cuota)</span>
+            <span class="num muted">${r.naiveProbWinPct?.toFixed(1)}%</span>
+          </div>
+          ${weakest}${strongest}${corrHtml}
+          ${r.suggestion ? `<p class="muted tiny" style="margin-top:8px;line-height:1.45"><strong>Sugerencia:</strong> ${BSUI.esc(r.suggestion)}</p>` : ''}
+          ${r.narrative ? `<p class="muted tiny" style="margin-top:6px;line-height:1.45;font-style:italic">${BSUI.esc(r.narrative)}</p>` : ''}
+        </div>
+      `;
+    }
     panel.querySelector('#bShare').addEventListener('click', () => {
       const url = location.origin + '/dashboard.html#builder?slip=' + encodeURIComponent(JSON.stringify(slip.legs));
       BSUI.share({ title: 'Mi combinada — BetSafe', url });

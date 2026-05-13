@@ -46,7 +46,7 @@ const { browserPool, sleep, normalizeTeam, log } = require('./lib');
 const pLimit = require('p-limit').default;
 const orchestrator = require('./lib/orchestrator');
 const { ArbitrageEngine } = require('./engines/arbitrage');
-const { analyzeMatch } = require('./engines/ai-pipeline');
+const { analyzeMatch, groqJsonGeneric } = require('./engines/ai-pipeline');
 const { analyzeCombo, pairCorrelation } = require('./engines/correlation');
 const { buildFactors } = require('./factors');
 
@@ -513,6 +513,184 @@ app.post('/api/generator', express.json(), async (req, res) => {
 app.post('/api/correlation', express.json(), (req, res) => {
   const legs = req.body?.legs || [];
   res.json(analyzeCombo(legs));
+});
+
+/* ────────────────────────────────────────────────────────────────────
+ * AI ANALYSIS ENDPOINTS — Groq llama-3.3-70b-versatile
+ * Cada endpoint pasa por el mismo cliente Groq que /api/picks.
+ * Cache LRU 5min para no quemar quota con el mismo input.
+ * ──────────────────────────────────────────────────────────────────── */
+const { LRUCache } = require('lru-cache');
+const aiCache = new LRUCache({ max: 500, ttl: 5 * 60 * 1000 });
+function aiCacheKey(prefix, payload) {
+  const crypto = require('crypto');
+  return prefix + ':' + crypto.createHash('md5').update(JSON.stringify(payload)).digest('hex').slice(0, 16);
+}
+
+/* POST /api/combo/analyze — Analiza una combinada armada por el user.
+ * Body: { legs: [{ matchId, label, odd, book, market, outcome }], stake?: number }
+ * Returns: { riskAssessment, correlationWarnings, suggestion, narrative, probWin } */
+app.post('/api/combo/analyze', express.json(), async (req, res) => {
+  const legs = (req.body?.legs || []).filter(l => l && l.label && Number.isFinite(l.odd));
+  if (legs.length < 2) return res.status(400).json({ error: 'Necesitamos al menos 2 legs para analizar una combinada' });
+  const stake = Math.max(0, Number(req.body?.stake) || 1000);
+
+  // Enriquecer cada leg con datos del evento real si está en el snapshot
+  const enriched = legs.map(l => {
+    const ev = l.matchId ? orchestrator.findEvent(l.matchId) : null;
+    return {
+      label: l.label, odd: l.odd, book: l.book, market: l.market, outcome: l.outcome,
+      home: ev?.home?.name || l.home, away: ev?.away?.name || l.away,
+      league: ev?.leagueName, sport: ev?.sport, start: ev?.start
+    };
+  });
+
+  const cacheKey = aiCacheKey('combo', enriched);
+  if (aiCache.has(cacheKey)) return res.json(aiCache.get(cacheKey));
+
+  const totalOdd = legs.reduce((a, l) => a * l.odd, 1);
+  const naiveProbWin = 1 / totalOdd;
+  const potentialPayout = Math.round(totalOdd * stake);
+
+  const systemPrompt = `Sos un analista cuantitativo SENIOR de apuestas deportivas argentino.
+Te van a pasar una combinada que armó el usuario (legs + cuotas + stake).
+Tu rol:
+1) Identificar legs RIESGOSAS (cuota muy alta = baja probabilidad, lesiones probables, weather).
+2) Detectar correlación entre legs (mismo evento, mismo equipo, mismos factores).
+3) Estimar probabilidad REAL de que la combinada gane (no la implícita ingenua).
+4) Sugerir ajuste: qué leg cambiar / quitar / qué riesgo asumir.
+
+JSON estricto:
+{
+  "riskAssessment": "low" | "mid" | "high" | "extreme",
+  "probWinPct": 0..100,                    // tu mejor estimación calibrada
+  "correlationWarnings": ["<motivo específico>", ...],
+  "weakestLeg": { "index": número, "reason": "<por qué es la más débil>" },
+  "strongestLeg": { "index": número, "reason": "<por qué es sólida>" },
+  "suggestion": "<2-3 frases concretas: qué cambiarías, qué stake sugerís>",
+  "narrative": "<1 párrafo 80-120 palabras: lectura general de la combinada>"
+}`;
+
+  const userPrompt = `Combinada del usuario:
+Stake: ARS ${stake}
+Cuota total: ${totalOdd.toFixed(2)}
+Payout potencial: ARS ${potentialPayout}
+Prob implícita (sin ajuste): ${(naiveProbWin * 100).toFixed(1)}%
+
+Legs:
+${enriched.map((l, i) => `  ${i+1}. [${l.sport || '?'} / ${l.league || '?'}] ${l.home || '?'} vs ${l.away || '?'}\n     Pick: ${l.label} @ ${l.odd} (casa: ${l.book || '?'}, mercado: ${l.market || '?'})`).join('\n')}`;
+
+  try {
+    const result = await groqJsonGeneric(systemPrompt, userPrompt, { maxTokens: 1500, temperature: 0.3 });
+    if (!result) throw new Error('groq returned null');
+    const sanitized = {
+      riskAssessment: ['low','mid','high','extreme'].includes(result.riskAssessment) ? result.riskAssessment : 'mid',
+      probWinPct: Math.max(0, Math.min(100, Number(result.probWinPct) || naiveProbWin * 100)),
+      correlationWarnings: Array.isArray(result.correlationWarnings) ? result.correlationWarnings.slice(0, 5).map(s => String(s).slice(0, 200)) : [],
+      weakestLeg: result.weakestLeg && typeof result.weakestLeg === 'object' ? {
+        index: Number.isFinite(Number(result.weakestLeg.index)) ? Number(result.weakestLeg.index) : null,
+        reason: String(result.weakestLeg.reason || '').slice(0, 250)
+      } : null,
+      strongestLeg: result.strongestLeg && typeof result.strongestLeg === 'object' ? {
+        index: Number.isFinite(Number(result.strongestLeg.index)) ? Number(result.strongestLeg.index) : null,
+        reason: String(result.strongestLeg.reason || '').slice(0, 250)
+      } : null,
+      suggestion: String(result.suggestion || '').slice(0, 500),
+      narrative: String(result.narrative || '').slice(0, 800),
+      totalOdd: Number(totalOdd.toFixed(2)),
+      naiveProbWinPct: Number((naiveProbWin * 100).toFixed(2)),
+      potentialPayout,
+      provider: 'groq'
+    };
+    aiCache.set(cacheKey, sanitized);
+    res.json(sanitized);
+  } catch (e) {
+    log(`[ai:combo] err ${e?.message?.slice(0, 100)}`);
+    res.json({
+      riskAssessment: totalOdd < 3 ? 'low' : totalOdd < 8 ? 'mid' : totalOdd < 20 ? 'high' : 'extreme',
+      probWinPct: Number((naiveProbWin * 100).toFixed(2)),
+      correlationWarnings: [],
+      weakestLeg: null, strongestLeg: null,
+      suggestion: 'IA temporalmente no disponible — el riesgo se estima por cuota total únicamente.',
+      narrative: 'Análisis IA caído. Probá de nuevo en unos segundos.',
+      totalOdd: Number(totalOdd.toFixed(2)),
+      naiveProbWinPct: Number((naiveProbWin * 100).toFixed(2)),
+      potentialPayout,
+      provider: 'offline'
+    });
+  }
+});
+
+/* GET /api/surebet/:key/explain — Explica POR QUÉ una surebet es válida.
+ * Útil para que el user entienda el setup antes de ejecutar. */
+app.get('/api/surebet/:key/explain', async (req, res) => {
+  const key = req.params.key;
+  const arb = arbEngine.snapshot();
+  const sb = (arb.detected || []).find(s => s.key === key);
+  if (!sb) return res.status(404).json({ error: 'Surebet no encontrada en el snapshot actual' });
+
+  const cacheKey = aiCacheKey('surebet', { key, ts: Math.floor(Date.now() / 60000) });   // bucket por minuto
+  if (aiCache.has(cacheKey)) return res.json(aiCache.get(cacheKey));
+
+  const systemPrompt = `Sos un experto en arbitraje deportivo argentino. Explicale al user POR QUÉ esta surebet
+existe, qué riesgos tiene (palpable error, stake límite, slip de timing), y cómo ejecutarla en orden óptimo.
+JSON estricto:
+{
+  "whyExists": "<2-3 frases: por qué hay un gap entre las cuotas>",
+  "executionOrder": ["paso 1", "paso 2", ...],
+  "risks": ["<risk específico>", ...],
+  "shouldExecute": true | false,
+  "shouldExecuteReason": "<por qué sí o por qué no>"
+}`;
+
+  const userPrompt = `Surebet detectada:
+Partido: ${sb.event}
+Liga: ${sb.leagueName || sb.league}
+Sport: ${sb.sport}
+Mercado: ${sb.market}
+Outcomes: ${(sb.outcomes || []).join(' / ')}
+Odds: ${(sb.odds || []).join(' / ')}
+Casas: ${(sb.books || []).join(' / ')}
+ROI bruto: ${(sb.grossRoi * 100).toFixed(2)}%
+ROI net (slippage): ${(sb.netRoi * 100).toFixed(2)}%
+Confidence: ${(sb.confidence * 100).toFixed(0)}%
+${sb.flag ? `Flag: ${sb.flag}` : ''}
+${sb.timeToEvent ? `Minutes to kickoff: ${Math.floor(sb.timeToEvent / 60000)}` : ''}`;
+
+  try {
+    const r = await groqJsonGeneric(systemPrompt, userPrompt, { maxTokens: 1000 });
+    const out = {
+      whyExists: String(r?.whyExists || '').slice(0, 500),
+      executionOrder: Array.isArray(r?.executionOrder) ? r.executionOrder.slice(0, 5).map(s => String(s).slice(0, 200)) : [],
+      risks: Array.isArray(r?.risks) ? r.risks.slice(0, 5).map(s => String(s).slice(0, 200)) : [],
+      shouldExecute: r?.shouldExecute === true,
+      shouldExecuteReason: String(r?.shouldExecuteReason || '').slice(0, 400),
+      provider: 'groq'
+    };
+    aiCache.set(cacheKey, out);
+    res.json(out);
+  } catch (e) {
+    log(`[ai:surebet] err ${e?.message?.slice(0, 100)}`);
+    res.status(503).json({ error: 'IA no disponible' });
+  }
+});
+
+/* GET /api/match/:id/deep — Análisis profundo de UN partido específico.
+ * Usa el cache de analyzeMatch (5min TTL) — no quema quota extra. */
+app.get('/api/match/:id/deep', async (req, res) => {
+  const ev = orchestrator.findEvent(req.params.id);
+  if (!ev) return res.status(404).json({ error: 'Evento no encontrado' });
+  try {
+    const result = await analyzeMatch(ev, {
+      steamMoves: orchestrator.steamMoves(),
+      surebets: arbEngine.snapshot().detected
+    });
+    if (!result) return res.status(503).json({ error: 'Análisis no disponible' });
+    res.json(result);
+  } catch (e) {
+    log(`[ai:match] err ${e?.message?.slice(0, 100)}`);
+    res.status(503).json({ error: e?.message });
+  }
 });
 
 app.get('/api/snapshot', (req, res) => {

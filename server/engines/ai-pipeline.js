@@ -38,16 +38,22 @@ const GROQ_KEY     = process.env.BS_GROQ_API_KEY     || process.env.GROQ_API_KEY
 const GEMINI_KEY   = process.env.BS_GEMINI_API_KEY   || process.env.GEMINI_API_KEY   || '';
 const OPENROUTER_KEY = process.env.BS_OPENROUTER_API_KEY || process.env.OPENROUTER_API_KEY || '';
 
-const SYSTEM_PROMPT = `Sos un analista cuantitativo experto en apuestas deportivas argentino.
-Tenés acceso a: cuotas de 12 casas legales AR, clima por venue, lista de lesiones de ambos equipos,
-histórico H2H + forma reciente, movimientos sharp del mercado, y modelos cuantitativos (Poisson, Elo, Shin).
+const SYSTEM_PROMPT = `Sos un analista cuantitativo SENIOR especializado en apuestas deportivas con foco AR.
+Tenés acceso a: cuotas de 6+ casas legales AR (Bplay, Betano, BetWarrior, Codere, Bet365 AR, Betsson),
+clima por venue, lista de lesiones de ambos equipos con severityScore, histórico H2H + forma reciente,
+movimientos sharp del mercado (steam moves >5%), y modelos cuantitativos propios (Poisson xG ajustado,
+Elo dinámico, Shin no-vig).
 
-Tu rol:
-1) Procesar TODOS los factores que te paso.
-2) Estimar probabilidades verdaderas para cada outcome (home/draw/away, over/under, btts).
-3) Identificar el outcome con mayor EV vs cuotas actuales.
-4) Justificar con factores específicos del input (no inventar datos).
-5) Calificar confianza (0-1) según consistencia entre modelos y factores.
+Tu rol (en este orden de prioridad):
+1) Procesar TODOS los factores que te paso. NO inventes datos: cita números reales del input.
+2) Estimar probabilidades verdaderas calibradas para cada outcome (home/draw/away, over/under, btts, dc).
+3) Identificar el outcome con mayor EV positivo vs cuotas actuales (descontando margen de la casa).
+4) Justificar con factores específicos del input — citá nombres de jugadores lesionados, mm de lluvia,
+   delta% del steam move, números de Poisson lambda, etc. Nada genérico.
+5) Calificar confianza (0-1) según CONSISTENCIA entre modelos quant + LLM + factores. Baja confianza
+   si Poisson y Elo divergen >15 puntos en probabilidad.
+6) Marcar warnings tácticos: lesión de portero/defensa central, suspensiones, fixture congestion,
+   clima que cambia >0.15× los goles esperados, etc.
 
 Respondé SIEMPRE en JSON estricto con este shape exacto (sin markdown, sin texto adicional):
 {
@@ -56,14 +62,16 @@ Respondé SIEMPRE en JSON estricto con este shape exacto (sin markdown, sin text
       "type": "cons" | "eq" | "agg",
       "market": "h2h" | "totals" | "btts" | "dc",
       "outcome": "home" | "draw" | "away" | "over" | "under" | "yes" | "no" | "home_or_draw" | ...,
-      "line": null | número,
+      "line": null | número (solo totals/ah),
       "modelProb": 0..1,
-      "rationale": "<2-3 frases citando factores específicos>",
-      "warnings": ["lesión clave", "clima adverso", ...] | [],
+      "rationale": "<3-5 frases citando factores ESPECÍFICOS del input — números, nombres, %s>",
+      "tacticalNotes": "<1-2 frases con lectura táctica: presión alta/baja, ritmo, debilidad rival>",
+      "warnings": ["lesión clave: <nombre>", "clima: <mm lluvia>", "steam: <delta%>", ...] | [],
       "confidence": 0..1
     }
   ],
-  "synthesis": "<1 párrafo de 60-90 palabras: lectura general del partido>"
+  "synthesis": "<1 párrafo 80-120 palabras: lectura cuantitativa del partido + por qué el outcome elegido es asimétrico vs el mercado>",
+  "keyFactor": "<una frase: el factor MÁS IMPORTANTE para el resultado de este partido>"
 }`;
 
 /** Pipeline principal para un partido. */
@@ -99,6 +107,7 @@ async function analyzeMatch(event, ctx = {}) {
     },
     selections,
     llmSynthesis: llm.synthesis || null,
+    llmKeyFactor: llm.keyFactor || null,
     llmProvider: llm.provider || 'offline',
     ts: Date.now()
   };
@@ -237,22 +246,36 @@ async function llmStructured(factors, poisson, elo) {
   });
   const prompt = `Analizá el siguiente partido. Generá 3 picks (conservador/equilibrado/agresivo) en JSON estricto.\n\n${userMsg}`;
 
+  // Cascada: Groq es el primario (rápido, free tier generoso). 1 retry sobre
+  // Groq antes de caer a otros providers — la mayoría de fallas son transient
+  // (rate limit transitorio, network blip), no permanentes. Sin esto un blip
+  // hacía que la pick cayera a "Análisis quant" sin necesidad.
   const providers = [
     { name: 'groq',       fn: () => groqJson(SYSTEM_PROMPT, prompt) },
+    { name: 'groq',       fn: () => groqJson(SYSTEM_PROMPT, prompt) },   // retry
     { name: 'gemini',     fn: () => geminiJson(SYSTEM_PROMPT, prompt) },
     { name: 'openrouter', fn: () => openrouterJson(SYSTEM_PROMPT, prompt) }
   ];
+  let lastErr = null;
   for (const p of providers) {
     try {
       const data = await p.fn();
       if (data?.selections) return { ...data, provider: p.name };
-    } catch (e) { log(`[ai] ${p.name} fail`, e?.message); }
+    } catch (e) {
+      lastErr = e?.message;
+      // Si es rate-limit (429), pausa 800ms antes del retry para que el
+      // ventana de quota se mueva.
+      if (/429|rate|too.?many/i.test(lastErr || '')) await new Promise(r => setTimeout(r, 800));
+    }
   }
+  log(`[ai] all providers failed, falling back to deterministic · last err: ${lastErr}`);
   return { selections: [], synthesis: null, provider: 'offline' };
 }
 
 // Timeouts globales por LLM (en ms). Si la API cuelga, abortamos.
-const LLM_TIMEOUT_MS = 20000;
+// 30s permite Groq con prompt grande + retry vs los 20s originales que
+// cortaban algunas respuestas legítimas.
+const LLM_TIMEOUT_MS = 30000;
 
 /** Wrapper de fetch con AbortController para timeout estricto. */
 async function fetchWithTimeout(url, init, timeoutMs = LLM_TIMEOUT_MS) {
@@ -281,8 +304,9 @@ function safeJsonParse(text, defaultValue = {}) {
  */
 function validateLlmOutput(j) {
   if (!j || typeof j !== 'object') return {};
-  const out = { selections: [], synthesis: null };
-  if (typeof j.synthesis === 'string') out.synthesis = j.synthesis.slice(0, 800);
+  const out = { selections: [], synthesis: null, keyFactor: null };
+  if (typeof j.synthesis === 'string') out.synthesis = j.synthesis.slice(0, 1200);
+  if (typeof j.keyFactor === 'string') out.keyFactor = j.keyFactor.slice(0, 250);
   if (!Array.isArray(j.selections)) return out;
   const VALID_MARKETS = new Set(['h2h', 'totals', 'btts', 'dc', 'ah']);
   const VALID_OUTCOMES = new Set([
@@ -311,7 +335,15 @@ function validateLlmOutput(j) {
       const c = Number(s.confidence);
       if (Number.isFinite(c) && c >= 0 && c <= 1) item.confidence = c;
     }
-    if (typeof s.reasoning === 'string') item.reasoning = s.reasoning.slice(0, 400);
+    // Rationale (más rico — hasta 700 chars para 3-5 frases)
+    if (typeof s.rationale === 'string') item.rationale = s.rationale.slice(0, 700);
+    else if (typeof s.reasoning === 'string') item.rationale = s.reasoning.slice(0, 700);
+    // Tactical notes — nuevo campo de análisis táctico
+    if (typeof s.tacticalNotes === 'string') item.tacticalNotes = s.tacticalNotes.slice(0, 400);
+    // Warnings array
+    if (Array.isArray(s.warnings)) {
+      item.warnings = s.warnings.filter(w => typeof w === 'string').slice(0, 6).map(w => w.slice(0, 120));
+    }
     if (typeof s.type === 'string' && ['cons', 'eq', 'agg'].includes(s.type)) item.type = s.type;
     out.selections.push(item);
   }
@@ -324,16 +356,45 @@ async function groqJson(system, user) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GROQ_KEY}` },
     body: JSON.stringify({
-      model: 'llama-3.3-70b-versatile',
+      model: process.env.BS_GROQ_MODEL || 'llama-3.3-70b-versatile',
       messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
       temperature: 0.3,
       response_format: { type: 'json_object' },
-      max_tokens: 1600
+      // 2800 tokens permite rationale + tacticalNotes + synthesis sin truncar.
+      max_tokens: 2800
     })
   });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '');
+    throw new Error(`HTTP ${res.status}: ${txt.slice(0, 120)}`);
+  }
   const data = await res.json();
   return safeJsonParse(data.choices?.[0]?.message?.content);
+}
+
+/* Helper genérico para JSON-mode con Groq desde otros engines (combo analysis,
+ * surebet explanation, smart-money interpretation, etc.). Comparte el cliente
+ * pero acepta system prompt distinto al de match analysis. */
+async function groqJsonGeneric(systemPrompt, userPrompt, opts = {}) {
+  if (!GROQ_KEY) throw new Error('no-key');
+  const res = await fetchWithTimeout('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GROQ_KEY}` },
+    body: JSON.stringify({
+      model: process.env.BS_GROQ_MODEL || 'llama-3.3-70b-versatile',
+      messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
+      temperature: opts.temperature ?? 0.3,
+      response_format: { type: 'json_object' },
+      max_tokens: opts.maxTokens || 2000
+    })
+  });
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '');
+    throw new Error(`HTTP ${res.status}: ${txt.slice(0, 120)}`);
+  }
+  const data = await res.json();
+  const content = data.choices?.[0]?.message?.content;
+  try { return JSON.parse(content); } catch { return null; }
 }
 
 async function geminiJson(system, user) {
@@ -631,4 +692,4 @@ function outcomeLabel(outcome, event) {
   return outcome;
 }
 
-module.exports = { analyzeMatch };
+module.exports = { analyzeMatch, groqJsonGeneric };

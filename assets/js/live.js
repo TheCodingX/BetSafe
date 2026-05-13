@@ -347,6 +347,31 @@
     return await res.json();
   }
 
+  /* AI analysis del backend (Groq llama-3.3-70b-versatile).
+   * Cada uno cachea 5min server-side para no quemar quota. */
+  async function analyzeCombo(legs, stake) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 30000);
+    try {
+      const res = await fetch(API_BASE + '/api/combo/analyze', {
+        method: 'POST',
+        signal: ctrl.signal,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ legs, stake })
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return await res.json();
+    } finally { clearTimeout(t); }
+  }
+
+  async function explainSurebet(key) {
+    return await jget(`/api/surebet/${encodeURIComponent(key)}/explain`);
+  }
+
+  async function deepAnalysis(matchId) {
+    return await jget(`/api/match/${encodeURIComponent(matchId)}/deep`);
+  }
+
   function freshnessLabel() {
     const ms = timeSinceUpdate();
     if (ms == null) return 'cargando…';
@@ -367,6 +392,7 @@
     getPicks, getPicksForMatch, getFactors,
     getArbitrageSnapshot,
     generate,
-    checkCorrelation
+    checkCorrelation,
+    analyzeCombo, explainSurebet, deepAnalysis
   };
 })(window);

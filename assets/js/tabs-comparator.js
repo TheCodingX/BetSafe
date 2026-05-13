@@ -212,8 +212,67 @@
               }).join('')}
             </tbody>
           </table>
+        </div>
+        <div style="margin-top:16px">
+          <button class="btn btn-primary btn-sm" id="cmpAiAnalyzeBtn">${BSIcons.svg('bolt', { size: 14 })} Análisis IA profundo del partido</button>
+          <div id="cmpAiAnalysisModal" style="margin-top:12px"></div>
         </div>`;
       BSUI.openModal(html, { large: true });
+
+      // AI deep-analysis del partido (Groq → factores + Poisson + Elo + LLM)
+      setTimeout(() => {
+        const btn = document.getElementById('cmpAiAnalyzeBtn');
+        const host = document.getElementById('cmpAiAnalysisModal');
+        if (!btn || !host) return;
+        btn.addEventListener('click', async () => {
+          btn.disabled = true;
+          btn.innerHTML = `${BSIcons.svg('bolt', { size: 14 })} <span class="shimmer-text">Analizando con Groq...</span>`;
+          host.innerHTML = `<div class="card card-tinted card-pad-sm"><span class="muted tiny">llama-3.3-70b procesando clima + lesiones + sharp money + modelos quant...</span><div style="height:3px;background:linear-gradient(90deg,var(--brand-500),transparent,var(--brand-500));background-size:200% 100%;animation:shimmer 1.2s infinite;margin-top:6px;border-radius:2px"></div></div>`;
+          try {
+            const r = await BSLive.deepAnalysis(m.id);
+            renderMatchDeepAnalysis(host, r);
+            btn.style.display = 'none';
+          } catch (e) {
+            host.innerHTML = `<div class="card card-pad-sm card-tinted"><strong class="text-danger tiny">Error</strong><p class="muted tiny">${BSUI.esc(e?.message || 'no disponible')}</p></div>`;
+            btn.disabled = false;
+            btn.innerHTML = `${BSIcons.svg('bolt', { size: 14 })} Reintentar`;
+          }
+        });
+      }, 80);
+    }
+
+    function renderMatchDeepAnalysis(host, r) {
+      if (!r) return;
+      const f = r.factors || {};
+      const sel = (r.selections || []).slice(0, 3);
+      const providerBadge = r.llmProvider !== 'offline'
+        ? `<span class="badge badge-success tiny">IA: ${r.llmProvider}</span>`
+        : `<span class="badge tiny">quant only</span>`;
+      const factorChips = [];
+      if (f.weather && !f.weather.unavailable) factorChips.push(`<span class="badge tiny">🌡 ${f.weather.tempC?.toFixed?.(0)}°C${f.weather.rainMm > 1 ? ' · ☔ ' + f.weather.rainMm.toFixed(1) + 'mm' : ''}${f.weather.windKmh > 0 ? ' · 💨 ' + f.weather.windKmh + 'km/h' : ''}</span>`);
+      if (f.injuries && (f.injuries.severityScore?.home > 0 || f.injuries.severityScore?.away > 0)) factorChips.push(`<span class="badge badge-warning tiny">🩹 Bajas H:${(f.injuries.severityScore?.home*100|0)}% A:${(f.injuries.severityScore?.away*100|0)}%</span>`);
+      if (f.sharp && f.sharp.score > 0) factorChips.push(`<span class="badge tiny">💰 Sharp ${(f.sharp.score*100|0)}%</span>`);
+      if (f.poisson) factorChips.push(`<span class="badge tiny">λ ${f.poisson.lambdaHome?.toFixed?.(2)} / ${f.poisson.lambdaAway?.toFixed?.(2)}</span>`);
+      host.innerHTML = `
+        <div class="card card-tinted card-pad-sm" style="border-left:3px solid var(--brand-500)">
+          <div class="row between" style="align-items:center"><strong>Análisis IA profundo</strong>${providerBadge}</div>
+          ${factorChips.length ? `<div class="cluster" style="margin-top:8px;gap:4px;flex-wrap:wrap">${factorChips.join('')}</div>` : ''}
+          ${r.llmKeyFactor ? `<p class="tiny" style="margin-top:10px;padding:8px;background:rgba(var(--brand-500-rgb,30,75,200),0.06);border-radius:6px"><strong>Factor clave:</strong> ${BSUI.esc(r.llmKeyFactor)}</p>` : ''}
+          ${r.llmSynthesis ? `<p class="muted tiny" style="margin-top:8px;line-height:1.5">${BSUI.esc(r.llmSynthesis)}</p>` : ''}
+          ${sel.length ? `<div style="margin-top:10px">
+            <strong class="tiny">Picks recomendados</strong>
+            <div class="stack-sm" style="margin-top:6px">
+              ${sel.map(s => `
+                <div class="card card-pad-sm" style="background:var(--surface-2)">
+                  <div class="row between"><strong>${BSUI.esc(s.label || s.outcome || '')}</strong><span class="num">${s.odd?.toFixed?.(2) || '—'}</span></div>
+                  ${s.rationale ? `<p class="muted tiny" style="margin-top:4px;line-height:1.45">${BSUI.esc(s.rationale)}</p>` : ''}
+                  ${s.tacticalNotes ? `<p class="tiny" style="margin-top:4px;line-height:1.45;font-style:italic">${BSUI.esc(s.tacticalNotes)}</p>` : ''}
+                  ${(s.warnings || []).length ? `<div class="cluster" style="gap:4px;flex-wrap:wrap;margin-top:4px">${s.warnings.map(w => `<span class="badge badge-warning tiny">⚠ ${BSUI.esc(w)}</span>`).join('')}</div>` : ''}
+                </div>
+              `).join('')}
+            </div>
+          </div>` : ''}
+        </div>`;
     }
 
     panel.querySelector('#cSport').addEventListener('change', e => { activeSport = e.target.value; refresh(); });

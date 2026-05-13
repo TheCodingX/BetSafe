@@ -274,6 +274,44 @@
         const sb = list.find(s => s.key === b.dataset.copySb);
         if (sb) copyPlaybook(sb, f);
       }));
+
+      // AI explanation per surebet
+      host.querySelectorAll('[data-explain-sb]').forEach(b => b.addEventListener('click', async () => {
+        const key = b.dataset.explainSb;
+        const target = host.querySelector(`[data-explain-host="${CSS.escape(key)}"]`);
+        if (!target) return;
+        if (target.dataset.loaded === '1') {
+          // toggle visible
+          target.style.display = target.style.display === 'none' ? '' : 'none';
+          return;
+        }
+        target.style.display = '';
+        target.innerHTML = `<div class="card card-pad-sm card-tinted"><span class="shimmer-text muted tiny">Groq llama-3.3-70b explicando la surebet…</span></div>`;
+        b.disabled = true;
+        try {
+          const r = await BSLive.explainSurebet(key);
+          target.dataset.loaded = '1';
+          const decisionColor = r.shouldExecute ? 'success' : 'danger';
+          const decisionLabel = r.shouldExecute ? 'Ejecutar' : 'Pasar';
+          const riskHtml = (r.risks || []).map(x => `<li class="tiny muted">⚠ ${BSUI.esc(x)}</li>`).join('');
+          const orderHtml = (r.executionOrder || []).map((x, i) => `<li class="tiny"><strong>${i+1}.</strong> ${BSUI.esc(x)}</li>`).join('');
+          target.innerHTML = `
+            <div class="card card-tinted card-pad-sm" style="border-left:3px solid var(--brand-500)">
+              <div class="row between" style="align-items:center">
+                <strong class="tiny">Análisis IA <span class="badge badge-success tiny" style="margin-left:6px">groq</span></strong>
+                <span class="badge badge-${decisionColor} tiny">${decisionLabel}</span>
+              </div>
+              ${r.whyExists ? `<p class="tiny" style="margin-top:6px;line-height:1.5"><strong>Por qué existe:</strong> ${BSUI.esc(r.whyExists)}</p>` : ''}
+              ${orderHtml ? `<div style="margin-top:6px"><strong class="tiny">Orden óptimo de ejecución</strong><ol style="margin:4px 0 0 18px;padding:0">${orderHtml}</ol></div>` : ''}
+              ${riskHtml ? `<div style="margin-top:6px"><strong class="tiny">Riesgos</strong><ul style="margin:4px 0 0 18px;padding:0;list-style:none">${riskHtml}</ul></div>` : ''}
+              ${r.shouldExecuteReason ? `<p class="tiny muted" style="margin-top:6px;font-style:italic">${BSUI.esc(r.shouldExecuteReason)}</p>` : ''}
+            </div>`;
+        } catch (e) {
+          target.innerHTML = `<div class="card card-pad-sm card-tinted"><span class="text-danger tiny">IA no disponible: ${BSUI.esc(e?.message || 'error')}</span></div>`;
+        } finally {
+          b.disabled = false;
+        }
+      }));
     }
 
     function surebetCard(sb, f) {
@@ -332,9 +370,13 @@
             <strong class="num text-success">+${BSUI.money(profitARS)}</strong>
           </div>
           <div class="row between" style="margin-top:4px">
-            <button class="btn btn-ghost btn-sm" data-copy-sb="${sb.key}">📋 Copiar playbook</button>
+            <div class="cluster" style="gap:4px">
+              <button class="btn btn-ghost btn-sm" data-copy-sb="${sb.key}">📋 Copiar playbook</button>
+              <button class="btn btn-ghost btn-sm" data-explain-sb="${sb.key}" title="Análisis IA: por qué existe esta surebet + ejecución óptima">${BSIcons.svg('bolt', { size: 12 })} Explicar IA</button>
+            </div>
             <span class="muted tiny">Empezar por: ${BSUI.esc(bookName(stakesByLeg[0]?.book))}</span>
           </div>
+          <div class="ai-explain" data-explain-host="${sb.key}" style="display:none;margin-top:8px"></div>
         </div>
       `;
     }
