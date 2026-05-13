@@ -304,29 +304,67 @@ async function llmStructured(factors, poisson, elo) {
   const tier = leagueImportance(liga, sport);
   const homeAdv = homeAdvantage(liga, sport);
 
+  // ── Trimming agresivo para mantener TPM bajo ──
+  // - totals: solo línea más cercana a 2.5
+  // - historical: max 3 partidos recientes por equipo
+  // - lineups: solo número de titulares (no toda la formación)
+  // - injuries: solo severityScore + count (no lista completa)
+  const trimmedMarket = factors.market ? { ...factors.market } : {};
+  if (trimmedMarket.totals && typeof trimmedMarket.totals === 'object') {
+    const lines = Object.keys(trimmedMarket.totals)
+      .map(Number).filter(Number.isFinite)
+      .sort((a, b) => Math.abs(a - 2.5) - Math.abs(b - 2.5));
+    if (lines.length) {
+      const nearest = lines[0];
+      trimmedMarket.totals = { [nearest]: trimmedMarket.totals[nearest] };
+    }
+  }
+  const trimmedHistorical = factors.historical && !factors.historical.unavailable ? {
+    h2h: factors.historical.h2h ? {
+      matches: factors.historical.h2h.matches,
+      homeWinRate: factors.historical.h2h.homeWinRate,
+      drawRate: factors.historical.h2h.drawRate,
+      awayWinRate: factors.historical.h2h.awayWinRate,
+      avgGoals: factors.historical.h2h.avgGoals,
+      bttsRate: factors.historical.h2h.bttsRate
+    } : null,
+    form: factors.historical.form ? {
+      home: factors.historical.form.home ? {
+        wdl: factors.historical.form.home.wdl,
+        pointsPerGame: factors.historical.form.home.pointsPerGame,
+        goalsFor: factors.historical.form.home.goalsFor,
+        goalsAgainst: factors.historical.form.home.goalsAgainst
+      } : null,
+      away: factors.historical.form.away ? {
+        wdl: factors.historical.form.away.wdl,
+        pointsPerGame: factors.historical.form.away.pointsPerGame,
+        goalsFor: factors.historical.form.away.goalsFor,
+        goalsAgainst: factors.historical.form.away.goalsAgainst
+      } : null
+    } : null
+  } : { unavailable: true };
+  const trimmedInjuries = factors.injuries ? {
+    severityScore: factors.injuries.severityScore,
+    homeCount: factors.injuries.home?.injuries?.length || 0,
+    awayCount: factors.injuries.away?.injuries?.length || 0
+  } : null;
+
   const userMsg = JSON.stringify({
     event: factors.event,
-    contextoCompetitivo: {
-      leagueImportance: tier,
-      leagueImportanceLabel: tier >= 8 ? 'TIER 1 — competición top mundial'
-        : tier >= 6 ? 'TIER 2 — top regional'
-        : tier >= 4 ? 'TIER 3 — competición secundaria'
-        : 'TIER 4 — competición menor (motivación baja esperada)',
-      homeAdvantageBase: homeAdv,
-      nota: 'Equipos en TIER alto suelen mostrar formaciones titulares y máxima motivación. TIER bajo → rotación, fixture poco motivante.'
+    contexto: {
+      tier, tierLabel: tier >= 8 ? 'TIER 1 top mundial' : tier >= 6 ? 'TIER 2 regional' : tier >= 4 ? 'TIER 3 secundaria' : 'TIER 4 menor',
+      homeAdv
     },
-    cuotas: factors.market,
+    cuotas: trimmedMarket,
     clima: factors.weather,
-    lesiones: factors.injuries,
-    alineaciones: factors.lineups,
-    historico: factors.historical,
+    lesiones: trimmedInjuries,
+    historico: trimmedHistorical,
     sharp: factors.sharp,
     modeloPoisson: poisson,
     modeloElo: elo,
-    cuantitativo: factors.quantitative,
-    instruccionFinal: 'Generá 3 picks COHERENTES (cons/eq/agg) todos favoreciendo la MISMA dirección que indica el modelo ensemble. agg debe combinar 2-3 mercados del mismo partido, NO elegir el outcome contrario. Cada rationale debe citar AL MENOS 2 números específicos del input.'
+    cuantitativo: factors.quantitative
   });
-  const prompt = `Análisis institucional — generá 3 picks coherentes en JSON.\n\nDatos:\n${userMsg}`;
+  const prompt = `Análisis institucional — generá 3 picks coherentes (cons/eq/agg) favoreciendo la MISMA dirección que indica el modelo ensemble. agg = combinada multi-leg del mismo partido (h2h + over/under + BTTS), NO outcome contrario.\n\nDatos:\n${userMsg}`;
 
   // Cascada: Groq es el primario (rápido, free tier generoso). 1 retry sobre
   // Groq antes de caer a otros providers — la mayoría de fallas son transient
