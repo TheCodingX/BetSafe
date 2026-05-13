@@ -5,12 +5,15 @@
  * priority — las que The Odds API NO cubre tienen priority alta (=fuente única,
  * irreemplazable), las que sí cubre tienen priority baja (=fallback / cross-val).
  *
- * Casas activas (4 scraping dedicado + 2 via Odds API):
- *   - bplay        → priority 2 (XML público — fuente única)
- *   - betwarrior   → priority 2 (Kambi API — fuente única)
- *   - codere       → priority 2 (NavigationService — fuente única)
- *   - betano       → priority 4 (Kaizen JSON + Playwright — fallback)
- *   - bet365 AR + betsson → cubiertos directamente por The Odds API
+ * Casas activas:
+ *   - bplay       → priority 2 (XML público — fuente única)
+ *   - betwarrior  → priority 2 (Kambi API — fuente única)
+ *   - codere      → priority 2 (NavigationService — fuente única)
+ *   - betano      → priority 2 (Kaizen JSON + Playwright + ScrapingBee — fuente única en cloud IPs)
+ *   - betsson     → priority 2 (SPA AWS-WAF via ScrapingBee render_js — Odds API quota-out)
+ *   - bet365ar    → priority 4 (DESACTIVADO por default — Cloudflare Managed Challenge.
+ *                                Habilita con ENABLE_BET365_SCRAPER=true a costo de
+ *                                stealth_proxy. Sin esto, devuelve [] sin gastar quota)
  * ============================================================================
  */
 'use strict';
@@ -21,11 +24,15 @@ const SCRAPERS = {
   bplay:        require('../scrapers/bplay'),
   betano:       require('../scrapers/betano'),
   betwarrior:   require('../scrapers/betwarrior'),
-  codere:       require('../scrapers/codere')
+  codere:       require('../scrapers/codere'),
+  betsson:      require('../scrapers/betsson'),
+  bet365ar:     require('../scrapers/bet365ar')
 };
 
-// Casas cuyo scraper es la ÚNICA fuente (The Odds API no las cubre)
-const UNIQUE_BOOKS = new Set(['bplay', 'betwarrior', 'codere']);
+// Casas cuyo scraper es la ÚNICA fuente (The Odds API quota-out o no las cubre).
+// betsson queda ÚNICA mientras Odds API esté caída. bet365ar es UNIQUE pero
+// devuelve [] por default — registrado para retry manual.
+const UNIQUE_BOOKS = new Set(['bplay', 'betwarrior', 'codere', 'betsson', 'bet365ar']);
 
 class ScraperSource extends SourceBase {
   constructor({ bookKey }) {
