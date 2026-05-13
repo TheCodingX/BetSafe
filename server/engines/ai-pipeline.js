@@ -339,18 +339,24 @@ async function llmStructured(factors, poisson, elo) {
     { name: 'openrouter', fn: () => openrouterJson(SYSTEM_PROMPT, prompt) }
   ];
   let lastErr = null;
+  const debug = [];
   for (const p of providers) {
     try {
       const data = await p.fn();
-      if (data?.selections) return { ...data, provider: p.name };
+      if (data && (Array.isArray(data.selections) || data.synthesis)) {
+        log(`[ai] ${p.name} OK · selections=${data.selections?.length || 0} synthesis=${data.synthesis ? 'yes' : 'no'}`);
+        return { ...data, provider: p.name };
+      }
+      debug.push(`${p.name}:empty-response`);
     } catch (e) {
-      lastErr = e?.message;
+      lastErr = e?.message || String(e);
+      debug.push(`${p.name}:${lastErr.slice(0, 80)}`);
       // Si es rate-limit (429), pausa 800ms antes del retry para que el
       // ventana de quota se mueva.
       if (/429|rate|too.?many/i.test(lastErr || '')) await new Promise(r => setTimeout(r, 800));
     }
   }
-  log(`[ai] all providers failed, falling back to deterministic · last err: ${lastErr}`);
+  log(`[ai] all providers failed, falling back to offline · trace: ${debug.join(' | ')}`);
   return { selections: [], synthesis: null, provider: 'offline' };
 }
 
@@ -372,10 +378,24 @@ async function fetchWithTimeout(url, init, timeoutMs = LLM_TIMEOUT_MS) {
 
 function safeJsonParse(text, defaultValue = {}) {
   if (typeof text !== 'string') return defaultValue;
+  // Strip markdown code fence wrapping ( ```json ... ``` )
+  let clean = text.trim();
+  if (clean.startsWith('```')) {
+    clean = clean.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
+  }
+  // Extract just the first JSON object if there's prefixed text
+  const firstBrace = clean.indexOf('{');
+  const lastBrace = clean.lastIndexOf('}');
+  if (firstBrace > 0 && lastBrace > firstBrace) {
+    clean = clean.slice(firstBrace, lastBrace + 1);
+  }
   try {
-    const parsed = JSON.parse(text);
+    const parsed = JSON.parse(clean);
     return validateLlmOutput(parsed);
-  } catch { return defaultValue; }
+  } catch (e) {
+    log(`[ai] JSON parse fail: ${e?.message?.slice(0, 100)} · preview: ${text.slice(0, 200)}`);
+    return defaultValue;
+  }
 }
 
 /* Valida + sanea la salida del LLM contra el schema esperado:
@@ -707,32 +727,34 @@ function mergeSelections(event, factors, quant, poisson, elo, llm) {
   }
 
   // ── PASO 3c: AGRESIVO — MULTI-LEG combinada del mismo partido en favor del favorito ──
-  // Combina h2h favorito + over/under (según Poisson) + BTTS (según xG).
-  // Esto es lo que pidió el user: cuota más alta NO viene del outcome opuesto,
-  // viene de SUMAR legs justificadas por modelos.
+  // Combina h2h favorito + over/under (según DIRECCIÓN del Poisson, no umbral estricto)
+  // + BTTS (según DIRECCIÓN del xG). Esto garantiza que agg SIEMPRE sea distinto de eq.
+  // Si solo hay h2h, usamos AH como leg agresiva. Último recurso: el favorito + score correcto.
   if (favoredOdd && (favored === 'home' || favored === 'away')) {
     const legs = [];
-    // Leg 1: h2h favorito
+    // Leg 1: h2h favorito (siempre presente)
     legs.push({
       market: 'h2h', outcome: favored, line: null,
       label: `${favoredTeam} gana`,
       odd: favoredOdd, book: favoredBook,
       prob: favoredProb
     });
-    // Leg 2: Over/Under según Poisson
+    // Leg 2: Over/Under según DIRECCIÓN del Poisson — sin umbral estricto.
+    // Si pOver25 > 0.5 → over; si < 0.5 → under. Línea más cercana a 2.5.
     if (factors.market.totals && Number.isFinite(poisson.pOver25)) {
-      const lines = Object.keys(factors.market.totals).map(Number).sort((a, b) => Math.abs(a - 2.5) - Math.abs(b - 2.5));
+      const lines = Object.keys(factors.market.totals).map(Number).filter(l => l >= 1.5 && l <= 4.5)
+        .sort((a, b) => Math.abs(a - 2.5) - Math.abs(b - 2.5));
       const line = lines[0];
       const t = line ? factors.market.totals[line] : null;
       if (t) {
-        if (poisson.pOver25 > 0.55 && t.over) {
+        if (poisson.pOver25 >= 0.5 && t.over) {
           legs.push({
             market: 'totals', outcome: 'over', line,
             label: `Over ${line} goles`,
             odd: t.over, book: t.overBook,
             prob: poisson.pOver25
           });
-        } else if (poisson.pOver25 < 0.45 && t.under) {
+        } else if (poisson.pOver25 < 0.5 && t.under) {
           legs.push({
             market: 'totals', outcome: 'under', line,
             label: `Under ${line} goles`,
@@ -742,16 +764,16 @@ function mergeSelections(event, factors, quant, poisson, elo, llm) {
         }
       }
     }
-    // Leg 3: BTTS según Poisson — solo si correlaciona con el favorito ganando
+    // Leg 3: BTTS según DIRECCIÓN — sin umbral estricto.
     if (factors.market.btts && Number.isFinite(poisson.pBttsYes)) {
-      if (poisson.pBttsYes > 0.6 && factors.market.btts.yes) {
+      if (poisson.pBttsYes >= 0.5 && factors.market.btts.yes) {
         legs.push({
           market: 'btts', outcome: 'yes', line: null,
           label: 'BTTS — Sí',
           odd: factors.market.btts.yes, book: factors.market.btts.yesBook,
           prob: poisson.pBttsYes
         });
-      } else if (poisson.pBttsYes < 0.4 && factors.market.btts.no) {
+      } else if (poisson.pBttsYes < 0.5 && factors.market.btts.no) {
         legs.push({
           market: 'btts', outcome: 'no', line: null,
           label: 'BTTS — No',
@@ -761,13 +783,12 @@ function mergeSelections(event, factors, quant, poisson, elo, llm) {
       }
     }
 
+    // Si tenemos al menos 2 legs → combinada multi-leg
     if (legs.length >= 2) {
       const totalOdd = legs.reduce((a, l) => a * l.odd, 1);
-      // Para combinada en mismo partido, las probs NO son independientes —
-      // hay correlación negativa (ganar + over + btts están correlacionados con el resultado).
-      // Aproximamos: combinedProb ≈ promedio harmónico ajustado.
+      // Correlación positiva intra-partido (ganar + over + btts están correlacionados).
       const independentProb = legs.reduce((a, l) => a * l.prob, 1);
-      const correlationAdjustment = 1.25;  // correlación positiva entre legs del mismo partido
+      const correlationAdjustment = 1.25;
       const adjustedProb = Math.min(0.85, independentProb * correlationAdjustment);
       out.push({
         type: 'agg',
@@ -779,25 +800,74 @@ function mergeSelections(event, factors, quant, poisson, elo, llm) {
         legs: legs.map(l => ({ market: l.market, outcome: l.outcome, line: l.line, label: l.label, odd: l.odd, book: l.book })),
         consensusProb: adjustedProb,
         confidence: Math.max(0.35, baseConfidence - 0.15),
-        rationale: `Combinada de ${legs.length} legs en favor de ${favoredTeam}. Sustento: modelo Poisson predice escenario coherente (${legs.map(l => `${l.label} ${(l.prob * 100).toFixed(0)}%`).join(', ')}). Correlación positiva intra-partido — todas las legs apuntan a la misma narrativa.`,
+        rationale: `Combinada de ${legs.length} legs en favor de ${favoredTeam}. Modelo Poisson predice escenario coherente: ${legs.map(l => `${l.label} ${(l.prob * 100).toFixed(0)}%`).join(', ')}. Correlación positiva intra-partido — todas las legs apuntan a la misma narrativa.`,
         tacticalNotes: `Cuota alta no viene de pick contradictorio sino de sumar legs justificadas por modelos cuantitativos del mismo partido.`,
         factors: buildFactorList({ outcome: favored }, factors)
       });
-    } else if (favoredOdd) {
-      // Fallback: si no podemos combinar, agresivo es el outcome del favorito con cuota alta
-      // (e.g. AH -1.5 o over alto). Por ahora, repetimos h2h con label distinto.
-      out.push({
-        type: 'agg',
-        market: 'h2h',
-        outcome: favored,
-        label: `${favoredTeam} gana — pick alto`,
-        odd: favoredOdd,
-        book: favoredBook,
-        consensusProb: favoredProb,
-        confidence: Math.max(0.4, baseConfidence - 0.1),
-        rationale: `Pick agresivo de h2h. No hay mercados adicionales (BTTS/totals) en este evento para combinar — combinada degradada a single leg.`,
-        factors: buildFactorList({ outcome: favored }, factors)
-      });
+    } else {
+      // FALLBACK 1: AH (Asian Handicap) si está disponible — pick agresivo con línea
+      const ah = factors.market.ah && Object.values(factors.market.ah)[0];
+      if (ah && (ah.home_minus || ah.away_plus)) {
+        const useHome = favored === 'home' && ah.home_minus;
+        const ahOdd = useHome ? ah.home_minus : ah.away_plus;
+        const ahLabel = useHome
+          ? `${favoredTeam} -${ah.line || 1.5} (AH)`
+          : `${favoredTeam} +${ah.line || 1.5} (AH)`;
+        out.push({
+          type: 'agg',
+          market: 'ah',
+          outcome: useHome ? 'home_minus' : 'away_plus',
+          line: ah.line || 1.5,
+          label: ahLabel,
+          odd: ahOdd,
+          book: favoredBook,
+          consensusProb: favoredProb * 0.65,  // AH -1.5 baja prob ~35%
+          confidence: Math.max(0.30, baseConfidence - 0.25),
+          rationale: `Pick agresivo con handicap asiático: ${ahLabel}. Cuota más alta a costa de exigir margen de victoria. Sustento: Poisson λ ${favored === 'home' ? poisson.lambdaH : poisson.lambdaA}.`,
+          tacticalNotes: `Handicap asiático para favoritos claros — paga premium por convicción de victoria amplia.`,
+          factors: buildFactorList({ outcome: favored }, factors)
+        });
+      } else if (favoredOdd) {
+        // FALLBACK 2: DC al outcome opuesto al cons (más arriesgado pero distinto)
+        // Si cons fue 1X (home_or_draw), agg es draw_or_away X2 con prob menor → diferenciado
+        const consPick = out.find(p => p.type === 'cons');
+        const oppositeDC = consPick?.outcome === 'home_or_draw' ? 'home_or_away'
+                         : consPick?.outcome === 'draw_or_away' ? 'home_or_away'
+                         : favored === 'home' ? 'home_or_away' : 'home_or_away';
+        if (dc[oppositeDC]) {
+          const dcProb = oppositeDC === 'home_or_away' ? pHome + pAway
+                       : oppositeDC === 'home_or_draw' ? pHome + pDraw
+                       : pDraw + pAway;
+          out.push({
+            type: 'agg',
+            market: 'dc',
+            outcome: oppositeDC,
+            label: oppositeDC === 'home_or_away' ? `${event.home?.name} o ${event.away?.name} (Sin empate)`
+                 : oppositeDC === 'home_or_draw' ? `${event.home?.name} o empate (1X)`
+                 : `Empate o ${event.away?.name} (X2)`,
+            odd: dc[oppositeDC],
+            book: dc[oppositeDC + 'Book'] || favoredBook,
+            consensusProb: dcProb,
+            confidence: Math.max(0.30, baseConfidence - 0.2),
+            rationale: `Pick agresivo: sin empate (cualquiera de los 2 equipos gana). Prob combinada ${(dcProb * 100).toFixed(0)}%. Ataque más arriesgado que la doble oportunidad conservadora.`,
+            factors: buildFactorList({ outcome: favored }, factors)
+          });
+        } else {
+          // FALLBACK 3 (último): h2h con label diferenciado — al menos distinguible visualmente
+          out.push({
+            type: 'agg',
+            market: 'h2h',
+            outcome: favored,
+            label: `${favoredTeam} gana — solo h2h disponible`,
+            odd: favoredOdd,
+            book: favoredBook,
+            consensusProb: favoredProb,
+            confidence: Math.max(0.4, baseConfidence - 0.1),
+            rationale: `Pick agresivo: el evento no expone mercados de totals/BTTS/AH/DC para combinar. Sin diversificación de mercado, agresivo coincide con equilibrado en favorito h2h.`,
+            factors: buildFactorList({ outcome: favored }, factors)
+          });
+        }
+      }
     }
   }
 

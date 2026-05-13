@@ -65,6 +65,91 @@ const CITIES = {
   'roma':         { lat: 41.9028, lon: 12.4964 }
 };
 
+/* Equipo local \u2192 coords del estadio. Cuando el scraper no pasa venue/city expl\u00edcito
+ * (caso casi universal), derivamos del nombre del local. Cubre top equipos AR + UE. */
+const TEAM_HOME_COORDS = {
+  // AR \u2014 LPF
+  'boca':            { lat: -34.6354, lon: -58.3645, city: 'Buenos Aires' },
+  'river':           { lat: -34.5454, lon: -58.4498, city: 'Buenos Aires' },
+  'racing':          { lat: -34.6675, lon: -58.3686, city: 'Avellaneda' },
+  'independiente':   { lat: -34.6692, lon: -58.3680, city: 'Avellaneda' },
+  'san lorenzo':     { lat: -34.6705, lon: -58.4459, city: 'Buenos Aires' },
+  'velez':           { lat: -34.6353, lon: -58.5208, city: 'Buenos Aires' },
+  'huracan':         { lat: -34.6336, lon: -58.4128, city: 'Buenos Aires' },
+  'rosario central': { lat: -32.9468, lon: -60.6393, city: 'Rosario' },
+  'newells':         { lat: -32.9468, lon: -60.6393, city: 'Rosario' },
+  'estudiantes':     { lat: -34.9116, lon: -57.9526, city: 'La Plata' },
+  'gimnasia':        { lat: -34.9090, lon: -57.9442, city: 'La Plata' },
+  'banfield':        { lat: -34.7406, lon: -58.3936, city: 'Buenos Aires' },
+  'lanus':           { lat: -34.7203, lon: -58.3884, city: 'Buenos Aires' },
+  'tigre':           { lat: -34.4380, lon: -58.5828, city: 'Buenos Aires' },
+  'platense':        { lat: -34.5570, lon: -58.4660, city: 'Buenos Aires' },
+  'argentinos':      { lat: -34.6075, lon: -58.4709, city: 'Buenos Aires' },
+  'belgrano':        { lat: -31.4201, lon: -64.1888, city: 'Cordoba' },
+  'talleres':        { lat: -31.4201, lon: -64.1888, city: 'Cordoba' },
+  'instituto':       { lat: -31.4201, lon: -64.1888, city: 'Cordoba' },
+  'godoy cruz':      { lat: -32.8895, lon: -68.8458, city: 'Mendoza' },
+  // UE \u2014 Premier League
+  'manchester city':   { lat: 53.4831, lon: -2.2004, city: 'Manchester' },
+  'manchester united': { lat: 53.4631, lon: -2.2913, city: 'Manchester' },
+  'liverpool':         { lat: 53.4308, lon: -2.9608, city: 'Liverpool' },
+  'arsenal':           { lat: 51.5549, lon: -0.1084, city: 'London' },
+  'chelsea':           { lat: 51.4817, lon: -0.1909, city: 'London' },
+  'tottenham':         { lat: 51.6043, lon: -0.0664, city: 'London' },
+  'west ham':          { lat: 51.5386, lon: -0.0166, city: 'London' },
+  'crystal palace':    { lat: 51.3983, lon: -0.0855, city: 'London' },
+  'fulham':            { lat: 51.4750, lon: -0.2218, city: 'London' },
+  'brentford':         { lat: 51.4906, lon: -0.2889, city: 'London' },
+  'brighton':          { lat: 50.8617, lon: -0.0832, city: 'Brighton' },
+  'newcastle':         { lat: 54.9756, lon: -1.6217, city: 'Newcastle' },
+  'leeds':             { lat: 53.7777, lon: -1.5717, city: 'Leeds' },
+  'everton':           { lat: 53.4388, lon: -2.9663, city: 'Liverpool' },
+  'aston villa':       { lat: 52.5092, lon: -1.8847, city: 'Birmingham' },
+  // UE \u2014 La Liga
+  'real madrid':       { lat: 40.4531, lon: -3.6883, city: 'Madrid' },
+  'atletico':          { lat: 40.4361, lon: -3.5994, city: 'Madrid' },
+  'barcelona':         { lat: 41.3809, lon: 2.1228, city: 'Barcelona' },
+  'sevilla':           { lat: 37.3839, lon: -5.9706, city: 'Sevilla' },
+  'real betis':        { lat: 37.3564, lon: -5.9819, city: 'Sevilla' },
+  'valencia':          { lat: 39.4744, lon: -0.3585, city: 'Valencia' },
+  'villarreal':        { lat: 39.9442, lon: -0.1031, city: 'Castellon' },
+  'athletic':          { lat: 43.2641, lon: -2.9494, city: 'Bilbao' },
+  'real sociedad':     { lat: 43.3017, lon: -1.9736, city: 'San Sebastian' },
+  'celta':             { lat: 42.2119, lon: -8.7400, city: 'Vigo' },
+  'getafe':            { lat: 40.3253, lon: -3.7142, city: 'Getafe' },
+  'osasuna':           { lat: 42.7967, lon: -1.6367, city: 'Pamplona' },
+  // UE \u2014 Serie A
+  'juventus':          { lat: 45.1097, lon: 7.6411, city: 'Torino' },
+  'inter':             { lat: 45.4781, lon: 9.1239, city: 'Milano' },
+  'milan':             { lat: 45.4781, lon: 9.1239, city: 'Milano' },
+  'napoli':            { lat: 40.8278, lon: 14.1925, city: 'Napoli' },
+  'roma':              { lat: 41.9339, lon: 12.4547, city: 'Roma' },
+  'lazio':             { lat: 41.9339, lon: 12.4547, city: 'Roma' },
+  'atalanta':          { lat: 45.7089, lon: 9.6809, city: 'Bergamo' },
+  'fiorentina':        { lat: 43.7806, lon: 11.2822, city: 'Firenze' },
+  'torino':            { lat: 45.0419, lon: 7.6500, city: 'Torino' },
+  // UE \u2014 Bundesliga
+  'bayern':            { lat: 48.2188, lon: 11.6247, city: 'Munich' },
+  'dortmund':          { lat: 51.4925, lon: 7.4517, city: 'Dortmund' },
+  'leipzig':           { lat: 51.3458, lon: 12.3486, city: 'Leipzig' },
+  'leverkusen':        { lat: 51.0383, lon: 7.0019, city: 'Leverkusen' },
+  // UE \u2014 Ligue 1
+  'psg':               { lat: 48.8414, lon: 2.2530, city: 'Paris' },
+  'paris saint':       { lat: 48.8414, lon: 2.2530, city: 'Paris' },
+  'marseille':         { lat: 43.2697, lon: 5.3958, city: 'Marseille' },
+  'lyon':              { lat: 45.7653, lon: 4.9819, city: 'Lyon' },
+  'monaco':            { lat: 43.7275, lon: 7.4156, city: 'Monaco' },
+  // Brasil \u2014 Brasileir\u00e3o
+  'flamengo':          { lat: -22.9119, lon: -43.2300, city: 'Rio de Janeiro' },
+  'palmeiras':         { lat: -23.5273, lon: -46.6792, city: 'Sao Paulo' },
+  'corinthians':       { lat: -23.5453, lon: -46.4742, city: 'Sao Paulo' },
+  'sao paulo':         { lat: -23.5994, lon: -46.7197, city: 'Sao Paulo' },
+  'fluminense':        { lat: -22.9119, lon: -43.2300, city: 'Rio de Janeiro' },
+  'botafogo':          { lat: -22.8939, lon: -43.2925, city: 'Rio de Janeiro' },
+  'gremio':            { lat: -29.9711, lon: -51.1953, city: 'Porto Alegre' },
+  'internacional':     { lat: -30.0653, lon: -51.2358, city: 'Porto Alegre' }
+};
+
 function resolveCoords(venueText) {
   if (!venueText) return null;
   const k = String(venueText).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -73,10 +158,22 @@ function resolveCoords(venueText) {
   return null;
 }
 
+/** Resuelve coords desde nombre de equipo local (fallback cuando no hay venue). */
+function resolveCoordsByTeam(teamName) {
+  if (!teamName) return null;
+  const k = String(teamName).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+  for (const [name, c] of Object.entries(TEAM_HOME_COORDS)) {
+    if (k.includes(name)) return c;
+  }
+  return null;
+}
+
 /** Devuelve el pronóstico más cercano al kickoff. */
-async function getWeather({ venue, city, lat, lon, kickoff }) {
+async function getWeather({ venue, city, lat, lon, kickoff, homeTeam }) {
   if (!KEY) return { unavailable: true, reason: 'no-api-key' };
-  const coords = (lat && lon) ? { lat, lon } : resolveCoords(venue || city);
+  // Resolver coords con prioridad: lat/lon explícito → venue → city → equipo local
+  let coords = (lat && lon) ? { lat, lon } : resolveCoords(venue || city);
+  if (!coords && homeTeam) coords = resolveCoordsByTeam(homeTeam);
   if (!coords) return { unavailable: true, reason: 'venue-unknown' };
 
   const k = `${coords.lat.toFixed(2)},${coords.lon.toFixed(2)}|${Math.floor((kickoff || Date.now()) / 3600000)}`;

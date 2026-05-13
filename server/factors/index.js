@@ -39,7 +39,8 @@ async function buildFactors(event, { steamMoves = [], surebets = [] } = {}) {
     getWeather({
       venue: event.venue || event.stadium,
       city: event.city,
-      kickoff: event.start
+      kickoff: event.start,
+      homeTeam: event.home?.name
     }),
     getInjuries({
       homeName: event.home?.name,

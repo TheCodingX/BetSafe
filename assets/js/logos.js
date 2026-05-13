@@ -981,20 +981,83 @@
     wc26:     { name: 'World Cup 2026',  primary: '#1a3a8e', accent: '#dca74d'  },
     euroleague: { name: 'EuroLeague',    primary: '#FF6A00', accent: '#000000'  }
   };
-  // Map BSData league keys to our CDN keys
+  // Map BSData league keys to our CDN keys.
+  // Accepted in lowercase con o sin guiones/espacios — leagueLogo() normaliza el input.
   const LEAGUE_ALIASES = {
-    bundesliga: 'bundes',
-    lpf: 'lpfar',
-    libertadores: 'libert',
-    championsleague: 'ucl',
-    europaleague: 'uel',
-    worldcup: 'wc26',
-    'world-cup': 'wc26'
+    // Premier League
+    'premier-league':     'epl',
+    'premierleague':      'epl',
+    'premier league':     'epl',
+    'english premier':    'epl',
+    'inglaterra premier': 'epl',
+    // La Liga
+    'la-liga':            'laliga',
+    'la liga':            'laliga',
+    'laliga ea sports':   'laliga',
+    'primera division':   'laliga',
+    'espana primera':     'laliga',
+    // Serie A
+    'serie-a':            'seriea',
+    'serie a':            'seriea',
+    'italia serie a':     'seriea',
+    // Bundesliga
+    bundesliga:           'bundes',
+    'bundesliga-1':       'bundes',
+    'alemania bundesliga':'bundes',
+    // Ligue 1
+    'ligue-1':            'ligue1',
+    'ligue 1':            'ligue1',
+    'francia ligue':      'ligue1',
+    // LPF Argentina
+    lpf:                  'lpfar',
+    'liga profesional':           'lpfar',
+    'liga profesional argentina': 'lpfar',
+    'primera argentina':  'lpfar',
+    'lpf argentina':      'lpfar',
+    // Sudamericanas
+    libertadores:                 'libert',
+    'copa libertadores':          'libert',
+    'conmebol libertadores':      'libert',
+    // Europeas
+    championsleague:              'ucl',
+    'champions-league':           'ucl',
+    'champions league':           'ucl',
+    'uefa champions league':      'ucl',
+    europaleague:                 'uel',
+    'europa-league':              'uel',
+    'europa league':              'uel',
+    'uefa europa league':         'uel',
+    // World Cup
+    worldcup:             'wc26',
+    'world-cup':          'wc26',
+    'world cup':          'wc26',
+    'fifa world cup':     'wc26',
+    'mundial':            'wc26'
   };
   function leagueLogo(key, opts = {}) {
     const size = opts.size || 36;
-    let k = String(key || '').toLowerCase();
+    const raw = String(key || '').toLowerCase().trim();
+    // Probar el key tal cual primero
+    let k = raw;
     if (LEAGUE_ALIASES[k]) k = LEAGUE_ALIASES[k];
+    // Si no matched, normalizar (sin acentos, normalizar separators a espacio)
+    if (!LEAGUES[k] && !CDN.league[k]) {
+      const norm = raw
+        .normalize('NFD').replace(/[̀-ͯ]/g, '')   // sin acentos
+        .replace(/[_-]/g, ' ')                              // _ y - → espacio
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (LEAGUE_ALIASES[norm]) k = LEAGUE_ALIASES[norm];
+      // Probar sin espacios
+      const noSpace = norm.replace(/\s/g, '');
+      if (!LEAGUES[k] && !CDN.league[k] && LEAGUE_ALIASES[noSpace]) k = LEAGUE_ALIASES[noSpace];
+      // Substring matching (Premier League Argentina → premier league → epl)
+      if (!LEAGUES[k] && !CDN.league[k]) {
+        for (const [alias, target] of Object.entries(LEAGUE_ALIASES)) {
+          if (norm.includes(alias)) { k = target; break; }
+        }
+      }
+    }
     const L = LEAGUES[k] || LEAGUES.fifa;
     const fb = neutralChip(L.name, L.primary, size);
     const url = CDN.league[k];

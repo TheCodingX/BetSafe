@@ -1,5 +1,5 @@
 // BetSafe Service Worker — cache strategy: cache-first for assets, network-first for HTML/data
-const VERSION = 'betsafe-v4.1.0';   // CalcPro 15 tools reales + WhatIf real (no más 2^N copy)
+const VERSION = 'betsafe-v4.2.0';   // agg multi-leg robust + weather venue fallback + LLM diagnostics + league aliases
 const STATIC_CACHE = `${VERSION}-static`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 
