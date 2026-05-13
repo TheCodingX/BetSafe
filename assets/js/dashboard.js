@@ -7,6 +7,8 @@
   const TABS_PRIMARY = [
     { id: 'overview',    label: 'Inicio',       icon: 'home', vipOnly: false, desc: 'Bienvenida y accesos' },
     { id: 'aigenerator', label: 'Generador IA', icon: 'bolt', vipOnly: true,  desc: 'Combinadas óptimas auto' },
+    { id: 'betsafeai',   label: 'BetSafe AI',   icon: 'sparkle', vipOnly: true, desc: 'Combinadas a tu medida con IA',
+      flagshipVip: true },
     { id: 'ai',          label: 'AI Picks',     icon: 'bolt', vipOnly: false, desc: 'Picks listos por IA' },
     { id: 'builder',     label: 'Builder',      icon: 'list', vipOnly: false, desc: 'Armá tu combinada' },
     { id: 'arbitrage',   label: 'Arbitraje',    icon: 'arb',  vipOnly: true,  desc: 'Ganancia sin riesgo' },

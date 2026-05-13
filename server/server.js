@@ -838,6 +838,245 @@ ${enriched.map((l, i) => `  ${i+1}. [${l.sport || '?'} / ${l.league || '?'}] ${l
   }
 });
 
+/* ═══════════════════════════════════════════════════════════════════════════
+ * POST /api/betsafe-ai/build — FLAGSHIP VIP feature.
+ *
+ * Toma un prompt en lenguaje natural del user ("haceme una combinada de 4
+ * partidos de mañana de la Premier, cuota 5.5+, dentro de todo segura") e:
+ *   1) Parsea la query con LLM → filtros estructurados (legs, league, sport,
+ *      risk, targetOdd, time window, etc).
+ *   2) Encuentra eventos REALES del orchestrator que matcheen.
+ *   3) Calcula el pick óptimo por evento (analyzeMatch).
+ *   4) Selecciona la mejor combinación que cumpla ALL los requisitos.
+ *   5) Enriquece cada leg con logo del equipo, mejor casa, cuota real.
+ *   6) Devuelve narrative + legs + totalOdd + bestBook + warnings.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+app.post('/api/betsafe-ai/build', express.json(), async (req, res) => {
+  const prompt = String(req.body?.prompt || '').slice(0, 1000).trim();
+  if (!prompt) return res.status(400).json({ error: 'Necesitamos un prompt — escribí qué combinada querés' });
+  if (prompt.length < 10) return res.status(400).json({ error: 'Prompt muy corto — explicanos qué combinada querés con un poco más de detalle' });
+
+  // 1) Parse con LLM: extraer filtros estructurados
+  const parserSystem = `Sos un asistente que extrae filtros estructurados de un pedido de combinada de apuestas.
+Devolvés JSON estricto con este shape:
+{
+  "legs": número de 2 a 8 (cuántos partidos quiere combinar),
+  "sport": "soccer" | "basketball" | "tennis" | "esports" | "amfootball" | "all",
+  "leagues": ["premier-league" | "la-liga" | "serie-a" | "bundesliga" | "ligue-1" | "ucl" | "uel" | "lpf" | "libertadores" | "sudamericana" | "brasileirao" | "liga-mx" | "mls" | "nba" | "ufc" | ...],
+  "risk": "cons" (seguro) | "eq" (equilibrado) | "agg" (agresivo),
+  "targetOdd": número o null (cuota total deseada),
+  "minOddPerLeg": número o null,
+  "maxOddPerLeg": número o null,
+  "timeWindow": "today" | "tomorrow" | "weekend" | "week" | "any",
+  "preferTopTeams": true|false,
+  "userIntent": "<frase corta resumiendo qué quiere>"
+}
+Si el usuario no menciona algo, usá defaults razonables.`;
+
+  let parsed = null;
+  try {
+    parsed = await groqJsonGeneric(parserSystem, prompt, { maxTokens: 600, temperature: 0.2 });
+  } catch (e) {
+    log(`[betsafe-ai] parse err: ${e?.message?.slice(0, 100)}`);
+  }
+  // Defaults si el parse falla
+  const filters = {
+    legs: clamp(Number(parsed?.legs) || 4, 2, 8),
+    sport: typeof parsed?.sport === 'string' ? parsed.sport : 'all',
+    leagues: Array.isArray(parsed?.leagues) ? parsed.leagues.map(String) : [],
+    risk: ['cons', 'eq', 'agg'].includes(parsed?.risk) ? parsed.risk : 'eq',
+    targetOdd: Number.isFinite(Number(parsed?.targetOdd)) ? Number(parsed.targetOdd) : null,
+    minOddPerLeg: Number.isFinite(Number(parsed?.minOddPerLeg)) ? Number(parsed.minOddPerLeg) : null,
+    maxOddPerLeg: Number.isFinite(Number(parsed?.maxOddPerLeg)) ? Number(parsed.maxOddPerLeg) : null,
+    timeWindow: ['today','tomorrow','weekend','week','any'].includes(parsed?.timeWindow) ? parsed.timeWindow : 'any',
+    preferTopTeams: parsed?.preferTopTeams !== false,
+    userIntent: String(parsed?.userIntent || prompt).slice(0, 250)
+  };
+
+  // 2) Buscar eventos REALES del orchestrator que matcheen
+  const now = Date.now();
+  const timeRange = {
+    today:    [now, now + 24*3600*1000],
+    tomorrow: [now + 16*3600*1000, now + 48*3600*1000],
+    weekend:  [now, now + 5*24*3600*1000],
+    week:     [now, now + 8*24*3600*1000],
+    any:      [now, now + 14*24*3600*1000]
+  }[filters.timeWindow];
+  let candidates = orchestrator.events({ sport: filters.sport === 'all' ? 'all' : filters.sport });
+  // Filtro de tiempo
+  candidates = candidates.filter(e => Number.isFinite(e.start) && e.start >= timeRange[0] && e.start <= timeRange[1]);
+  // Filtro de liga (matching flexible: nombre, slug, alias)
+  if (filters.leagues.length) {
+    const leagueRegex = new RegExp(filters.leagues.map(l => l.replace(/-/g, '[\\s-]?')).join('|'), 'i');
+    candidates = candidates.filter(e => leagueRegex.test(e.leagueName || '') || filters.leagues.includes(e.league));
+  }
+  // Filtro: top teams (si el user pide "no tan riesgosa" implícitamente quiere top teams)
+  if (filters.preferTopTeams && filters.risk === 'cons') {
+    candidates.sort((a, b) => (orchestrator.eventPriority?.(b) || 0) - (orchestrator.eventPriority?.(a) || 0));
+  }
+  if (!candidates.length) {
+    return res.json({
+      ok: false,
+      reason: 'no-events',
+      message: 'No encontramos partidos que cumplan tus filtros en la ventana de tiempo pedida. Probá ampliar las ligas o el periodo.',
+      filters
+    });
+  }
+
+  // 3) Analizar los top candidates con la pipeline
+  const steam = orchestrator.steamMoves();
+  const surebets = arbEngine.snapshot().detected;
+  const TOP_N = Math.min(20, candidates.length);
+  const top = candidates.slice(0, TOP_N);
+  const analyzeLimit = pLimit(2);
+  const analyzed = await Promise.allSettled(
+    top.map(ev => analyzeLimit(() => analyzeMatch(ev, { steamMoves: steam, surebets })))
+  );
+  const pool = [];
+  for (const r of analyzed) {
+    if (r.status !== 'fulfilled' || !r.value) continue;
+    const a = r.value;
+    // Elegir el pick acorde al risk pedido
+    const wantType = filters.risk;
+    const sel = (a.selections || []).find(s => s.type === wantType) ||
+                a.selections?.[0];
+    if (!sel || !sel.odd) continue;
+    // Validar minOdd/maxOdd por leg
+    if (filters.minOddPerLeg && sel.odd < filters.minOddPerLeg) continue;
+    if (filters.maxOddPerLeg && sel.odd > filters.maxOddPerLeg) continue;
+    pool.push({ event: a.event, factors: a.factors, sel, llmKey: a.llmKeyFactor, llmSynth: a.llmSynthesis });
+  }
+
+  if (pool.length < filters.legs) {
+    return res.json({
+      ok: false,
+      reason: 'insufficient-pool',
+      message: `Pediste ${filters.legs} legs pero solo encontramos ${pool.length} picks que cumplan los criterios. Probá bajar el número de legs o relajar el riesgo.`,
+      filters, foundPicks: pool.length
+    });
+  }
+
+  // 4) Seleccionar las mejores `legs` legs maximizando cuota / EV / confianza
+  // Si hay targetOdd, intentamos acercarnos a esa cuota total
+  const sortedPool = pool.slice().sort((a, b) => (b.sel.consensusEv || 0) - (a.sel.consensusEv || 0));
+  let chosen = sortedPool.slice(0, filters.legs);
+  if (filters.targetOdd) {
+    // Greedy: probar combinaciones cercanas al target con backtracking simple
+    const N = pool.length;
+    let bestCombo = chosen;
+    let bestDiff = Math.abs(chosen.reduce((a, c) => a * c.sel.odd, 1) - filters.targetOdd);
+    // 50 intentos aleatorios para acercarse al target
+    for (let i = 0; i < 50; i++) {
+      const sample = [];
+      const used = new Set();
+      while (sample.length < filters.legs && used.size < N) {
+        const idx = Math.floor(Math.random() * N);
+        if (used.has(idx)) continue;
+        used.add(idx);
+        sample.push(pool[idx]);
+      }
+      if (sample.length !== filters.legs) continue;
+      const totalOdd = sample.reduce((a, c) => a * c.sel.odd, 1);
+      const diff = Math.abs(totalOdd - filters.targetOdd);
+      if (diff < bestDiff) { bestDiff = diff; bestCombo = sample; }
+    }
+    chosen = bestCombo;
+  }
+  // Evitar 2 legs del mismo partido (correlación inválida)
+  const seenEvents = new Set();
+  chosen = chosen.filter(c => {
+    if (seenEvents.has(c.event.id)) return false;
+    seenEvents.add(c.event.id);
+    return true;
+  });
+  // Si quedaron menos por dedup, completar con sortedPool
+  if (chosen.length < filters.legs) {
+    for (const p of sortedPool) {
+      if (chosen.includes(p)) continue;
+      if (seenEvents.has(p.event.id)) continue;
+      chosen.push(p);
+      seenEvents.add(p.event.id);
+      if (chosen.length >= filters.legs) break;
+    }
+  }
+
+  // 5) Enriquecer cada leg con info del evento + cuota real por casa
+  const enrichedLegs = chosen.map(c => {
+    const ev = orchestrator.findEvent(c.event.id);
+    return {
+      eventId: c.event.id,
+      home: { id: ev?.home?.id, name: ev?.home?.name || c.event.home?.name },
+      away: { id: ev?.away?.id, name: ev?.away?.name || c.event.away?.name },
+      start: ev?.start || c.event.start,
+      sport: ev?.sport || c.event.sport,
+      league: ev?.league || c.event.league,
+      leagueName: ev?.leagueName || c.event.leagueName,
+      market: c.sel.market,
+      outcome: c.sel.outcome,
+      line: c.sel.line || null,
+      label: c.sel.label,
+      odd: c.sel.odd,
+      book: c.sel.book,
+      bookAlternatives: getBookAlternatives(ev, c.sel),
+      confidence: c.sel.confidence,
+      ev: c.sel.consensusEv,
+      rationale: c.sel.rationale,
+      llmKeyFactor: c.llmKey
+    };
+  });
+
+  const totalOdd = enrichedLegs.reduce((a, l) => a * l.odd, 1);
+
+  // 6) Pedir al LLM una narrative final de POR QUÉ esta combinada cumple lo pedido
+  const narrativeSystem = `Sos un analista que justifica una combinada al usuario en lenguaje natural.
+Escribí un párrafo de 80-120 palabras, en castellano argentino, sin jerga técnica.
+JSON estricto: { "narrative": "<párrafo>", "headline": "<una frase atractiva>" }`;
+  const narrativePrompt = `El usuario pidió: "${filters.userIntent}"
+Le construí esta combinada de ${enrichedLegs.length} partidos con cuota total ${totalOdd.toFixed(2)}:
+${enrichedLegs.map((l, i) => `${i+1}. ${l.home.name} vs ${l.away.name} | ${l.leagueName} | ${l.label} @ ${l.odd}`).join('\n')}
+Explicá brevemente POR QUÉ esta combinada cumple lo pedido + qué tiene de interesante.`;
+  let narrative = null;
+  try {
+    narrative = await groqJsonGeneric(narrativeSystem, narrativePrompt, { maxTokens: 500, temperature: 0.5 });
+  } catch (e) {
+    log(`[betsafe-ai] narrative err: ${e?.message?.slice(0, 80)}`);
+  }
+
+  res.json({
+    ok: true,
+    filters,
+    legs: enrichedLegs,
+    totalOdd: Number(totalOdd.toFixed(2)),
+    headline: narrative?.headline || `Combinada de ${enrichedLegs.length} partidos a cuota ${totalOdd.toFixed(2)}`,
+    narrative: narrative?.narrative || `Armé esta combinada de ${enrichedLegs.length} partidos basándome en tu pedido. Cada leg fue seleccionada por su edge sobre la casa y consistencia con el resto.`,
+    avgConfidence: Number((enrichedLegs.reduce((a, l) => a + (l.confidence || 0), 0) / enrichedLegs.length).toFixed(3))
+  });
+});
+
+/* Helper: para una selection {market, outcome}, devuelve ranking de las
+ * casas argentinas con mejor cuota para ESE outcome específico. */
+function getBookAlternatives(ev, sel) {
+  if (!ev?.markets?.[sel.market]) return [];
+  const market = ev.markets[sel.market];
+  const alternatives = [];
+  for (const [bookKey, bookOdds] of Object.entries(market)) {
+    if (bookKey.endsWith('Book') || bookKey === 'line') continue;
+    let odd = null;
+    if (sel.line && bookOdds[sel.line]) {
+      odd = bookOdds[sel.line][sel.outcome];
+    } else if (bookOdds[sel.outcome]) {
+      odd = bookOdds[sel.outcome];
+    }
+    if (Number.isFinite(odd) && odd > 1.01) {
+      alternatives.push({ book: bookKey, odd: Number(odd.toFixed(3)) });
+    }
+  }
+  alternatives.sort((a, b) => b.odd - a.odd);
+  return alternatives.slice(0, 5);
+}
+
+function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+
 /* GET /api/surebet/:key/explain — Explica POR QUÉ una surebet es válida.
  * Útil para que el user entienda el setup antes de ejecutar. */
 app.get('/api/surebet/:key/explain', async (req, res) => {
