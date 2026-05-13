@@ -977,8 +977,8 @@ async function buildAiPickDaily() {
     const homeLogo = window.BSLogos?.teamCrest(ev.home.id, { size: 32, name: ev.home.name, sport: ev.sport }) || BSIcons.teamLogo(ev.home, { size: 32, sport: ev.sport });
     const awayLogo = window.BSLogos?.teamCrest(ev.away.id, { size: 32, name: ev.away.name, sport: ev.sport }) || BSIcons.teamLogo(ev.away, { size: 32, sport: ev.sport });
     const provider = p.llmProvider !== 'offline'
-      ? `<span class="badge badge-success tiny">IA: ${p.llmProvider}</span>`
-      : `<span class="badge tiny">quant only</span>`;
+      ? `<span class="badge ${p.llmProvider === 'claude' ? 'badge-gold' : 'badge-success'} tiny">${p.llmProvider === 'claude' ? '✨ Claude Sonnet 4.5' : p.llmProvider === 'gemini' ? 'Gemini 2.5 Flash' : `IA: ${p.llmProvider}`}</span>`
+      : `<span class="badge tiny">Análisis cuantitativo</span>`;
     const evPct = Number.isFinite(eq.consensusEv) ? eq.consensusEv.toFixed(2) : '—';
     const confPct = Number.isFinite(eq.confidence) ? (eq.confidence * 100).toFixed(0) : '—';
 
