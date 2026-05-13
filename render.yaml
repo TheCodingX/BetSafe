@@ -85,6 +85,13 @@ services:
       # IA (cascada client-side) — se inyectan al frontend via build/inject-env.js
       - key: BS_GROQ_API_KEY
         sync: false
+      # Modelo Groq: llama-3.1-8b-instant tiene 30K TPM (vs 14400 TPM del 70b)
+      # — clave para que /api/picks con 12 eventos no exceda rate limit. Calidad
+      # del 8b es buena para nuestro use case (rationale + lectura analítica).
+      # Cambiar a llama-3.3-70b-versatile si querés más profundidad y aceptás
+      # menos picks analizados por request (~5 vs 12).
+      - key: BS_GROQ_MODEL
+        value: 'llama-3.1-8b-instant'
       - key: BS_GEMINI_API_KEY
         sync: false
       - key: BS_OPENROUTER_API_KEY
