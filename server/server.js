@@ -710,13 +710,23 @@ app.get('/api/curated-combos', async (req, res) => {
 
   // 4) Construir pool de picks con EV positivo. Cada evento aporta sus mejores
   //    selections (h2h, totals, btts según riesgo).
+  //
+  // NOTA: Permitimos picks con `llmProvider: offline` siempre que tengan
+  //  selections válidas. Esos picks vienen de los modelos cuantitativos puros
+  //  (Poisson + Elo + Shin fair odds). Sin esta tolerancia, si todos los
+  //  providers LLM fallan simultáneamente (ej: Gemini 429 + Groq cuelgue),
+  //  la app queda con pantalla vacía aunque el motor cuantitativo tenga
+  //  picks válidos. Marcamos los picks "offline" para que el frontend pueda
+  //  mostrar un disclaimer.
   const pool = [];
+  let llmOk = 0, llmOffline = 0;
   for (const r of analyzed) {
     if (r.status !== 'fulfilled' || !r.value) continue;
     const a = r.value;
-    if (!a.llmProvider || a.llmProvider === 'offline') continue;
+    if (a.llmProvider && a.llmProvider !== 'offline') llmOk++;
+    else llmOffline++;
     for (const sel of (a.selections || [])) {
-      if (!sel.odd || sel.market === 'combo') continue;  // combos del eq se manejan distinto
+      if (!sel.odd || sel.market === 'combo') continue;
       const ev = sel.consensusEv;
       const vg = sel.valueGap;
       // Solo picks con valor positivo y prob real ≥ 30% (no apuestas locas)
@@ -726,7 +736,8 @@ app.get('/api/curated-combos', async (req, res) => {
         event: a.event,
         factors: a.factors,
         sel,
-        score: ev + (vg || 0) * 0.5 + (sel.confidence || 0) * 30
+        score: ev + (vg || 0) * 0.5 + (sel.confidence || 0) * 30,
+        isLlmBacked: a.llmProvider && a.llmProvider !== 'offline'
       });
     }
   }
@@ -737,8 +748,12 @@ app.get('/api/curated-combos', async (req, res) => {
       meta: {
         reason: 'pool-too-small',
         analyzed: analyzed.length,
+        analyzedEvents: analyzed.length,
+        llmOk, llmOffline,
         poolSize: pool.length,
-        message: `Solo encontramos ${pool.length} picks con valor positivo + data profunda. Hoy no hay suficientes señales fuertes para armar combinadas de calidad.`
+        message: pool.length === 0
+          ? `Hoy no encontramos picks con valor positivo. Probablemente los modelos cuantitativos no detectan edge claro en los partidos disponibles.`
+          : `Solo encontramos ${pool.length} picks con valor positivo. Necesitamos al menos 4 para armar combinadas de calidad.`
       }
     });
   }
@@ -928,8 +943,14 @@ app.post('/api/generator', express.json(), async (req, res) => {
       return r && r.llmProvider !== 'offline' && a.llmProvider === 'offline' ? r : a;
     });
   }
-  // FILTRO IA: solo eventos con análisis IA real entran al pool del generator.
-  analyzed = analyzed.filter(a => a.llmProvider && a.llmProvider !== 'offline');
+  // Tracking de cuántos eventos tuvieron LLM válido vs offline.
+  // ANTES filtrábamos out los offline → si todos los providers caen, el
+  // Generator devolvía 0 partidos analizados aunque hubiera 500+ disponibles.
+  // AHORA mantenemos los offline para que el motor cuantitativo (Poisson +
+  // Elo + Shin fair) siga generando combinadas. El frontend puede mostrar
+  // disclaimer si llmOk es bajo.
+  const llmOk = analyzed.filter(a => a.llmProvider && a.llmProvider !== 'offline').length;
+  const llmOffline = analyzed.length - llmOk;
 
   // Filtros
   const passing = analyzed.filter(a => {
@@ -1182,6 +1203,10 @@ JSON estricto:
       analyzed: analyzed.length,
       passing: passing.length,
       poolSize: pool.length,
+      llmOk, llmOffline,
+      // Disclaimer cuando llmOk == 0 → el motor cuantitativo solo (Poisson+Elo)
+      // armó los combos. Análisis menos profundo que con LLM.
+      llmDegraded: llmOk === 0 && llmOffline > 0,
       filtersApplied: { minSharp, skipInjured, skipBadWeather, skipCorrelated, legsPerMatch, mixSports, useAiBuilder, targetOdd }
     }
   });
