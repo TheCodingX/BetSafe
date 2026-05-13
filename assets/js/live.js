@@ -497,7 +497,7 @@
     start,
     fetchSnapshot,
     events, eventsAll, findEvent, surebets, steamMoves, books, ready,
-    isRelevantLeague, eventPriority,
+    isRelevantLeague, eventPriority, looksLikeEsports, effectiveSport,
     timeSinceUpdate, freshnessLabel,
     // API extendida
     getPicks, getPicksForMatch, getFactors,

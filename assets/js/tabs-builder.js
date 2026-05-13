@@ -8,8 +8,12 @@
     // Mostrar skeleton mientras llega el snapshot del backend
     panel.innerHTML = `<div class="card stack" style="min-height:240px"><div class="row between"><strong>Cargando partidos en vivo…</strong><span class="muted tiny" id="bdrSt">conectando con el scraper</span></div><div class="empty">Recibiendo datos de las casas argentinas legales.</div></div>`;
 
-    // Esperar a que el backend nos entregue eventos reales
-    let matches = await BSData.awaitLive({ timeoutMs: 12000 });
+    // Esperar a que el backend nos entregue eventos reales.
+    // Filtramos: requiere h2h con al menos 1 book; excluye esports por default
+    // (las simulaciones de 4 min copan el feed); sport=soccer por default.
+    let matches = (await BSData.awaitLive({ timeoutMs: 12000 }))
+      .filter(m => m.markets?.h2h && Object.keys(m.markets.h2h).length >= 1)
+      .filter(m => m.sport !== 'esports' && !(window.BSLive?.looksLikeEsports?.(m)));
 
     if (!matches.length) {
       panel.innerHTML = renderEmpty(BSLive?.state?.error);
