@@ -162,7 +162,7 @@
       const host = panel.querySelector('#wcFav');
       if (!host) return;
       if (!ranked.length) {
-        host.innerHTML = `<div class="empty" style="padding:18px"><strong>Mercado de futures todavía no disponible</strong><div class="muted tiny">El backend aún no recibió cuotas del mercado "Campeón Mundial 2026". Se sumarán al snapshot cuando las casas las publiquen.</div></div>`;
+        host.innerHTML = `<div class="empty" style="padding:18px"><strong>Mercado de futuros todavía no disponible</strong><div class="muted tiny">Las casas argentinas legales aún no abrieron el mercado "Campeón Mundial 2026". Aparecerá acá apenas lo publiquen.</div></div>`;
         return;
       }
       host.innerHTML = ranked.map(([code, odd]) => {

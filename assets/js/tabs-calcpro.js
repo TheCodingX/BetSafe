@@ -437,8 +437,8 @@
 
     if (id === 'steam' || id === 'rlm') {
       // Real: pull live de steam moves del backend
-      host.innerHTML = `<p class="muted tiny mb-3">${id === 'steam' ? 'Movimientos sharp >5% detectados en última hora (live del backend).' : 'Reverse Line Movement — cuotas que mueven en CONTRA del % público (señal sharp).'}</p>
-        <div id="stOut">Cargando...</div>`;
+      host.innerHTML = `<p class="muted tiny mb-3">${id === 'steam' ? 'Movimientos del mercado > 5% detectados en la última hora.' : 'Reverse Line Movement — cuotas que mueven en CONTRA del porcentaje público (señal de dinero profesional).'}</p>
+        <div id="stOut">Cargando…</div>`;
       (async () => {
         try {
           const r = await fetch((window.BSLive?.API_BASE || '') + '/api/steam').then(x => x.json());
@@ -517,7 +517,7 @@
             <div class="row between"><span>EV adjustment</span><strong class="num">${(r.evAdjustment * 100).toFixed(2)}%</strong></div>
             ${r.warnings?.length ? `<div class="cluster mt-2" style="flex-wrap:wrap;gap:4px">${r.warnings.map(w => `<span class="badge badge-warning tiny">⚠ ${BSUI.esc(w.note || '')}</span>`).join('')}</div>` : '<p class="muted tiny mt-2">✓ Legs no correlacionadas — combinada limpia.</p>'}`;
         } catch (e) {
-          host.querySelector('#corOut').innerHTML = '<p class="muted">No hay backend correlation disponible.</p>';
+          host.querySelector('#corOut').innerHTML = '<p class="muted">El análisis de correlación no está disponible por ahora.</p>';
         }
       };
       host.querySelector('#corAdd').addEventListener('click', () => { legs.push({ event: '', market: 'h2h', outcome: 'home' }); renderL(); recalc(); });

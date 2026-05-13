@@ -99,7 +99,7 @@
         <div class="kpi"><div class="kpi-label">Activas</div><div class="kpi-value" id="arbActive">0</div></div>
         <div class="kpi"><div class="kpi-label">Mejor ROI net</div><div class="kpi-value" id="arbBestRoi">—</div></div>
         <div class="kpi"><div class="kpi-label">Avg confidence</div><div class="kpi-value" id="arbAvgConf">—</div></div>
-        <div class="kpi"><div class="kpi-label">Ciclos backend</div><div class="kpi-value" id="arbCycles">0</div></div>
+        <div class="kpi"><div class="kpi-label">Ciclos de análisis</div><div class="kpi-value" id="arbCycles">0</div></div>
       </div>
 
       <div class="grid" style="grid-template-columns: 1.6fr 1fr; gap:16px">
@@ -482,7 +482,7 @@
       refresh();
     }));
 
-    log('Conectado al motor de arbitraje del backend · escaneando cada 5s · casas legales AR');
+    log('Motor de arbitraje conectado · escaneando casas legales AR cada 5s');
     refresh();
     renderHist();
 

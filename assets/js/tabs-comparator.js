@@ -14,7 +14,7 @@
     panel.innerHTML = `<div class="card stack" style="min-height:280px"><div class="row between"><strong>Cargando cuotas en vivo…</strong><span class="muted tiny">conectando</span></div><div class="empty">Recibiendo cuotas de las casas argentinas legales.</div></div>`;
     let matches = await BSData.awaitLive({ timeoutMs: 12000 });
     if (!matches.length) {
-      panel.innerHTML = `<div class="card stack" style="min-height:280px;text-align:center;padding:40px"><strong>Sin cuotas todavía</strong><p class="muted">El primer ciclo del backend tarda unos segundos. Cuando termine, las cuotas reales aparecen acá.</p><span class="muted tiny">${BSData.liveFreshness()}</span></div>`;
+      panel.innerHTML = `<div class="card stack" style="min-height:280px;text-align:center;padding:40px"><strong>Sin cuotas todavía</strong><p class="muted">Estamos recibiendo cuotas en este momento — tarda unos segundos. Cuando termine, las cuotas reales aparecen acá.</p><span class="muted tiny">${BSData.liveFreshness()}</span></div>`;
       const onSnap = () => { if (BSData.liveReady()) { window.removeEventListener('bs:live-snapshot', onSnap); render(panel); } };
       window.addEventListener('bs:live-snapshot', onSnap, { once: true });
       return;

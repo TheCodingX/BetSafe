@@ -491,7 +491,9 @@
     // Build a leg with diverse market based on risk + match offer
     function buildLeg(m, idx, risk) {
       const isSoccer = m.sport === 'soccer';
+      if (!m?.markets?.h2h || !Object.keys(m.markets.h2h).length) return null;
       const o = m.markets.h2h.bplay || Object.values(m.markets.h2h)[0];
+      if (!o || (!o.home && !o.away)) return null;
       // Conservador: doble oportunidad / Over 1.5 goles
       if (risk === 'cons') {
         if (isSoccer && m.markets.dc) {
@@ -753,12 +755,12 @@
         useAiBuilder,
         mixSports
       };
-      panel.querySelector('#agStatusLine').textContent = 'Pipeline backend: factors → modelos → IA → optimización';
+      panel.querySelector('#agStatusLine').textContent = 'Analizando partidos con IA y modelos cuantitativos…';
       let resp;
       try {
         resp = await BSLive.generate(payload);
       } catch (e) {
-        panel.querySelector('#agStatusLine').textContent = 'Error: ' + (e?.message || 'backend no responde');
+        panel.querySelector('#agStatusLine').textContent = 'Error: ' + (e?.message || 'el servicio no responde por ahora');
         BSUI.toast({ title: 'Error generando combinadas', message: e?.message, type: 'error' });
         return;
       }

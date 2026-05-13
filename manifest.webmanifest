@@ -1,7 +1,7 @@
 {
-  "name": "BetSafe — Análisis Cuantitativo de Apuestas",
+  "name": "BetSafe — Análisis Inteligente de Apuestas",
   "short_name": "BetSafe",
-  "description": "Plataforma argentina legal de optimización de apuestas deportivas. Análisis cuantitativo, comparador de cuotas, arbitraje y banca.",
+  "description": "Plataforma argentina legal de análisis inteligente de apuestas. Comparador de 6 casas legales, IA, arbitraje, banca y BetSafe AI por voz.",
   "start_url": "/dashboard.html",
   "scope": "/",
   "display": "standalone",
