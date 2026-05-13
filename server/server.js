@@ -388,10 +388,11 @@ app.get('/api/picks', async (req, res) => {
   const surebets = arbEngine.snapshot().detected;
 
   // Análisis concurrente con cap fijo. analyzeMatch hace 1 llamada al LLM
-  // por partido (timeout 20s); con 5 paralelos = 5 partidos cada ~20s,
-  // así un limit=12 termina en ~50s en peor caso. El cliente espera el
-  // response porque iguales necesitamos las 12 picks de una.
-  const analyzeLimit = pLimit(Number(process.env.PICKS_CONCURRENCY || 5));
+  // por partido (timeout 30s).
+  // CRITICAL: Groq free tier = 14400 TPM ~ 30 RPM. Con prompts de ~3K tokens
+  // input + 2K output (~5K total) por request, 5 paralelos = 25K TPM → 429.
+  // Concurrency=2 mantiene ~10K TPM, sin rate limits. Pedimos limit=12 → ~60s.
+  const analyzeLimit = pLimit(Number(process.env.PICKS_CONCURRENCY || 2));
   const settled = await Promise.allSettled(
     events.map(ev => analyzeLimit(() => analyzeMatch(ev, { steamMoves: steam, surebets })))
   );
@@ -445,7 +446,7 @@ app.post('/api/generator', express.json(), async (req, res) => {
   const surebets = arbEngine.snapshot().detected;
 
   // Analizar con concurrencia controlada (compartimos cap con /api/picks)
-  const analyzeLimit = pLimit(Number(process.env.PICKS_CONCURRENCY || 5));
+  const analyzeLimit = pLimit(Number(process.env.PICKS_CONCURRENCY || 2));
   const settled = await Promise.allSettled(
     events.map(ev => analyzeLimit(() => analyzeMatch(ev, { steamMoves: steam, surebets })))
   );
