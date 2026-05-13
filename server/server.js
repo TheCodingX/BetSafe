@@ -325,7 +325,25 @@ app.get('/api/surebets', (req, res) => {
 
 app.get('/api/arbitrage/snapshot', (req, res) => res.json(arbEngine.snapshot()));
 
-app.get('/api/steam', (req, res) => res.json(orchestrator.steamMoves()));
+app.get('/api/steam', (req, res) => {
+  // Filtrar steam moves de esports/sims/leagues bloqueadas — el smart money
+  // que mostramos al usuario debe ser REAL (no esports nor sims TT/KOK).
+  const all = orchestrator.steamMoves() || [];
+  const events = orchestrator.events() || [];
+  const eventMap = new Map(events.map(e => [e.id, e]));
+  const filtered = all.filter(s => {
+    const ev = eventMap.get(s.eventId);
+    if (!ev) return false;
+    // Re-usar la lógica de orchestrator para esports detection
+    const sport = (typeof orchestrator.effectiveSport === 'function') ? orchestrator.effectiveSport(ev) : ev.sport;
+    if (sport === 'esports') return false;
+    // Filtros adicionales por liga/nombre (sims TT/KOK)
+    const lg = String(ev.leagueName || '').toLowerCase();
+    if (/\b(tt-cup|setka cup|gg league|kok|hapoel|maccabi|israel|lavanga|liga pro)\b/.test(lg)) return false;
+    return true;
+  });
+  res.json(filtered);
+});
 
 // ── AI Pipeline endpoints ──────────────────────────────────────────────────
 
