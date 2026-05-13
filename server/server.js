@@ -890,10 +890,22 @@ app.post('/api/generator', express.json(), async (req, res) => {
     books = []
   } = req.body || {};
 
-  let events = orchestrator.events({ sport: sport === 'all' ? 'all' : sport })
-    .filter(e => e.bestOdds?.h2h);
+  // Trace de filtros (para ver dónde se pierden eventos)
+  const trace = {};
+  trace.orchestratorAll = orchestrator.events({ sport: 'all' }).length;
+  trace.orchestratorSport = orchestrator.events({ sport: sport === 'all' ? 'all' : sport }).length;
+
+  let events = orchestrator.events({ sport: sport === 'all' ? 'all' : sport });
+  trace.afterSportFilter = events.length;
+  // Filtro bestOdds.h2h relajado: acepta también events con markets.h2h (que es
+  // donde realmente vive la cuota). bestOdds es un derivado que puede no estar
+  // poblado para todos los eventos.
+  events = events.filter(e => e.bestOdds?.h2h || (e.markets?.h2h && Object.keys(e.markets.h2h).length));
+  trace.afterH2hFilter = events.length;
+
   if (leagues.length && !leagues.includes('all')) {
     events = events.filter(e => leagues.includes(e.league));
+    trace.afterLeagueFilter = events.length;
   }
   const wantedBooks = Array.isArray(books) ? books.filter(Boolean) : [];
 
@@ -903,6 +915,7 @@ app.post('/api/generator', express.json(), async (req, res) => {
   if (!includeEsports) {
     events = events.filter(e => e.sport !== 'esports' && !orchestrator.looksLikeEsports?.(e));
   }
+  trace.afterEsportsFilter = events.length;
 
   // Top 20 partidos por priority + overround (libros más eficientes).
   // Reducido de 35 → 20 para que /api/generator complete en <90s incluso si
@@ -1207,6 +1220,7 @@ JSON estricto:
       // Disclaimer cuando llmOk == 0 → el motor cuantitativo solo (Poisson+Elo)
       // armó los combos. Análisis menos profundo que con LLM.
       llmDegraded: llmOk === 0 && llmOffline > 0,
+      trace,  // diag: tamaños por filtro step
       filtersApplied: { minSharp, skipInjured, skipBadWeather, skipCorrelated, legsPerMatch, mixSports, useAiBuilder, targetOdd }
     }
   });
