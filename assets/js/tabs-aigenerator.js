@@ -196,8 +196,8 @@
               <span>Considerar clima (impacto en O/U y córners)</span>
             </label>
             <label class="ag-toggle">
-              <input type="checkbox" id="agUseSmart" checked>
-              <span>Priorizar partidos con movimiento sharp</span>
+              <input type="checkbox" id="agUseSmart">
+              <span>Priorizar partidos con movimiento sharp <em class="muted tiny">(restrictivo — muchos partidos no tienen sharp)</em></span>
             </label>
             <label class="ag-toggle">
               <input type="checkbox" id="agAvoidCorr" checked>
@@ -729,7 +729,23 @@
       panel.querySelector('#agStatusLine').textContent = `${backendCombos.length} combinadas · ${resp.meta?.passing}/${resp.meta?.analyzed} partidos pasaron los filtros`;
 
       if (!backendCombos.length) {
-        panel.querySelector('#agOutput').innerHTML = `<div class="card stack" style="padding:32px;text-align:center"><strong>Sin combinadas que pasen los filtros</strong><p class="muted">Probá:</p><ul class="muted tiny" style="text-align:left;max-width:480px;margin:0 auto"><li>Bajar legs (más partidos califican)</li><li>Sumar más ligas / mercados</li><li>Destildar "lesiones / clima" si están limitando demasiado</li></ul></div>`;
+        const meta = resp.meta || {};
+        const reasons = [];
+        if (meta.analyzed === 0) reasons.push(`<li>No hay partidos analizados (¿el motor está caído?)</li>`);
+        else if (meta.passing === 0) {
+          reasons.push(`<li>${meta.analyzed} partidos analizados, pero <strong>0 pasaron tus filtros</strong></li>`);
+          if (useSharp) reasons.push(`<li><strong>Destildá "Priorizar partidos con movimiento sharp"</strong> — la mayoría de los partidos no tiene sharp detectado</li>`);
+          if (useInjuries) reasons.push(`<li>Destildá "Filtrar lesiones reportadas"</li>`);
+          if (useWeather) reasons.push(`<li>Destildá "Considerar clima"</li>`);
+        } else if (meta.poolSize === 0) {
+          reasons.push(`<li>${meta.passing} partidos pasaron filtros, pero ninguna selection matchea tus mercados/casas</li>`);
+          if (books.length < 3) reasons.push(`<li>Sumá MÁS casinos en el paso 1 (tenés ${books.length})</li>`);
+          reasons.push(`<li>Asegurate que los mercados elegidos cubran las casas</li>`);
+        } else {
+          reasons.push(`<li>Pool de ${meta.poolSize} picks, pero no se pudo armar combo de ${n} legs</li>`);
+          reasons.push(`<li>Bajá legs por combinada a 2-3</li>`);
+        }
+        panel.querySelector('#agOutput').innerHTML = `<div class="card stack" style="padding:32px"><strong style="text-align:center;display:block">Sin combinadas generadas</strong><p class="muted tiny" style="text-align:center;margin-top:8px">Motor analizó <strong>${meta.analyzed || 0}</strong> partidos · <strong>${meta.passing || 0}</strong> pasaron filtros · pool de <strong>${meta.poolSize || 0}</strong> picks</p><ul class="muted tiny" style="text-align:left;max-width:520px;margin:14px auto 0">${reasons.join('')}</ul></div>`;
         return;
       }
 

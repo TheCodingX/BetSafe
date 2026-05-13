@@ -839,58 +839,96 @@ ${sb.timeToEvent ? `Minutes to kickoff: ${Math.floor(sb.timeToEvent / 60000)}` :
 });
 
 /* ────────────────────────────────────────────────────────────────────
- * UNIVERSAL LOGO RESOLVER
- * Descarga logos reales desde TheSportsDB (free, sin API key con key '3').
- * Cache persistente in-memory + disk (logos no cambian). Sin esto, equipos
- * fuera de la TEAMS map de logos.js caen siempre a neutralChip de iniciales.
+ * UNIVERSAL LOGO RESOLVER — ESPN search API (rica, gratis, sin key)
+ *
+ * Devuelve URLs reales de ESPN CDN para cualquier equipo. Soporta soccer,
+ * basketball, baseball, american-football, hockey, tennis, mma.
+ *
+ * Cache permanente in-memory (logos rara vez cambian). Negative cache 24h.
+ *
+ * El demo key '3' de TheSportsDB devuelve Arsenal para todas las queries —
+ * inútil. ESPN search devuelve resultados correctos con relevance ranking.
  * ──────────────────────────────────────────────────────────────────── */
-const logoCache = new LRUCache({ max: 5000, ttl: 0 });   // ttl 0 = no expira
-const logoNegativeCache = new LRUCache({ max: 2000, ttl: 24 * 60 * 60 * 1000 });   // 24h reintentar
+const logoCache = new LRUCache({ max: 10000, ttl: 0 });   // ttl 0 = no expira
+const logoNegativeCache = new LRUCache({ max: 5000, ttl: 24 * 60 * 60 * 1000 });
 
 function normalizeLogoKey(name) {
   return String(name || '').toLowerCase()
     .normalize('NFD').replace(/[̀-ͯ]/g, '')   // strip acentos
-    .replace(/\b(fc|cf|sc|ac|club|de|el|la|los|the)\b/g, '')
-    .replace(/[^a-z0-9]/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ')
     .replace(/\s+/g, ' ').trim();
 }
 
-async function resolveLogo(team, sport) {
-  const key = normalizeLogoKey(team);
-  if (!key) return null;
-  if (logoCache.has(key)) return logoCache.get(key);
-  if (logoNegativeCache.has(key)) return null;
+/* Sport key (nuestro) → leagueSlug filter para ESPN (puede ser null = todos). */
+function sportToEspnType(sport) {
+  switch (sport) {
+    case 'soccer':     return 'soccer';
+    case 'basketball': return 'basketball';
+    case 'amfootball': return 'football';      // ESPN llama "football" al americano
+    case 'baseball':   return 'baseball';
+    case 'hockey':     return 'hockey';
+    case 'tennis':     return 'tennis';
+    case 'mma':        return 'mma';
+    default:           return null;
+  }
+}
 
-  // 1) TheSportsDB search (free API, key '3' es el demo key con rate limit ok)
-  try {
-    const url = `https://www.thesportsdb.com/api/v1/json/3/searchteams.php?t=${encodeURIComponent(team)}`;
-    const ctrl = new AbortController();
-    setTimeout(() => ctrl.abort(), 6000);
-    const r = await fetch(url, { signal: ctrl.signal });
-    if (r.ok) {
+async function resolveLogo(team, sport) {
+  const key = normalizeLogoKey(team) + '|' + (sport || '');
+  if (!key.startsWith('|')) {
+    if (logoCache.has(key)) return logoCache.get(key);
+    if (logoNegativeCache.has(key)) return null;
+  } else {
+    return null;   // nombre vacío
+  }
+
+  const espnSport = sportToEspnType(sport);
+  const queries = [
+    `https://site.web.api.espn.com/apis/common/v3/search?query=${encodeURIComponent(team)}&limit=8&type=team`,
+  ];
+
+  for (const url of queries) {
+    try {
+      const ctrl = new AbortController();
+      setTimeout(() => ctrl.abort(), 7000);
+      const r = await fetch(url, { signal: ctrl.signal, headers: { 'User-Agent': 'Mozilla/5.0' } });
+      if (!r.ok) continue;
       const data = await r.json();
-      const teams = data?.teams || [];
-      // Filtrar por deporte si nos lo dieron — TheSportsDB devuelve teams de
-      // múltiples deportes (e.g. "Barcelona" devuelve fútbol Y básquet).
-      const sportMatch = sport ? teams.filter(t => {
-        const ts = String(t.strSport || '').toLowerCase();
-        if (sport === 'soccer') return ts.includes('soccer') || ts.includes('football');
-        if (sport === 'basketball') return ts.includes('basketball');
-        if (sport === 'tennis') return ts.includes('tennis');
-        if (sport === 'amfootball') return ts.includes('american football');
-        if (sport === 'baseball') return ts.includes('baseball');
-        if (sport === 'hockey') return ts.includes('ice hockey');
-        return true;
-      }) : teams;
-      const best = (sportMatch[0] || teams[0]);
-      if (best?.strBadge || best?.strLogo) {
-        const result = best.strBadge || best.strLogo;
-        logoCache.set(key, result);
-        return result;
+      const items = (data?.items || []).filter(it => it?.type === 'team' && Array.isArray(it.logos) && it.logos.length);
+      if (!items.length) continue;
+      // Priorizar match exacto + filtro de deporte
+      const norm = normalizeLogoKey(team);
+      const ranked = items.slice().sort((a, b) => {
+        const aSport = String(a.sport || '').toLowerCase();
+        const bSport = String(b.sport || '').toLowerCase();
+        const aSportMatch = espnSport ? (aSport === espnSport ? 0 : 1) : 0;
+        const bSportMatch = espnSport ? (bSport === espnSport ? 0 : 1) : 0;
+        if (aSportMatch !== bSportMatch) return aSportMatch - bSportMatch;
+        const aNameMatch = normalizeLogoKey(a.displayName || '') === norm ? 0 : 1;
+        const bNameMatch = normalizeLogoKey(b.displayName || '') === norm ? 0 : 1;
+        if (aNameMatch !== bNameMatch) return aNameMatch - bNameMatch;
+        return Number(b.relevance || 0) - Number(a.relevance || 0);
+      });
+      const best = ranked[0];
+      // Si el filtro de sport es estricto y no match, mejor null que logo erróneo
+      if (espnSport && String(best.sport || '').toLowerCase() !== espnSport) {
+        // Aceptamos solo si no había NINGÚN match del sport correcto
+        const correctSport = ranked.find(it => String(it.sport || '').toLowerCase() === espnSport);
+        if (correctSport && Array.isArray(correctSport.logos) && correctSport.logos[0]?.href) {
+          const url = correctSport.logos[0].href;
+          logoCache.set(key, url);
+          return url;
+        }
+        // Si no había match exacto del sport, devolvemos best anyway (mejor algo que nada)
       }
+      const logoUrl = best.logos.find(l => Array.isArray(l.rel) && l.rel.includes('default'))?.href || best.logos[0]?.href;
+      if (logoUrl) {
+        logoCache.set(key, logoUrl);
+        return logoUrl;
+      }
+    } catch (e) {
+      log(`[logo:espn] ${e?.message?.slice(0, 80)}`);
     }
-  } catch (e) {
-    log(`[logo:sportsdb] ${e?.message?.slice(0, 80)}`);
   }
 
   logoNegativeCache.set(key, true);
