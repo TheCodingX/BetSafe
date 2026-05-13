@@ -504,7 +504,8 @@ app.post('/api/generator', express.json(), async (req, res) => {
   const legsPerMatch = Math.max(1, Math.min(3, Number(req.body?.legsPerMatch) || 1));
   const targetOdd = Number(req.body?.targetOdd) || null;
   const mixSports = req.body?.mixSports !== false;
-  const useAiBuilder = req.body?.useAiBuilder === true;
+  // useAiBuilder default TRUE — user pidió "TODO ANALISIS IA". Solo false si explícitamente lo apaga.
+  const useAiBuilder = req.body?.useAiBuilder !== false;
 
   function buildOneCombo(targetType, excludeSigs, comboIdx = 0) {
     // Filtrar por tipo si lo pidieron (cons/eq/agg). Si no hay del tipo,
