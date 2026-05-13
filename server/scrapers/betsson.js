@@ -29,26 +29,20 @@ const { httpJsonNative, httpViaScrapingBee, getCreditBudgetMultiplier, browserPo
 const { CircuitBreaker } = require('../lib/retry');
 const { parseKambiListView } = require('../lib/kambiJson');
 
-// URLs del sportsbook — orden de prioridad para extracción multi-deporte.
-// `/apuestas-deportivas` SOLO devuelve 404 sin session cookie.
+// Solo 1 URL — la SPA carga toda la app desde acá
 const SPORTSBOOK_URLS = [
-  'https://pba.betsson.bet.ar/apuestas-deportivas/futbol',
-  'https://pba.betsson.bet.ar/apuestas-deportivas/en-directo'
+  'https://pba.betsson.bet.ar/apuestas-deportivas/futbol'
 ];
 
-// Operator keys candidatos para la API de Kambi. El primero que responda OK
-// se cachea en memoria — los demás se skip los siguientes ciclos.
-// Pattern típico: <brand><country><region> (e.g. betssoncolar para Colombia)
+// REDUCIDO: solo los 3 operator keys más probables. Antes 9 → era timeout
+// (cada uno toma 12s × 9 = 108s peor caso).
 const KAMBI_OPERATOR_CANDIDATES = [
-  'betssonarba', 'betssonpba', 'betssoncba', 'betssoncaba',
-  'betssonarg', 'betssonar', 'betssonarmx',
-  'betssonbetar', 'betssonbet'
+  'betssonarba', 'betssonpba', 'betssoncba'
 ];
-let validKambiOperator = null;  // cacheado tras primer descubrimiento
+let validKambiOperator = null;
 
 const KAMBI_BASES = [
-  'https://us.offering-api.kambicdn.com',
-  'https://eu-offering.kambicdn.org'
+  'https://us.offering-api.kambicdn.com'   // solo 1 base, la US edge
 ];
 
 const KAMBI_HEADERS = {
@@ -106,9 +100,10 @@ async function fetchKambiOperator(op) {
   for (const base of KAMBI_BASES) {
     const url = `${base}/offering/v2018/${op}/listView/all.json?channel_id=7&client_id=200&lang=es_AR&market=AR&useCombined=true`;
     try {
-      const res = await kambiBreaker.exec(() => httpJsonNative(url, { headers: KAMBI_HEADERS, timeout: 12000 }));
+      // Timeout corto (5s) por intento — si no responde rápido, probablemente
+      // el operator key es incorrecto. NO bloquear breaker por timeouts cortos.
+      const res = await httpJsonNative(url, { headers: KAMBI_HEADERS, timeout: 5000 });
       if (res && Array.isArray(res.events) && res.events.length > 0) {
-        // Parsear con el parser estándar de Kambi (mismo que BetWarrior)
         const parsed = parseKambiListView(res, BOOK);
         return parsed;
       }
@@ -132,12 +127,12 @@ async function tryScrapingBee() {
     try {
       const r = await scrapingBeeBreaker.exec(() =>
         httpViaScrapingBee(url, {
-          timeout: 55000,
+          timeout: 25000,
           premium: true,
           renderJs: true,
           country: 'ar',
           json: false,
-          wait: 5000,          // dar tiempo a Kambi SPA a montar
+          wait: 3000,          // 3s para Kambi SPA — suficiente sin matar timeout
           tag: `betsson:${url.split('/').pop()}`
         })
       );
@@ -147,7 +142,7 @@ async function tryScrapingBee() {
         const key = `${ev.home?.name}|${ev.away?.name}|${ev.start}`.toLowerCase();
         if (!seen.has(key)) { seen.add(key); all.push(ev); }
       }
-      log(`[betsson:sbee] ${url.split('/').pop()} → ${events.length} eventos · ${r.costCredits} créditos`);
+      log(`[betsson:sbee] ${url.split('/').pop()} → ${events.length} eventos · ${r.costCredits} créditos · ${r.text.length} bytes`);
     } catch (e) {
       if (e?.circuitOpen) { log('[betsson:sbee] circuit OPEN · skip'); break; }
       log(`[betsson:sbee] err ${url.split('/').pop()}: ${e.message?.slice(0, 150)}`);
