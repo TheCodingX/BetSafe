@@ -542,7 +542,7 @@
           <div class="card card-pad-lg" style="background:rgba(255,255,255,.6);backdrop-filter:blur(6px)">
             <div class="row between mb-3">
               <strong>Surebets — última hora</strong>
-              <span class="badge badge-success">+12 detectadas</span>
+              <span class="badge badge-success" id="vipSurebetsCount">— detectadas</span>
             </div>
             <div class="stack-sm" id="vipSurebets"></div>
           </div>
@@ -795,15 +795,15 @@ document.addEventListener('DOMContentLoaded', () => {
     card.innerHTML = `
       <div class="row between" style="margin-bottom:10px">
         <div class="cluster">
-          ${window.BSLogos?.teamCrest(m.home.id, { size: 22 }) || BSIcons.teamLogo(m.home, { size: 22 })}
+          ${window.BSLogos?.teamCrest(m.home.id, { size: 22, name: m.home.name, sport: m.sport }) || BSIcons.teamLogo(m.home, { size: 22, sport: m.sport })}
           <strong>${BSUI.esc(homeName)}</strong>
           <span class="dim">vs</span>
           <strong>${BSUI.esc(awayName)}</strong>
-          ${window.BSLogos?.teamCrest(m.away.id, { size: 22 }) || BSIcons.teamLogo(m.away, { size: 22 })}
+          ${window.BSLogos?.teamCrest(m.away.id, { size: 22, name: m.away.name, sport: m.sport }) || BSIcons.teamLogo(m.away, { size: 22, sport: m.sport })}
         </div>
         <span class="badge badge-brand">${BSUI.esc(m.leagueName || 'Live')}</span>
       </div>
-      <div class="cmp3 mt-2">
+      <div class="cmp3 mt-2" style="${hDraw.length ? '' : 'grid-template-columns:repeat(2,minmax(0,1fr))'}">
         ${renderCol(`Gana ${homeName}`, '1', hHome)}
         ${hDraw.length ? renderCol('Empate', 'X', hDraw) : ''}
         ${renderCol(`Gana ${awayName}`, '2', hAway)}
@@ -845,8 +845,8 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
     const items = matches.map(m => {
-      const home = window.BSLogos?.teamCrest(m.home.id, { size: 22 }) || BSIcons.teamLogo(m.home, { size: 22 });
-      const away = window.BSLogos?.teamCrest(m.away.id, { size: 22 }) || BSIcons.teamLogo(m.away, { size: 22 });
+      const home = window.BSLogos?.teamCrest(m.home.id, { size: 22, name: m.home.name, sport: m.sport }) || BSIcons.teamLogo(m.home, { size: 22, sport: m.sport });
+      const away = window.BSLogos?.teamCrest(m.away.id, { size: 22, name: m.away.name, sport: m.sport }) || BSIcons.teamLogo(m.away, { size: 22, sport: m.sport });
       const best = m.bestOdds.h2h.home;
       return `<span class="tk">
         ${home}
@@ -950,8 +950,8 @@ async function buildAiPickDaily() {
 
     const { p, eq } = top;
     const ev = p.event;
-    const homeLogo = window.BSLogos?.teamCrest(ev.home.id, { size: 32 }) || BSIcons.teamLogo(ev.home, { size: 32 });
-    const awayLogo = window.BSLogos?.teamCrest(ev.away.id, { size: 32 }) || BSIcons.teamLogo(ev.away, { size: 32 });
+    const homeLogo = window.BSLogos?.teamCrest(ev.home.id, { size: 32, name: ev.home.name, sport: ev.sport }) || BSIcons.teamLogo(ev.home, { size: 32, sport: ev.sport });
+    const awayLogo = window.BSLogos?.teamCrest(ev.away.id, { size: 32, name: ev.away.name, sport: ev.sport }) || BSIcons.teamLogo(ev.away, { size: 32, sport: ev.sport });
     const provider = p.llmProvider !== 'offline'
       ? `<span class="badge badge-success tiny">IA: ${p.llmProvider}</span>`
       : `<span class="badge tiny">quant only</span>`;
@@ -1055,11 +1055,11 @@ function buildDemoComparator() {
                 return `<tr>
                   <td>
                     <div class="cluster">
-                      ${BSIcons.teamLogo(m.home, { size: 24 })}
+                      ${BSIcons.teamLogo(m.home, { size: 24, sport: m.sport })}
                       <strong>${BSUI.esc(m.home.name)}</strong>
                       <span class="dim">vs</span>
                       <strong>${BSUI.esc(m.away.name)}</strong>
-                      ${BSIcons.teamLogo(m.away, { size: 24 })}
+                      ${BSIcons.teamLogo(m.away, { size: 24, sport: m.sport })}
                     </div>
                   </td>
                   <td>
@@ -1135,26 +1135,32 @@ function buildBuilderDemo() {
 
 function buildVipSurebets() {
   const host = document.getElementById('vipSurebets');
+  const countEl = document.getElementById('vipSurebetsCount');
   if (!host) return;
   function render() {
-    const sb = BSData.liveSurebets ? BSData.liveSurebets().slice(0, 4) : [];
+    const sb = BSData.liveSurebets ? BSData.liveSurebets() : [];
+    if (countEl) {
+      countEl.textContent = sb.length === 0 ? '— detectadas' : `+${sb.length} detectada${sb.length === 1 ? '' : 's'}`;
+      countEl.style.opacity = sb.length === 0 ? 0.6 : 1;
+    }
     if (!sb.length) {
-      host.innerHTML = `<div class="empty" style="padding:14px"><strong>Esperando surebets en vivo</strong><div class="muted tiny">El motor cruza todas las casas en cada ciclo de scraping. Cuando aparece una oportunidad real con ROI &gt; 0, aparece acá automáticamente.</div></div>`;
+      host.innerHTML = `<div class="empty" style="padding:14px"><strong>Esperando surebets en vivo</strong><div class="muted tiny">El motor cruza todas las casas en cada ciclo de scraping. Cuando aparece una oportunidad real (cuotas en casas distintas con sum 1/cuota &lt; 1), aparece acá automáticamente.</div></div>`;
       return;
     }
-    host.innerHTML = sb.map(s => `
-      <div class="row between">
-        <div>
-          <strong>${BSUI.esc(s.event)}</strong>
-          <div class="muted tiny">${(s.books || []).map(BSUI.esc).join(' / ')}</div>
+    host.innerHTML = sb.slice(0, 4).map(s => `
+      <div class="row between" style="padding:8px;border-bottom:1px solid var(--border)">
+        <div style="min-width:0;flex:1">
+          <strong style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${BSUI.esc(s.event)}</strong>
+          <div class="muted tiny">${(s.books || []).map(BSUI.esc).join(' vs ')}</div>
         </div>
-        <span class="badge badge-success num">+${s.roi.toFixed(2)}%</span>
+        <span class="badge badge-success num" style="flex-shrink:0;margin-left:8px">+${s.roi.toFixed(2)}%</span>
       </div>
     `).join('');
   }
   render();
   window.addEventListener('bs:live-surebet', render);
   window.addEventListener('bs:live-snapshot', render);
+  window.addEventListener('bs:live-update', render);
 }
 
 function buildFaq() {

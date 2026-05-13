@@ -196,8 +196,8 @@
     const ev = analysis.event;
     const f = analysis.factors || {};
     const sel = (analysis.selections || []).slice(0, 3);
-    const homeLogo = window.BSLogos?.teamCrest ? BSLogos.teamCrest(ev.home.id, { size: 28 }) : BSIcons.teamLogo(ev.home, { size: 28 });
-    const awayLogo = window.BSLogos?.teamCrest ? BSLogos.teamCrest(ev.away.id, { size: 28 }) : BSIcons.teamLogo(ev.away, { size: 28 });
+    const homeLogo = window.BSLogos?.teamCrest ? BSLogos.teamCrest(ev.home.id, { size: 28, name: ev.home.name, sport: ev.sport }) : BSIcons.teamLogo(ev.home, { size: 28, sport: ev.sport });
+    const awayLogo = window.BSLogos?.teamCrest ? BSLogos.teamCrest(ev.away.id, { size: 28, name: ev.away.name, sport: ev.sport }) : BSIcons.teamLogo(ev.away, { size: 28, sport: ev.sport });
     const leagueLogo = window.BSLogos?.leagueLogo ? BSLogos.leagueLogo(ev.league, { size: 14 }) : '';
 
     return `

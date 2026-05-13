@@ -278,6 +278,17 @@
               <option value="3" selected>3 legs</option>
               <option value="4">4 legs</option>
               <option value="5">5 legs</option>
+              <option value="6">6 legs</option>
+              <option value="8">8 legs (alto riesgo)</option>
+              <option value="10">10 legs (extremo)</option>
+            </select>
+          </div>
+          <div class="agx-config__item">
+            <span class="agx-config__label">Legs por partido</span>
+            <select class="select agx-config__select" id="agLegsPerMatch" title="Permite múltiples picks del mismo partido (e.g. resultado + total goles). Más legs por partido = cuotas más altas pero mayor correlación.">
+              <option value="1" selected>1 (clásico)</option>
+              <option value="2">2 (multi-mercado)</option>
+              <option value="3">3 (avanzado)</option>
             </select>
           </div>
           <div class="agx-config__item">
@@ -295,6 +306,22 @@
               <input class="num-stepper-input" id="agStake" type="text" inputmode="numeric" pattern="[0-9]*" value="10000" />
               <button type="button" class="num-stepper-btn" data-step="+" aria-label="+"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
             </div>
+          </div>
+          <div class="agx-config__item">
+            <span class="agx-config__label">Cuota objetivo (opcional)</span>
+            <input class="input agx-config__select" id="agTargetOdd" type="number" step="0.5" min="0" placeholder="ej: 12.0" title="La IA tratará de construir combinadas que acerquen al producto de cuotas indicado. Vacío = libre (toma las mejores por EV)."/>
+          </div>
+          <div class="agx-config__item" style="grid-column:span 2">
+            <label class="ag-toggle" style="cursor:pointer">
+              <input type="checkbox" id="agUseAiBuilder" checked>
+              <span><strong>IA construye las combinadas</strong> · Groq selecciona legs por correlación negativa, edge estructural y momentum (no solo EV). <em class="muted tiny">Recomendado.</em></span>
+            </label>
+          </div>
+          <div class="agx-config__item">
+            <label class="ag-toggle" style="cursor:pointer">
+              <input type="checkbox" id="agMixSports" checked>
+              <span>Mezclar deportes</span>
+            </label>
           </div>
           <!-- hidden — mantienen IDs para no romper handlers existentes -->
           <input type="hidden" id="agMinEv" value="5">
@@ -664,6 +691,12 @@
       // Leagues seleccionadas
       const leagues = activeLeagues.has('all') ? [] : [...activeLeagues];
 
+      // Configs nuevos del UI step 4
+      const legsPerMatch = Math.max(1, Math.min(3, Number(panel.querySelector('#agLegsPerMatch')?.value) || 1));
+      const targetOdd = Number(panel.querySelector('#agTargetOdd')?.value) || null;
+      const useAiBuilder = panel.querySelector('#agUseAiBuilder')?.checked !== false;
+      const mixSports = panel.querySelector('#agMixSports')?.checked !== false;
+
       // POST al backend: pipeline completa con factors + LLM + quant + correlation
       let payload = {
         sport: activeSport,
@@ -676,7 +709,12 @@
         minSharp: useSharp ? 0.3 : 0,
         skipInjured: useInjuries,
         skipBadWeather: useWeather,
-        skipCorrelated: avoidCorr
+        skipCorrelated: avoidCorr,
+        // Nuevas opciones
+        legsPerMatch,
+        targetOdd,
+        useAiBuilder,
+        mixSports
       };
       panel.querySelector('#agStatusLine').textContent = 'Pipeline backend: factors → modelos → IA → optimización';
       let resp;
@@ -707,16 +745,25 @@
           ev: l.ev,
           confidence: l.confidence,
           rationale: l.rationale,
+          tacticalNotes: l.tacticalNotes,
           factors: l.factors,
-          book: l.book
+          book: l.book,
+          sport: l.sport,
+          league: l.league
         })),
         total: c.totalOdd,
         prob: c.legs.reduce((a, b) => a * (b.confidence || 0.5), 1),
         marketsUsed: [...new Set(c.legs.map(l => l.market))],
         ev: c.sumEv / 100,
         avgConfidence: c.avgConfidence,
-        correlation: c.correlation
+        correlation: c.correlation,
+        aiNarrative: c.aiNarrative,
+        aiEdge: c.aiEdge,
+        sportsCount: c.sportsCount,
+        legCount: c.legCount
       }));
+
+      const aiGlobalNarrative = resp.aiNarrative || null;
 
       const out = panel.querySelector('#agOutput');
       out.innerHTML = `
@@ -724,15 +771,24 @@
           <strong>${combos.length} combinada${combos.length>1?'s':''} generada${combos.length>1?'s':''}</strong>
           <span class="muted tiny">Stake base: ${BSUI.money(stake)} ARS</span>
         </div>
+        ${aiGlobalNarrative ? `<div class="card card-tinted card-pad-sm mb-3" style="border-left:3px solid var(--brand-500);background:rgba(var(--brand-500-rgb,30,75,200),0.04)">
+          <div class="row between" style="align-items:center"><strong class="tiny">Lectura global IA <span class="badge badge-success tiny" style="margin-left:6px">groq</span></strong></div>
+          <p class="muted tiny" style="margin-top:6px;line-height:1.5">${BSUI.esc(aiGlobalNarrative)}</p>
+        </div>` : ''}
         <div class="grid ${combos.length === 1 ? '' : 'grid-2'}" style="gap:14px">
           ${combos.map((c, ci) => {
             const top3 = top3Books(c.total, c.marketsUsed);
             return `
             <div class="card card-tinted stack-sm reveal ag-combo">
               <div class="row between" style="align-items:center">
-                <strong>Combinada #${ci+1} · ${n} legs</strong>
+                <strong>Combinada #${ci+1} · ${c.legCount || c.legs.length} legs${c.sportsCount > 1 ? ' · ' + c.sportsCount + ' deportes' : ''}</strong>
                 <span class="risk-pill ${c.total<2?'low':c.total<6?'mid':'high'}">${c.total<2?'Bajo':c.total<6?'Medio':'Alto'} riesgo</span>
               </div>
+
+              ${c.aiEdge ? `<div class="card card-pad-sm" style="background:rgba(212,160,23,0.08);border-left:3px solid var(--gold-700,#c49a1a);margin-top:4px">
+                <strong class="tiny" style="color:var(--gold-700,#c49a1a)">⚡ Edge IA</strong>
+                <p class="tiny" style="margin-top:3px;line-height:1.4">${BSUI.esc(c.aiEdge)}</p>
+              </div>` : ''}
 
               <!-- Markets summary -->
               <div class="cluster" style="gap:4px;flex-wrap:wrap">
@@ -744,11 +800,11 @@
               ${c.legs.map(l => `
                 <div class="ag-leg">
                   <div class="ag-leg-teams">
-                    ${BSIcons.teamLogo(l.match.home, { size: 18 })}
+                    ${BSIcons.teamLogo(l.match.home, { size: 18, sport: l.sport })}
                     <strong style="font-size:.85rem">${BSUI.esc(l.match.home.name)}</strong>
                     <span class="dim tiny">vs</span>
                     <strong style="font-size:.85rem">${BSUI.esc(l.match.away.name)}</strong>
-                    ${BSIcons.teamLogo(l.match.away, { size: 18 })}
+                    ${BSIcons.teamLogo(l.match.away, { size: 18, sport: l.sport })}
                   </div>
                   <div class="ag-leg-meta">
                     <span class="ag-leg-market">${M[l.market]||l.market}</span>
@@ -792,7 +848,9 @@
               <!-- AI explanation: factores reales del backend -->
               <div class="ag-ai-explain">
                 <span class="ag-ai-tag">🧠 Análisis IA + factores</span>
+                ${c.aiNarrative ? `<p class="ag-ai-text" style="background:rgba(var(--brand-500-rgb,30,75,200),0.05);padding:8px;border-radius:6px;border-left:2px solid var(--brand-500)"><strong>Por qué esta combinada:</strong> ${BSUI.esc(c.aiNarrative)}</p>` : ''}
                 ${c.legs[0]?.rationale ? `<p class="ag-ai-text">${BSUI.esc(c.legs[0].rationale)}</p>` : ''}
+                ${c.legs[0]?.tacticalNotes ? `<p class="ag-ai-text" style="font-style:italic;font-size:.78rem">${BSUI.esc(c.legs[0].tacticalNotes)}</p>` : ''}
                 ${(() => {
                   // Agregar todos los factores únicos de las legs
                   const allFactors = c.legs.flatMap(l => l.factors || []);

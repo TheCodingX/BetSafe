@@ -61,8 +61,8 @@
       }
       const nextEv = events.slice().sort((a, b) => (a.start || 0) - (b.start || 0)).slice(0, 6);
       host.innerHTML = nextEv.map((m, i) => {
-      const homeCrest = window.BSLogos?.teamCrest ? BSLogos.teamCrest(m.home.id, { size: 28 }) : BSIcons.teamLogo(m.home, { size: 28 });
-      const awayCrest = window.BSLogos?.teamCrest ? BSLogos.teamCrest(m.away.id, { size: 28 }) : BSIcons.teamLogo(m.away, { size: 28 });
+      const homeCrest = window.BSLogos?.teamCrest ? BSLogos.teamCrest(m.home.id, { size: 28, name: m.home.name, sport: m.sport }) : BSIcons.teamLogo(m.home, { size: 28, sport: m.sport });
+      const awayCrest = window.BSLogos?.teamCrest ? BSLogos.teamCrest(m.away.id, { size: 28, name: m.away.name, sport: m.sport }) : BSIcons.teamLogo(m.away, { size: 28, sport: m.sport });
       const leagueLogo = window.BSLogos?.leagueLogo ? BSLogos.leagueLogo(m.league, { size: 14 }) : '';
       const sportName = SPORT_LABEL[m.sport] || m.sport;
       return `

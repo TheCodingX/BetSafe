@@ -499,15 +499,70 @@
     dodgers:       { name: 'LA Dodgers',      primary: '#005a9c',  accent: '#fff',    third: '#ef3e42' }
   };
 
+  /* Cache cliente para logos resueltos desde el backend (/api/logo).
+   * key = nombre normalizado, value = URL del logo o `null` si no se encontró.
+   * Sobrevive a re-renders del DOM pero se pierde en refresh. */
+  const remoteLogoCache = new Map();
+  const remoteLogoPending = new Map();   // promesas en flight para dedup
+
+  /* Trigger async para resolver un logo via backend. Cuando llega la URL,
+   * actualiza TODOS los placeholders del DOM con `data-team-resolve` matching. */
+  function resolveRemoteLogo(rawName, sport) {
+    const key = String(rawName || '').trim();
+    if (!key) return;
+    if (remoteLogoCache.has(key)) return;
+    if (remoteLogoPending.has(key)) return;
+
+    const apiBase = (window.BSLive?.API_BASE) || '';
+    const url = `${apiBase}/api/logo?team=${encodeURIComponent(key)}${sport ? `&sport=${encodeURIComponent(sport)}` : ''}`;
+    const promise = fetch(url)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        const logoUrl = data?.url || null;
+        remoteLogoCache.set(key, logoUrl);
+        remoteLogoPending.delete(key);
+        if (logoUrl) {
+          // Reemplazar todos los placeholders pending en el DOM
+          document.querySelectorAll(`[data-team-resolve="${CSS.escape(key)}"]`).forEach(el => {
+            const size = el.dataset.size || 28;
+            el.outerHTML = `<img src="${logoUrl}" alt="${String(rawName).replace(/"/g,'')}" width="${size}" height="${size}" loading="lazy" decoding="async" style="max-width:100%;max-height:100%;object-fit:contain;border-radius:4px"/>`;
+          });
+        }
+      })
+      .catch(() => { remoteLogoPending.delete(key); });
+    remoteLogoPending.set(key, promise);
+  }
+
+  /* Resuelve el logo de un equipo.
+   * Flujo:
+   *   1) Si está en TEAMS map local + tiene CDN URL → usar esa
+   *   2) Si tenemos en remoteLogoCache (de fetches anteriores) → usar esa
+   *   3) Devolver placeholder iniciales + disparar async fetch a /api/logo
+   *      Cuando llegue la URL real, el placeholder se reemplaza en el DOM. */
   function teamCrest(key, opts = {}) {
     const size = opts.size || 36;
     const k = String(key || '').toLowerCase().replace(/\s|-|\.|'|_/g, '');
+    const teamName = opts.name || key;
     const t = TEAMS[k];
-    // Always use neutral initials chip as fallback — never the recreated SVG art
-    const fb = neutralChip(t?.name || opts.name || k, t?.primary || '#1f2937', size);
-    const url = CDN.team[k];
-    if (url) return imgWithFallback([url], t?.name || key, size, fb);
-    return fb;
+    const color = t?.primary || opts.color || '#1f2937';
+    const fb = neutralChip(t?.name || teamName, color, size);
+
+    // Path 1: local CDN map
+    const localUrl = CDN.team[k];
+    if (localUrl) return imgWithFallback([localUrl], t?.name || key, size, fb);
+
+    // Path 2: ya resolvimos remoto antes
+    if (remoteLogoCache.has(teamName)) {
+      const remoteUrl = remoteLogoCache.get(teamName);
+      if (remoteUrl) {
+        return `<img src="${remoteUrl}" alt="${String(teamName).replace(/"/g,'')}" width="${size}" height="${size}" loading="lazy" decoding="async" style="max-width:100%;max-height:100%;object-fit:contain;border-radius:4px"/>`;
+      }
+      return fb;   // resolvimos null, ya no intentamos más
+    }
+
+    // Path 3: disparar resolve async + devolver placeholder que se actualizará
+    resolveRemoteLogo(teamName, opts.sport);
+    return `<span data-team-resolve="${String(teamName).replace(/"/g,'&quot;')}" data-size="${size}" style="display:inline-flex;align-items:center;justify-content:center;width:${size}px;height:${size}px">${fb}</span>`;
   }
 
   function shieldInitial(name, size, opts = {}) {

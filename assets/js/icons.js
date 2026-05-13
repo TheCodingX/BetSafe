@@ -124,9 +124,14 @@
   }
   function teamLogo(team, opts = {}) {
     // Always go through BSLogos.teamCrest — uses CDN URL with neutral fallback
+    // + async fetch al backend si el equipo no está en el mapa local.
     if (window.BSLogos && team) {
       const k = String(team.id || team.name || '').toLowerCase().replace(/\s|-|\.|'|_/g, '');
-      return window.BSLogos.teamCrest(k, { size: opts.size || 28, name: team.name || k });
+      return window.BSLogos.teamCrest(k, {
+        size: opts.size || 28,
+        name: team.name || k,
+        sport: opts.sport || team.sport       // hint para mejor matching en TheSportsDB
+      });
     }
     return window.BSLogos?.neutralChip?.(team?.name || '?', team?.color || '#1f2937', opts.size || 28) || '';
   }

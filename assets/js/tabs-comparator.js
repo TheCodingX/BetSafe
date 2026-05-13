@@ -159,11 +159,11 @@
         <article class="card cmp-match" style="display:flex;flex-direction:column;gap:14px">
           <header class="row between" style="flex-wrap:wrap;gap:12px">
             <div class="cluster">
-              ${BSIcons.teamLogo(m.home,{size:24})}
+              ${BSIcons.teamLogo(m.home,{size:24,sport:m.sport})}
               <strong>${BSUI.esc(m.home.name)}</strong>
               <span class="dim">vs</span>
               <strong>${BSUI.esc(m.away.name)}</strong>
-              ${BSIcons.teamLogo(m.away,{size:24})}
+              ${BSIcons.teamLogo(m.away,{size:24,sport:m.sport})}
             </div>
             <div class="cluster" style="gap:8px;flex-wrap:wrap">
               <span class="muted tiny">${BSUI.esc(m.leagueName)} · ${BSUI.dt(m.start)}</span>
@@ -173,7 +173,7 @@
             </div>
           </header>
 
-          <div class="cmp3">
+          <div class="cmp3" style="${bestD.v ? '' : 'grid-template-columns:repeat(2,minmax(0,1fr))'}">
             ${renderCol(homeLbl, '1', top3H, m, 'home')}
             ${bestD.v ? renderCol(drawLbl, 'X', top3D, m, 'draw') : ''}
             ${renderCol(awayLbl, '2', top3A, m, 'away')}

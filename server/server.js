@@ -411,19 +411,13 @@ app.post('/api/generator', express.json(), async (req, res) => {
   if (leagues.length && !leagues.includes('all')) {
     events = events.filter(e => leagues.includes(e.league));
   }
-  // Si el user marcó books específicos, solo aceptamos events con AL MENOS
-  // una cuota h2h en alguna de esas casas — sin eso el pick puede caer en
-  // una casa que el user no tiene cuenta.
   const wantedBooks = Array.isArray(books) ? books.filter(Boolean) : [];
-  if (wantedBooks.length) {
-    events = events.filter(e =>
-      Object.keys(e.markets?.h2h || {}).some(bk => wantedBooks.includes(bk))
-    );
-  }
 
-  // Top 20 partidos por overround (libros más eficientes = picks más confiables)
+  // Top 35 partidos por overround (libros más eficientes = picks más confiables).
+  // Aumentado de 20 a 35 para dar al pool de la combinadora más opciones —
+  // si user pidió 5 legs con multi-leg-por-match, necesitamos más eventos.
   events.sort((a, b) => (a.overround || 99) - (b.overround || 99));
-  events = events.slice(0, 20);
+  events = events.slice(0, 35);
 
   const steam = orchestrator.steamMoves();
   const surebets = arbEngine.snapshot().detected;
@@ -443,69 +437,238 @@ app.post('/api/generator', express.json(), async (req, res) => {
     return true;
   });
 
-  // Construir combinadas:
-  // Para cada combinada, elegimos `legs` selecciones del mismo "type" (cons/eq/agg) de distintos partidos,
-  // ordenadas por EV y confidence. Después chequeamos correlación.
-  const combos = [];
-  const seenComboSig = new Set();
-  for (const targetType of [risk, risk === 'cons' ? 'eq' : risk === 'eq' ? 'cons' : 'eq']) {
-    for (let tries = 0; tries < count * 4 && combos.length < count; tries++) {
-      const pool = [];
-      passing.forEach(a => {
-        let filteredByMarket = (a.selections || []).filter(s => markets.includes(s.market));
-        // Respetar selección de books del user — descartamos selections cuyo
-        // book no esté en la lista marcada. Sin esto, le ofrecemos al user picks
-        // en casas donde no tiene cuenta y no puede ejecutar.
-        if (wantedBooks.length) {
-          filteredByMarket = filteredByMarket.filter(s => wantedBooks.includes(s.book));
-        }
-        const matching = filteredByMarket.filter(s => s.type === targetType);
-        if (matching.length) pool.push({ event: a.event, factors: a.factors, sel: matching[0] });
+  // ── Pool universal: TODAS las selections válidas, no solo una por evento ──
+  // Permite multi-leg por partido + diversificación entre deportes/ligas.
+  const pool = [];
+  for (const a of passing) {
+    const evSelections = (a.selections || [])
+      .filter(s => markets.includes(s.market))
+      .filter(s => !wantedBooks.length || wantedBooks.includes(s.book));
+    for (const sel of evSelections) {
+      pool.push({
+        event: a.event,
+        factors: a.factors,
+        sel,
+        score: (sel.consensusEv || 0) + (sel.confidence || 0) * 5    // ranking compuesto
       });
-      pool.sort((a, b) => (b.sel.consensusEv || -99) - (a.sel.consensusEv || -99));
-      const chosen = [];
-      const usedEvents = new Set();
-      for (const p of pool) {
-        if (usedEvents.has(p.event.id)) continue;
-        chosen.push({
-          eventId: p.event.id,
-          home: p.event.home?.name, away: p.event.away?.name,
-          market: p.sel.market, outcome: p.sel.outcome, line: p.sel.line,
-          label: p.sel.label, odd: p.sel.odd, book: p.sel.book,
-          confidence: p.sel.confidence, ev: p.sel.consensusEv,
-          factors: p.sel.factors, rationale: p.sel.rationale
-        });
-        usedEvents.add(p.event.id);
+    }
+  }
+  pool.sort((a, b) => b.score - a.score);
+
+  // ── Estrategia de construcción de combos ──
+  // legsPerMatch: cuántos legs del mismo partido se permiten (1 = clásico, 2-3 = multi-leg)
+  // targetOdd: objetivo de cuota total (null = libre)
+  // mixSports: si true, busca diversidad de deporte
+  // useAiBuilder: si true Y hay LLM disponible, pide a Groq que elija los combos
+  const legsPerMatch = Math.max(1, Math.min(3, Number(req.body?.legsPerMatch) || 1));
+  const targetOdd = Number(req.body?.targetOdd) || null;
+  const mixSports = req.body?.mixSports !== false;
+  const useAiBuilder = req.body?.useAiBuilder === true;
+
+  function buildOneCombo(targetType, excludeSigs) {
+    // Filtrar por tipo si lo pidieron (cons/eq/agg). Si no hay del tipo,
+    // RELAJAMOS — mejor devolver un combo que ninguno.
+    let candidates = pool.filter(p => p.sel.type === targetType);
+    if (candidates.length < legs) candidates = pool;
+
+    const chosen = [];
+    const usedByEvent = new Map();   // eventId → count
+    const usedSports = new Set();
+    for (const p of candidates) {
+      const evId = p.event.id;
+      const cur = usedByEvent.get(evId) || 0;
+      if (cur >= legsPerMatch) continue;
+      // Si pedimos mix sports y ya tenemos un leg del mismo deporte, lo
+      // intentamos pero priorizando diversidad
+      if (mixSports && usedSports.has(p.event.sport) && chosen.length < legs && candidates.some(c => !usedSports.has(c.event.sport))) {
+        continue;   // saltamos este; lo procesaremos en segunda pasada
+      }
+      chosen.push(p);
+      usedByEvent.set(evId, cur + 1);
+      usedSports.add(p.event.sport);
+      if (chosen.length >= legs) break;
+    }
+    // Segunda pasada: si quedaron slots vacíos y NO conseguimos diversidad,
+    // los llenamos con lo mejor disponible (sin importar deporte).
+    if (chosen.length < legs) {
+      for (const p of candidates) {
+        if (chosen.some(c => c.sel === p.sel)) continue;
+        const evId = p.event.id;
+        const cur = usedByEvent.get(evId) || 0;
+        if (cur >= legsPerMatch) continue;
+        chosen.push(p);
+        usedByEvent.set(evId, cur + 1);
         if (chosen.length >= legs) break;
       }
-      if (chosen.length < legs) break;
+    }
+    if (chosen.length === 0) return null;
 
-      // Correlation check
-      const corr = analyzeCombo(chosen);
-      if (skipCorrelated && !corr.ok) {
-        // intentamos otra mezcla (skip primera leg correlacionada)
-        chosen.splice(corr.warnings[0]?.i || 0, 1);
-        if (chosen.length < legs) continue;
+    // Si pedimos targetOdd, reordenamos: priorizar legs con cuotas que nos
+    // acerquen al target acumulando producto, no tomando los top EV puros.
+    if (targetOdd && chosen.length === legs) {
+      let prod = chosen.reduce((a, c) => a * c.sel.odd, 1);
+      // Si la cuota total quedó muy lejos del target, intentamos ajustar
+      // swapping un leg por uno con cuota más alta/baja.
+      const tolerance = 0.3;   // ±30%
+      if (prod < targetOdd * (1 - tolerance) || prod > targetOdd * (1 + tolerance)) {
+        const ratio = targetOdd / prod;
+        // Buscar un swap que acerque el producto al target
+        for (let i = 0; i < chosen.length; i++) {
+          const want = chosen[i].sel.odd * ratio;
+          const replacement = candidates.find(c =>
+            !chosen.some(ch => ch.sel === c.sel) &&
+            Math.abs(c.sel.odd - want) < want * 0.4
+          );
+          if (replacement) {
+            chosen[i] = replacement;
+            prod = chosen.reduce((a, c) => a * c.sel.odd, 1);
+            if (Math.abs(prod - targetOdd) / targetOdd < tolerance) break;
+          }
+        }
       }
-      const totalOdd = chosen.reduce((a, b) => a * b.odd, 1);
-      const sig = chosen.map(l => `${l.eventId}:${l.market}:${l.outcome}`).sort().join('|');
-      if (seenComboSig.has(sig)) continue;
-      seenComboSig.add(sig);
-      combos.push({
-        legs: chosen,
-        totalOdd: Number(totalOdd.toFixed(2)),
-        avgConfidence: Number((chosen.reduce((a, b) => a + (b.confidence || 0), 0) / chosen.length).toFixed(3)),
-        sumEv: Number(chosen.reduce((a, b) => a + (b.ev || 0), 0).toFixed(2)),
-        correlation: corr,
-        type: targetType
-      });
-      if (combos.length >= count) break;
+    }
+
+    const comboLegs = chosen.map(p => ({
+      eventId: p.event.id,
+      home: p.event.home?.name, away: p.event.away?.name,
+      sport: p.event.sport, league: p.event.leagueName,
+      market: p.sel.market, outcome: p.sel.outcome, line: p.sel.line,
+      label: p.sel.label, odd: p.sel.odd, book: p.sel.book,
+      confidence: p.sel.confidence, ev: p.sel.consensusEv,
+      rationale: p.sel.rationale, tacticalNotes: p.sel.tacticalNotes,
+      factors: p.sel.factors
+    }));
+
+    const corr = analyzeCombo(comboLegs);
+    if (skipCorrelated && !corr.ok && corr.warnings?.length) {
+      // Intentar reemplazar leg correlacionada con la siguiente mejor opción
+      const corrIdx = corr.warnings[0]?.i ?? 0;
+      const replacement = pool.find(p =>
+        !chosen.some(c => c.sel === p.sel) &&
+        !comboLegs.some(l => l.eventId === p.event.id)
+      );
+      if (replacement) {
+        comboLegs[corrIdx] = {
+          eventId: replacement.event.id,
+          home: replacement.event.home?.name, away: replacement.event.away?.name,
+          sport: replacement.event.sport, league: replacement.event.leagueName,
+          market: replacement.sel.market, outcome: replacement.sel.outcome,
+          line: replacement.sel.line, label: replacement.sel.label,
+          odd: replacement.sel.odd, book: replacement.sel.book,
+          confidence: replacement.sel.confidence, ev: replacement.sel.consensusEv,
+          rationale: replacement.sel.rationale, tacticalNotes: replacement.sel.tacticalNotes
+        };
+      }
+    }
+
+    const totalOdd = comboLegs.reduce((a, b) => a * b.odd, 1);
+    const sig = comboLegs.map(l => `${l.eventId}:${l.market}:${l.outcome}:${l.line || ''}`).sort().join('|');
+    if (excludeSigs.has(sig)) return null;
+    excludeSigs.add(sig);
+
+    return {
+      legs: comboLegs,
+      totalOdd: Number(totalOdd.toFixed(2)),
+      avgConfidence: Number((comboLegs.reduce((a, b) => a + (b.confidence || 0), 0) / comboLegs.length).toFixed(3)),
+      sumEv: Number(comboLegs.reduce((a, b) => a + (b.ev || 0), 0).toFixed(2)),
+      correlation: analyzeCombo(comboLegs),
+      type: targetType,
+      legCount: comboLegs.length,
+      sportsCount: new Set(comboLegs.map(l => l.sport)).size
+    };
+  }
+
+  const combos = [];
+  const seenSigs = new Set();
+  // Generar `count` combos: alternamos targetType (risk + tipo opuesto) para variedad
+  const typeOrder = [risk, risk === 'cons' ? 'eq' : risk === 'eq' ? 'agg' : 'eq', 'eq'];
+  for (let i = 0; i < count * 3 && combos.length < count; i++) {
+    const t = typeOrder[i % typeOrder.length];
+    const combo = buildOneCombo(t, seenSigs);
+    if (combo) combos.push(combo);
+  }
+
+  // Si activaron useAiBuilder Y tenemos LLM, pedimos a Groq que ELIJA los
+  // mejores combos del pool con justificación profunda — no solo EV ranking.
+  let aiNarrative = null;
+  if (useAiBuilder && pool.length >= legs && process.env.BS_GROQ_API_KEY) {
+    try {
+      const topPool = pool.slice(0, Math.min(30, pool.length));
+      const aiPrompt = `Tenés ${topPool.length} picks candidatos de partidos de hoy. El user quiere ${count} combinada(s) de ${legs} legs cada una.
+Riesgo: ${risk}. Mezclar deportes: ${mixSports}. Legs por partido máx: ${legsPerMatch}.
+${targetOdd ? `Cuota total objetivo: ~${targetOdd.toFixed(2)}` : ''}
+
+Tu tarea: analizar profundamente y ELEGIR las ${count} mejores combinaciones, justificando POR QUÉ esas legs se complementan (no solo EV puro — considerá: historial H2H, lesiones, importancia de la liga, ritmo del partido, correlación negativa, momento sharp).
+
+Pool de picks (con factores resumidos):
+${topPool.map((p, i) => `[${i}] ${p.event.home?.name} vs ${p.event.away?.name} | ${p.event.sport} | ${p.event.leagueName || '?'}
+  Pick: ${p.sel.label || p.sel.outcome} @ ${p.sel.odd?.toFixed(2)} (${p.sel.book})
+  EV: ${(p.sel.consensusEv || 0).toFixed(2)}% · Confidence: ${((p.sel.confidence || 0) * 100).toFixed(0)}%
+  Rationale: ${p.sel.rationale?.slice(0, 120) || ''}`
+      ).join('\n')}
+
+JSON estricto:
+{
+  "combos": [
+    {
+      "legIndices": [<indices del pool>],
+      "narrative": "<2-3 frases: por qué estas legs específicas forman una combinada sólida>",
+      "edge": "<una frase: el edge estructural que ves>"
+    }
+  ],
+  "globalInsight": "<1-2 frases: qué tienen en común las combinadas elegidas>"
+}`;
+
+      const systemPrompt = 'Sos un analista cuantitativo SENIOR construyendo combinadas óptimas. Pensás en correlación, edge estructural, momentum, no solo EV puro. JSON estricto.';
+      const aiResult = await groqJsonGeneric(systemPrompt, aiPrompt, { maxTokens: 2000, temperature: 0.4 });
+      if (aiResult?.combos) {
+        // Reemplazar combos basados en EV con los del LLM
+        const aiCombos = [];
+        for (const ac of aiResult.combos) {
+          if (!Array.isArray(ac.legIndices)) continue;
+          const sel = ac.legIndices.map(i => topPool[i]).filter(Boolean);
+          if (sel.length < 2) continue;
+          const legs = sel.map(p => ({
+            eventId: p.event.id, home: p.event.home?.name, away: p.event.away?.name,
+            sport: p.event.sport, league: p.event.leagueName,
+            market: p.sel.market, outcome: p.sel.outcome, line: p.sel.line,
+            label: p.sel.label, odd: p.sel.odd, book: p.sel.book,
+            confidence: p.sel.confidence, ev: p.sel.consensusEv,
+            rationale: p.sel.rationale, tacticalNotes: p.sel.tacticalNotes
+          }));
+          const totalOdd = legs.reduce((a, b) => a * b.odd, 1);
+          aiCombos.push({
+            legs, totalOdd: Number(totalOdd.toFixed(2)),
+            avgConfidence: Number((legs.reduce((a, b) => a + (b.confidence || 0), 0) / legs.length).toFixed(3)),
+            sumEv: Number(legs.reduce((a, b) => a + (b.ev || 0), 0).toFixed(2)),
+            correlation: analyzeCombo(legs),
+            type: risk,
+            legCount: legs.length,
+            sportsCount: new Set(legs.map(l => l.sport)).size,
+            aiNarrative: String(ac.narrative || '').slice(0, 400),
+            aiEdge: String(ac.edge || '').slice(0, 200)
+          });
+        }
+        if (aiCombos.length) {
+          combos.length = 0;
+          combos.push(...aiCombos.slice(0, count));
+        }
+        aiNarrative = aiResult.globalInsight ? String(aiResult.globalInsight).slice(0, 400) : null;
+      }
+    } catch (e) {
+      log(`[generator:ai] ${e?.message?.slice(0, 120)}`);
     }
   }
 
   res.json({
     combos: combos.slice(0, count),
-    meta: { analyzed: analyzed.length, passing: passing.length, filtersApplied: { minSharp, skipInjured, skipBadWeather, skipCorrelated } }
+    aiNarrative,
+    meta: {
+      analyzed: analyzed.length,
+      passing: passing.length,
+      poolSize: pool.length,
+      filtersApplied: { minSharp, skipInjured, skipBadWeather, skipCorrelated, legsPerMatch, mixSports, useAiBuilder, targetOdd }
+    }
   });
 });
 
@@ -673,6 +836,92 @@ ${sb.timeToEvent ? `Minutes to kickoff: ${Math.floor(sb.timeToEvent / 60000)}` :
     log(`[ai:surebet] err ${e?.message?.slice(0, 100)}`);
     res.status(503).json({ error: 'IA no disponible' });
   }
+});
+
+/* ────────────────────────────────────────────────────────────────────
+ * UNIVERSAL LOGO RESOLVER
+ * Descarga logos reales desde TheSportsDB (free, sin API key con key '3').
+ * Cache persistente in-memory + disk (logos no cambian). Sin esto, equipos
+ * fuera de la TEAMS map de logos.js caen siempre a neutralChip de iniciales.
+ * ──────────────────────────────────────────────────────────────────── */
+const logoCache = new LRUCache({ max: 5000, ttl: 0 });   // ttl 0 = no expira
+const logoNegativeCache = new LRUCache({ max: 2000, ttl: 24 * 60 * 60 * 1000 });   // 24h reintentar
+
+function normalizeLogoKey(name) {
+  return String(name || '').toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')   // strip acentos
+    .replace(/\b(fc|cf|sc|ac|club|de|el|la|los|the)\b/g, '')
+    .replace(/[^a-z0-9]/g, ' ')
+    .replace(/\s+/g, ' ').trim();
+}
+
+async function resolveLogo(team, sport) {
+  const key = normalizeLogoKey(team);
+  if (!key) return null;
+  if (logoCache.has(key)) return logoCache.get(key);
+  if (logoNegativeCache.has(key)) return null;
+
+  // 1) TheSportsDB search (free API, key '3' es el demo key con rate limit ok)
+  try {
+    const url = `https://www.thesportsdb.com/api/v1/json/3/searchteams.php?t=${encodeURIComponent(team)}`;
+    const ctrl = new AbortController();
+    setTimeout(() => ctrl.abort(), 6000);
+    const r = await fetch(url, { signal: ctrl.signal });
+    if (r.ok) {
+      const data = await r.json();
+      const teams = data?.teams || [];
+      // Filtrar por deporte si nos lo dieron — TheSportsDB devuelve teams de
+      // múltiples deportes (e.g. "Barcelona" devuelve fútbol Y básquet).
+      const sportMatch = sport ? teams.filter(t => {
+        const ts = String(t.strSport || '').toLowerCase();
+        if (sport === 'soccer') return ts.includes('soccer') || ts.includes('football');
+        if (sport === 'basketball') return ts.includes('basketball');
+        if (sport === 'tennis') return ts.includes('tennis');
+        if (sport === 'amfootball') return ts.includes('american football');
+        if (sport === 'baseball') return ts.includes('baseball');
+        if (sport === 'hockey') return ts.includes('ice hockey');
+        return true;
+      }) : teams;
+      const best = (sportMatch[0] || teams[0]);
+      if (best?.strBadge || best?.strLogo) {
+        const result = best.strBadge || best.strLogo;
+        logoCache.set(key, result);
+        return result;
+      }
+    }
+  } catch (e) {
+    log(`[logo:sportsdb] ${e?.message?.slice(0, 80)}`);
+  }
+
+  logoNegativeCache.set(key, true);
+  return null;
+}
+
+/* GET /api/logo?team=X&sport=Y — devuelve URL de logo o 404.
+ * Cliente lo llama async y reemplaza placeholder cuando llega. */
+app.get('/api/logo', async (req, res) => {
+  const team = String(req.query.team || '').trim();
+  const sport = String(req.query.sport || '').trim();
+  if (!team) return res.status(400).json({ error: 'missing team' });
+  try {
+    const url = await resolveLogo(team, sport);
+    if (!url) return res.status(404).json({ error: 'not-found' });
+    res.json({ url, source: 'thesportsdb' });
+  } catch (e) {
+    res.status(500).json({ error: e?.message });
+  }
+});
+
+/* POST /api/logos/batch — resolver muchos equipos en una sola call. */
+app.post('/api/logos/batch', express.json(), async (req, res) => {
+  const teams = (req.body?.teams || []).filter(Boolean).slice(0, 50);
+  const sport = req.body?.sport;
+  const results = {};
+  await Promise.all(teams.map(async name => {
+    try { results[name] = await resolveLogo(name, sport); }
+    catch { results[name] = null; }
+  }));
+  res.json(results);
 });
 
 /* GET /api/match/:id/deep — Análisis profundo de UN partido específico.

@@ -116,8 +116,8 @@
       return `
         <div class="match">
           <div class="teams">
-            <div class="cluster">${BSIcons.teamLogo(m.home, { size: 22 })}<strong class="name">${BSUI.esc(m.home.name)}</strong></div>
-            <div class="cluster">${BSIcons.teamLogo(m.away, { size: 22 })}<strong class="name">${BSUI.esc(m.away.name)}</strong></div>
+            <div class="cluster">${BSIcons.teamLogo(m.home, { size: 22, sport: m.sport })}<strong class="name">${BSUI.esc(m.home.name)}</strong></div>
+            <div class="cluster">${BSIcons.teamLogo(m.away, { size: 22, sport: m.sport })}<strong class="name">${BSUI.esc(m.away.name)}</strong></div>
             <div class="muted tiny">${BSUI.esc(m.leagueName)} · ${BSUI.dt(m.start)}</div>
           </div>
           <button class="odd best" data-add='${mkLeg(m.home.name + ' gana', bestH.v)}'>
