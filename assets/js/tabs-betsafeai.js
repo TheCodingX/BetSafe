@@ -638,6 +638,10 @@
     });
   }
 
-  // Registrar tab
-  BSDash.register?.('betsafeai', render) || (window.BSDash.TAB_RENDERERS = Object.assign(window.BSDash.TAB_RENDERERS || {}, { betsafeai: render }));
+  // Registrar tab cuando BSDash esté disponible (puede cargarse antes que dashboard.js)
+  function doRegister() {
+    if (window.BSDash?.register) window.BSDash.register('betsafeai', render);
+    else setTimeout(doRegister, 30);
+  }
+  doRegister();
 })();

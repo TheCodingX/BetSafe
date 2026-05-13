@@ -229,6 +229,39 @@
       BSDash.addToSlip(data);
     }));
     host.querySelectorAll('[data-open-factors]').forEach(b => b.addEventListener('click', () => openFactorsModal(b.dataset.openFactors)));
+    // Share pick: usa Web Share API o clipboard fallback
+    host.querySelectorAll('[data-share-pick]').forEach(b => b.addEventListener('click', () => {
+      const eventId = b.dataset.sharePick;
+      const pick = state.picks.find(p => p.event?.id === eventId);
+      if (!pick) return;
+      const ev = pick.event;
+      const eqSel = pick.selections?.find(s => s.type === 'eq') || pick.selections?.[0];
+      const txt = `📊 Análisis IA · BetSafe
+
+${ev.home.name} vs ${ev.away.name}
+${ev.leagueName || ''} · ${BSUI.dt(ev.start)}
+
+Pick principal: ${eqSel?.label || eqSel?.outcome || '?'} @ ${eqSel?.odd?.toFixed?.(2) || '?'}
+EV: ${eqSel?.consensusEv != null ? `${eqSel.consensusEv > 0 ? '+' : ''}${eqSel.consensusEv.toFixed(1)}%` : '?'}
+Confianza: ${eqSel?.confidence ? (eqSel.confidence * 100).toFixed(0) + '%' : '?'}
+
+${pick.llmKeyFactor ? '⚡ ' + pick.llmKeyFactor : ''}
+
+— Análisis generado en betsafe.bet`;
+      const shareData = { title: `${ev.home.name} vs ${ev.away.name}`, text: txt, url: location.href };
+      (async () => {
+        try {
+          if (navigator.share && navigator.canShare?.(shareData)) {
+            await navigator.share(shareData);
+          } else {
+            await navigator.clipboard.writeText(txt);
+            BSUI.toast?.({ title: 'Pick copiado', message: 'Pegalo en redes o WhatsApp.', type: 'success' });
+          }
+        } catch (e) {
+          if (e.name !== 'AbortError') BSUI.toast?.({ title: 'No se pudo compartir', type: 'error' });
+        }
+      })();
+    }));
   }
 
   function renderSkeleton(n) {
@@ -293,9 +326,18 @@
           </div>
         </details>` : ''}
 
-        <div class="row between" style="margin-top:10px">
-          <button class="btn btn-ghost btn-sm" data-open-factors="${ev.id}">Ver todos los factores</button>
-          <span class="muted tiny">${f.weather && !f.weather.unavailable ? `Clima: ${f.weather.tempC?.toFixed?.(0) || '?'}°C · ${f.weather.condition || ''}` : ''}</span>
+        <div class="row between" style="margin-top:10px;flex-wrap:wrap;gap:8px">
+          <div class="cluster" style="gap:6px;flex-wrap:wrap">
+            <button class="btn btn-ghost btn-sm" data-open-factors="${ev.id}" title="Ver todos los factores: clima, lesiones, histórico, modelos">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+              Ver factores
+            </button>
+            <button class="btn btn-ghost btn-sm" data-share-pick="${ev.id}" title="Compartir este pick">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+              Compartir
+            </button>
+          </div>
+          <span class="muted tiny">${f.weather && !f.weather.unavailable ? `Clima: ${f.weather.tempC?.toFixed?.(0) || '?'}°C · ${f.weather.conditionDesc || f.weather.condition || ''}` : ''}</span>
         </div>
       </article>
     `;

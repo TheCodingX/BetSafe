@@ -73,11 +73,46 @@ app.disable('x-powered-by');
 
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', CORS_ORIGIN);
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  // Security headers básicos
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   if (req.method === 'OPTIONS') return res.status(204).end();
   next();
 });
+
+// ── Rate limiting básico (in-memory) — protege /api/betsafe-ai/build y
+// /api/combo/analyze que disparan calls LLM costosos. Por IP, 30 req/min.
+const rateLimitBuckets = new Map();
+function rateLimit(req, res, next) {
+  // Solo aplicar a endpoints AI
+  if (!/\/api\/(betsafe-ai|combo\/analyze|surebet\/.+\/explain|daily-report)/.test(req.path)) {
+    return next();
+  }
+  const ip = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress || 'unknown';
+  const now = Date.now();
+  const bucket = rateLimitBuckets.get(ip) || { count: 0, resetAt: now + 60000 };
+  if (now > bucket.resetAt) {
+    bucket.count = 0;
+    bucket.resetAt = now + 60000;
+  }
+  bucket.count++;
+  rateLimitBuckets.set(ip, bucket);
+  if (bucket.count > 30) {
+    res.setHeader('Retry-After', String(Math.ceil((bucket.resetAt - now) / 1000)));
+    return res.status(429).json({ error: 'Demasiadas solicitudes — esperá un momento.' });
+  }
+  // Cleanup: si el map supera 1000 IPs, purgar los expirados
+  if (rateLimitBuckets.size > 1000) {
+    for (const [k, v] of rateLimitBuckets.entries()) {
+      if (now > v.resetAt + 60000) rateLimitBuckets.delete(k);
+    }
+  }
+  next();
+}
+app.use(rateLimit);
 
 // Servir el frontend estático en raíz (single deploy).
 app.use(express.static(PUBLIC_DIR, {
