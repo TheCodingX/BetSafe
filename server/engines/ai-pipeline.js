@@ -117,6 +117,34 @@ async function analyzeMatch(event, ctx = {}) {
   // 4) Consenso entre modelos
   const selections = mergeSelections(event, factors, quant, poisson, eloAdj, llm);
 
+  // 5) Enriquecer cada selection con métricas avanzadas para el frontend
+  for (const s of selections) {
+    if (s.odd && s.consensusProb) {
+      const impliedProb = 1 / s.odd;
+      // valueGap = (real - implied) / implied → cuánto más probable es vs el mercado
+      s.valueGap = Number(((s.consensusProb - impliedProb) / impliedProb * 100).toFixed(2));
+      s.impliedProb = Number(impliedProb.toFixed(4));
+      // Confianza calibrada: depende de stdev entre modelos + nivel sharp
+      if (s.fairProb != null && s.poissonProb != null) {
+        const ps = [s.fairProb, s.poissonProb, s.eloProb, s.llmProb].filter(Number.isFinite);
+        if (ps.length >= 2) {
+          const mean = ps.reduce((a, b) => a + b, 0) / ps.length;
+          const stdev = Math.sqrt(ps.reduce((a, p) => a + (p - mean) ** 2, 0) / ps.length);
+          s.modelStdev = Number(stdev.toFixed(4));
+          s.modelConvergence = stdev < 0.05 ? 'alta' : stdev < 0.12 ? 'media' : 'baja';
+        }
+      }
+      // Kelly fractional (1/4 conservador) — stake recomendado
+      if (s.consensusEv != null && s.consensusEv > 0) {
+        const b = s.odd - 1;
+        const p = s.consensusProb;
+        const q = 1 - p;
+        const kelly = b > 0 ? (b * p - q) / b : 0;
+        s.kellyFractional = Math.max(0, Math.min(0.25, kelly * 0.25));
+      }
+    }
+  }
+
   const result = {
     event: factors.event,
     factors: {

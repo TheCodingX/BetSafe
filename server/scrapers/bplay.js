@@ -14,7 +14,7 @@
  */
 'use strict';
 
-const { httpGet, httpGetNative, log } = require('../lib');
+const { httpGet, httpGetNative, httpViaScrapingBee, log } = require('../lib');
 const { parseXmlFeed } = require('../lib/bplayXml');
 const { withRetry, CircuitBreaker } = require('../lib/retry');
 
@@ -49,6 +49,24 @@ async function scrape() {
         xml = await httpGetNative(FEED_URL, { headers, timeout: 20000 });
       } catch (e) {
         log(`[bplay-xml] httpGetNative también falló: ${e.message?.slice(0,100)}`);
+      }
+    }
+
+    // 3RD-TIER FALLBACK: ScrapingBee con IP AR (~5 créditos sin render_js)
+    if ((!xml || xml.length < 1000) && process.env.SCRAPINGBEE_KEY) {
+      log(`[bplay-xml] tirando ScrapingBee como último recurso`);
+      try {
+        const r = await httpViaScrapingBee(FEED_URL, {
+          timeout: 30000,
+          premium: true,
+          renderJs: false,
+          country: 'ar',
+          json: false,
+          tag: 'bplay:xml'
+        });
+        if (r?.text && r.text.length > 1000) xml = r.text;
+      } catch (e) {
+        log(`[bplay-xml] ScrapingBee también falló: ${e.message?.slice(0,100)}`);
       }
     }
 

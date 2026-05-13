@@ -18,7 +18,7 @@
  */
 'use strict';
 
-const { httpJsonNative, log } = require('../lib');
+const { httpJsonNative, httpViaScrapingBee, log } = require('../lib');
 const {
   buildEventFromGetEvents,
   buildEventFromMarquee,
@@ -28,7 +28,17 @@ const { withRetry, CircuitBreaker } = require('../lib/retry');
 
 const breaker = new CircuitBreaker({ name: 'codere', failThreshold: 5, cooldownMs: 60_000 });
 
-const BASE = 'https://m.caba.codere.bet.ar/NavigationService';
+/* Codere AR ha cambiado de dominios. Probamos múltiples bases hasta encontrar
+ * una viva. Si NINGUNA responde, intentamos ScrapingBee como último recurso
+ * (Codere a veces filtra por IP/geo y SBee permite IP AR). */
+const CODERE_BASES = [
+  'https://m.caba.codere.bet.ar/NavigationService',
+  'https://m.pba.codere.bet.ar/NavigationService',
+  'https://m.cba.codere.bet.ar/NavigationService',
+  'https://m.codere.com.ar/NavigationService',
+  'https://apuestas.codere.com.ar/NavigationService'
+];
+let CACHED_BASE = null;   // primer base que respondió, cached para todas las llamadas siguientes
 
 const HEADERS = {
   'Accept': 'application/json, text/plain, */*',
@@ -115,9 +125,51 @@ let cachedAt = 0;
 let cachedLeagueNodeIds = null;
 let cachedLeagueNodeIdsAt = 0;
 
+/* Probar cada CODERE_BASE en orden hasta encontrar uno vivo.
+ * Cachea el ganador en CACHED_BASE para no repetir la búsqueda en cada call. */
+async function tryBases(path) {
+  // Si ya tenemos un base que funcionó, intentarlo primero
+  const bases = CACHED_BASE
+    ? [CACHED_BASE, ...CODERE_BASES.filter(b => b !== CACHED_BASE)]
+    : CODERE_BASES.slice();
+  let lastErr = null;
+  for (const base of bases) {
+    try {
+      const data = await httpJsonNative(base + path, { headers: HEADERS, timeout: 8000 });
+      if (data) {
+        CACHED_BASE = base;   // recordar este como base válido
+        return data;
+      }
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  // FINAL FALLBACK: ScrapingBee con render_js=false (es API JSON, no necesita JS).
+  // Usa IP residencial AR para bypass de geo-blocking.
+  if (process.env.SCRAPINGBEE_KEY) {
+    for (const base of bases) {
+      try {
+        const r = await httpViaScrapingBee(base + path, {
+          timeout: 18000,
+          premium: true,
+          renderJs: false,
+          country: 'ar',
+          json: true,
+          tag: 'codere:api'
+        });
+        if (r?.json) {
+          CACHED_BASE = base;
+          return r.json;
+        }
+      } catch (_) {}
+    }
+  }
+  throw lastErr || new Error('all codere bases failed');
+}
+
 async function get(path) {
   return breaker.exec(() => withRetry(
-    () => httpJsonNative(BASE + path, { headers: HEADERS, timeout: 12000 }),
+    () => tryBases(path),
     { maxAttempts: 2, baseMs: 400 }
   ));
 }

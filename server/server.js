@@ -1137,17 +1137,74 @@ Si el usuario no menciona algo, usá defaults razonables.`;
     });
   }
 
-  // 4) Seleccionar las mejores `legs` legs maximizando cuota / EV / confianza
-  // Si hay targetOdd, intentamos acercarnos a esa cuota total
-  const sortedPool = pool.slice().sort((a, b) => (b.sel.consensusEv || 0) - (a.sel.consensusEv || 0));
+  // ══════════════════════════════════════════════════════════════════════════
+  // 4) SMART LEG SELECTION — algoritmo multi-criterio
+  // ══════════════════════════════════════════════════════════════════════════
+  // Cada leg se rankea por SCORE compuesto:
+  //   score = EV * 1.0 + confidence * 25 + (top_team ? 8 : 0) + (in_league_filter ? 10 : 0)
+  // Si hay targetOdd: optimization de Pareto buscando combo más cercana,
+  // priorizando combos con mayor score promedio.
+  function legScore(p) {
+    const ev = p.sel.consensusEv || 0;
+    const conf = p.sel.confidence || 0;
+    const isTop = orchestrator.eventPriority?.(p.event) >= 2 ? 1 : 0;
+    const hasLeague = filters.leagues.length === 0 || filters.leagues.some(lg =>
+      (p.event.leagueName || '').toLowerCase().includes(lg.replace(/-/g, ' ')) ||
+      p.event.league === lg
+    ) ? 1 : 0;
+    return ev + conf * 25 + isTop * 8 + hasLeague * 10;
+  }
+  const sortedPool = pool.slice().sort((a, b) => legScore(b) - legScore(a));
   let chosen = sortedPool.slice(0, filters.legs);
+
   if (filters.targetOdd) {
-    // Greedy: probar combinaciones cercanas al target con backtracking simple
+    // ── Optimization híbrida: greedy + random sampling para targetOdd ──
     const N = pool.length;
     let bestCombo = chosen;
-    let bestDiff = Math.abs(chosen.reduce((a, c) => a * c.sel.odd, 1) - filters.targetOdd);
-    // 50 intentos aleatorios para acercarse al target
-    for (let i = 0; i < 50; i++) {
+    let bestComboTotal = chosen.reduce((a, c) => a * c.sel.odd, 1);
+    let bestScore = -Infinity;
+
+    function evalCombo(combo) {
+      const total = combo.reduce((a, c) => a * c.sel.odd, 1);
+      const diff = Math.abs(total - filters.targetOdd);
+      const avgScore = combo.reduce((a, c) => a + legScore(c), 0) / combo.length;
+      // Función objetivo: minimizar diff de cuota target, maximizar avgScore.
+      // El peso de diff es alto cuando estamos lejos del target.
+      const fit = -diff * 2 + avgScore;
+      return { total, diff, fit };
+    }
+
+    // 1) Greedy: empezar con top-scored y reemplazar 1 leg a la vez si mejora.
+    let cur = chosen.slice();
+    for (let iter = 0; iter < 20; iter++) {
+      const { fit } = evalCombo(cur);
+      let improved = false;
+      // Intentar reemplazar cada leg actual con cada candidato del pool
+      for (let i = 0; i < cur.length; i++) {
+        for (let j = 0; j < N; j++) {
+          if (cur.includes(pool[j])) continue;
+          const newCur = cur.slice();
+          newCur[i] = pool[j];
+          const r = evalCombo(newCur);
+          if (r.fit > fit + 0.01) {
+            cur = newCur;
+            improved = true;
+            break;
+          }
+        }
+        if (improved) break;
+      }
+      if (!improved) break;
+    }
+    const greedyResult = evalCombo(cur);
+    if (greedyResult.fit > bestScore) {
+      bestScore = greedyResult.fit;
+      bestCombo = cur;
+      bestComboTotal = greedyResult.total;
+    }
+
+    // 2) Random sampling: 80 intentos rápidos buscando mejor fit
+    for (let i = 0; i < 80; i++) {
       const sample = [];
       const used = new Set();
       while (sample.length < filters.legs && used.size < N) {
@@ -1157,9 +1214,12 @@ Si el usuario no menciona algo, usá defaults razonables.`;
         sample.push(pool[idx]);
       }
       if (sample.length !== filters.legs) continue;
-      const totalOdd = sample.reduce((a, c) => a * c.sel.odd, 1);
-      const diff = Math.abs(totalOdd - filters.targetOdd);
-      if (diff < bestDiff) { bestDiff = diff; bestCombo = sample; }
+      const r = evalCombo(sample);
+      if (r.fit > bestScore) {
+        bestScore = r.fit;
+        bestCombo = sample;
+        bestComboTotal = r.total;
+      }
     }
     chosen = bestCombo;
   }
