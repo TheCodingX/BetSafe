@@ -38,64 +38,31 @@ const GROQ_KEY     = process.env.BS_GROQ_API_KEY     || process.env.GROQ_API_KEY
 const GEMINI_KEY   = process.env.BS_GEMINI_API_KEY   || process.env.GEMINI_API_KEY   || '';
 const OPENROUTER_KEY = process.env.BS_OPENROUTER_API_KEY || process.env.OPENROUTER_API_KEY || '';
 
-const SYSTEM_PROMPT = `Sos un analista cuantitativo SENIOR especializado en apuestas deportivas con foco AR.
-Tenés acceso a un STACK DE DATOS irreproducible para un usuario normal:
-- Cuotas en tiempo real de 6 casas legales AR (Bplay, Betano, BetWarrior, Codere, Bet365 AR, Betsson)
-- Clima por venue (mm lluvia, temp, viento)
-- Lista de lesiones por equipo con severityScore (API-Sports / API-Football)
-- Alineaciones confirmadas (formación táctica + jugadores titulares)
-- Histórico H2H últimos 10 partidos + forma reciente (último 5 partidos)
-- Movimientos sharp del mercado (steam moves >5% en última hora)
-- League tier (importancia 1-10 de la competición)
-- Home advantage histórico del equipo local
-- Modelos cuantitativos propios: Poisson xG ajustado por factores, Elo dinámico con K variable,
-  Shin no-vig (remueve margen del book), todos calibrados con histórico de Brier score.
+const SYSTEM_PROMPT = `Sos un analista senior de apuestas deportivas con datos en tiempo real.
+Tu rol: leer el partido EN PROFUNDIDAD usando IA — no solo matemática.
 
-DISTINCIÓN CRÍTICA: tu output debe ser IMPOSIBLE de generar con un ChatGPT normal porque vos
-tenés acceso a NÚMEROS REALES en tiempo real. Si un usuario con ChatGPT puede dar la misma
-respuesta sin ver tus datos, fallaste. Cada frase de tu rationale debe citar al menos un
-NÚMERO ESPECÍFICO del input (no decir 'mucho sharp money' — decir 'sharp +7.3% en última hora').
+Generá 3 picks coherentes (cons/eq/agg) favoreciendo la MISMA dirección.
+- cons: pick seguro (DC 1X o X2, o Under si bajo scoring) — alta prob, cuota baja
+- eq: pick principal (h2h favorito) — riesgo medio
+- agg: combinada multi-leg del MISMO partido (h2h + over/under + BTTS) — riesgo alto
 
-REGLAS DURAS:
-1) Procesar TODOS los factores. NO inventes datos: cita números reales del input.
-2) Estimar prob calibrada para cada outcome considerando ENSEMBLE de Poisson + Elo + Shin.
-3) Identificar outcome con mayor EV positivo (Prob_real × cuota - 1) > +3%.
-4) Generar EXACTAMENTE 3 selections — COHERENTES entre sí (las 3 favorecen el mismo equipo):
-   - cons: DC home_or_draw / draw_or_away O Under bajo (bajo riesgo, alta prob ~70%+)
-   - eq: h2h sobre el favorito (riesgo medio, prob 45-65%)
-   - agg: combinada multi-leg en favor del MISMO favorito (h2h + over/under
-     según Poisson + BTTS si correlaciona). NO PUEDE ser el outcome opuesto al cons.
-5) RATIONALE de cada pick (4-6 frases) DEBE incluir:
-   - Probabilidad estimada vs probabilidad implícita del mercado (gap = edge)
-   - Número específico del Poisson (λ home, λ away, prob over 2.5)
-   - Mención de lesión clave si severityScore > 0.3
-   - Impact del clima si goalsMultiplier desvía >5%
-   - Sharp money delta % si > 3%
-   - League importance + home advantage explícitos
-6) Calificar confianza según CONSISTENCIA: alta = todos los modelos coinciden (stdev <0.05),
-   media = stdev 0.05-0.12, baja = stdev >0.12.
-7) Warnings ESPECÍFICOS: portero lesionado, suspensión titular, fixture congestion, weather
-   extremo, sharp contra tu pick, divergencia Poisson vs Elo > 15pts.
+Reglas:
+1) NO inventes datos: solo lo del input.
+2) Rationale 3-5 frases CADA pick. Lectura táctica + razones específicas + contexto.
+3) Si el LLM ve algo que la matemática no — destacalo (motivación, fixture, importancia).
+4) Synthesis: párrafo 80-140 palabras leyendo el partido como research note.
 
-Respondé SIEMPRE en JSON estricto (sin markdown, sin texto adicional):
+JSON estricto (sin markdown, sin prefijos):
 {
   "selections": [
-    {
-      "type": "cons" | "eq" | "agg",
-      "market": "h2h" | "totals" | "btts" | "dc",
-      "outcome": "home" | "draw" | "away" | "over" | "under" | "yes" | "no" | "home_or_draw" | ...,
-      "line": null | número (solo totals/ah),
-      "modelProb": 0..1,
-      "rationale": "<4-6 frases citando NÚMEROS REALES — λ Poisson, % steam, nombre del lesionado, mm de lluvia, tier de liga>",
-      "tacticalNotes": "<2-3 frases con lectura táctica: formación, presión, debilidad rival, contexto del partido>",
-      "warnings": ["<warning específico con número>", ...] | [],
-      "confidence": 0..1
-    }
+    {"type":"cons","market":"dc"|"totals","outcome":"home_or_draw"|"draw_or_away"|"under","line":null|número,"modelProb":0..1,"rationale":"...","confidence":0..1},
+    {"type":"eq","market":"h2h","outcome":"home"|"draw"|"away","modelProb":0..1,"rationale":"...","confidence":0..1},
+    {"type":"agg","market":"h2h"|"totals"|"btts","outcome":"...","modelProb":0..1,"rationale":"...","confidence":0..1}
   ],
-  "synthesis": "<1 párrafo 100-160 palabras: lectura cuantitativa institucional. Debe leer como un research note de un sportsbook — citando λ, prob real vs implícita, edge %, factor más impactante. Imposible de generar sin ver los datos>",
-  "keyFactor": "<una frase: el factor cuantitativo MÁS IMPORTANTE con su número (ej: 'λ Poisson home 2.18 + lesión clave del defensor rival = edge +6.2% en home win')>",
-  "marketEdge": "<una frase: dónde está la asimetría mercado-vs-modelo (ej: 'mercado pricing Lazio @2.30, modelo @1.95 → casas sobrevaloran rival')>",
-  "modelConsensus": "<una frase: están todos los modelos de acuerdo? (ej: 'Poisson 48% / Elo 52% / Shin 50% — convergencia fuerte, alta confianza')>"
+  "synthesis":"<80-140 palabras>",
+  "keyFactor":"<una frase>",
+  "marketEdge":"<una frase>",
+  "modelConsensus":"<una frase>"
 }`;
 
 /** Pipeline principal para un partido. */
@@ -374,35 +341,37 @@ async function llmStructured(factors, poisson, elo) {
   });
   const prompt = `Análisis institucional — generá 3 picks coherentes (cons/eq/agg) favoreciendo la MISMA dirección que indica el modelo ensemble. agg = combinada multi-leg del mismo partido (h2h + over/under + BTTS), NO outcome contrario.\n\nDatos:\n${userMsg}`;
 
-  // Cascada: Groq es el primario (rápido, free tier generoso). 1 retry sobre
-  // Groq antes de caer a otros providers — la mayoría de fallas son transient
-  // (rate limit transitorio, network blip), no permanentes. Sin esto un blip
-  // hacía que la pick cayera a "Análisis quant" sin necesidad.
-  const providers = [
-    { name: 'groq',       fn: () => groqJson(SYSTEM_PROMPT, prompt) },
-    { name: 'groq',       fn: () => groqJson(SYSTEM_PROMPT, prompt) },   // retry
-    { name: 'gemini',     fn: () => geminiJson(SYSTEM_PROMPT, prompt) },
+  // Cascada con retry agresivo: Groq es primary (free tier rápido). Reintentamos
+  // hasta 3 veces antes de saltar a Gemini/OpenRouter. La mayoría de fails son
+  // transients (rate limit, network blip).
+  const providers2 = [
+    { name: 'groq', fn: () => groqJson(SYSTEM_PROMPT, prompt) },
+    { name: 'groq', fn: () => groqJson(SYSTEM_PROMPT, prompt) },
+    { name: 'groq', fn: () => groqJson(SYSTEM_PROMPT, prompt) },
+    { name: 'gemini', fn: () => geminiJson(SYSTEM_PROMPT, prompt) },
     { name: 'openrouter', fn: () => openrouterJson(SYSTEM_PROMPT, prompt) }
   ];
-  let lastErr = null;
+  let lastErr2 = null;
   const debug = [];
-  for (const p of providers) {
+  for (let i = 0; i < providers2.length; i++) {
+    const p = providers2[i];
     try {
       const data = await p.fn();
       if (data && (Array.isArray(data.selections) || data.synthesis)) {
-        log(`[ai] ${p.name} OK · selections=${data.selections?.length || 0} synthesis=${data.synthesis ? 'yes' : 'no'}`);
+        log(`[ai] ${p.name} OK (attempt ${i + 1}) · selections=${data.selections?.length || 0} synthesis=${data.synthesis ? 'yes' : 'no'}`);
         return { ...data, provider: p.name };
       }
-      debug.push(`${p.name}:empty-response`);
+      debug.push(`${p.name}#${i + 1}:empty-response`);
     } catch (e) {
-      lastErr = e?.message || String(e);
-      debug.push(`${p.name}:${lastErr.slice(0, 80)}`);
-      // Si es rate-limit (429), pausa 800ms antes del retry para que el
-      // ventana de quota se mueva.
-      if (/429|rate|too.?many/i.test(lastErr || '')) await new Promise(r => setTimeout(r, 800));
+      lastErr2 = e?.message || String(e);
+      debug.push(`${p.name}#${i + 1}:${lastErr2.slice(0, 60)}`);
+      // Backoff exponencial entre retries de Groq
+      if (i < 2 && /429|rate|too.?many|timeout|abort/i.test(lastErr2 || '')) {
+        await new Promise(r => setTimeout(r, 600 * Math.pow(2, i)));
+      }
     }
   }
-  log(`[ai] all providers failed, falling back to offline · trace: ${debug.join(' | ')}`);
+  log(`[ai] all providers failed → offline · trace: ${debug.join(' | ')}`);
   return { selections: [], synthesis: null, provider: 'offline' };
 }
 
@@ -508,10 +477,11 @@ async function groqJson(system, user) {
     body: JSON.stringify({
       model: process.env.BS_GROQ_MODEL || 'llama-3.3-70b-versatile',
       messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
-      temperature: 0.3,
+      temperature: 0.4,
       response_format: { type: 'json_object' },
-      // 2800 tokens permite rationale + tacticalNotes + synthesis sin truncar.
-      max_tokens: 2800
+      // 1400 tokens es suficiente para 3 rationales de 3-5 frases + synthesis 80-140 palabras.
+      // Bajar de 2800 → 1400 reduce TPM ~50% sin perder calidad.
+      max_tokens: 1400
     })
   });
   if (!res.ok) {
@@ -661,6 +631,7 @@ function mergeSelections(event, factors, quant, poisson, elo, llm) {
 
   if (favored === 'home' && dc.home_or_draw && hasDraw) {
     const safeProb = pHome + pDraw;
+    const llmS = llmSelections['dc:home_or_draw'];
     out.push({
       type: 'cons',
       market: 'dc',
@@ -670,12 +641,13 @@ function mergeSelections(event, factors, quant, poisson, elo, llm) {
       book: dc.home_or_drawBook || favoredBook,
       consensusProb: safeProb,
       confidence: Math.min(0.95, baseConfidence + 0.15),
-      rationale: `Doble oportunidad cubre victoria local + empate. Prob combinada ${(safeProb * 100).toFixed(0)}%. Estrategia conservadora cuando el local es favorito pero el rival es competitivo.`,
+      rationale: llmS?.rationale || `Pick conservador: ${event.home.name} jugando como local llega favorito, pero protegemos la pick incluyendo el empate. Cubrimos los dos escenarios más probables (~${(safeProb * 100).toFixed(0)}% de cobertura combinada). Si el local marca primero o el partido se vuelve trabado, igualmente cobramos.`,
       factors: buildFactorList({ outcome: 'home' }, factors)
     });
     consPushed = true;
   } else if (favored === 'away' && dc.draw_or_away && hasDraw) {
     const safeProb = pDraw + pAway;
+    const llmS = llmSelections['dc:draw_or_away'];
     out.push({
       type: 'cons',
       market: 'dc',
@@ -685,7 +657,7 @@ function mergeSelections(event, factors, quant, poisson, elo, llm) {
       book: dc.draw_or_awayBook || favoredBook,
       consensusProb: safeProb,
       confidence: Math.min(0.95, baseConfidence + 0.15),
-      rationale: `Doble oportunidad cubre empate + victoria visitante. Prob combinada ${(safeProb * 100).toFixed(0)}%. Útil cuando el visitante es favorito en un partido cerrado.`,
+      rationale: llmS?.rationale || `Pick conservador: ${event.away.name} llega como favorito pese a jugar de visitante — situación poco común que el mercado a veces ajusta tarde. Doble oportunidad X2 (empate + visitante) ofrece cobertura del ~${(safeProb * 100).toFixed(0)}%, ideal cuando esperás un partido cerrado o un visitante claramente superior.`,
       factors: buildFactorList({ outcome: 'away' }, factors)
     });
     consPushed = true;
@@ -697,6 +669,7 @@ function mergeSelections(event, factors, quant, poisson, elo, llm) {
     const t = line ? factors.market.totals[line] : null;
     if (t && t.under && poisson.pOver25 < 0.55) {
       const pUnder = 1 - poisson.pOver25;
+      const llmU = llmSelections['totals:under@' + line] || llmSelections['totals:under'];
       out.push({
         type: 'cons',
         market: 'totals',
@@ -707,7 +680,7 @@ function mergeSelections(event, factors, quant, poisson, elo, llm) {
         book: t.underBook,
         consensusProb: pUnder,
         confidence: Math.min(0.85, baseConfidence + 0.1),
-        rationale: `Poisson predice ${(poisson.pOver25 * 100).toFixed(0)}% chance de over ${line}. Bajo perfil ofensivo → Under es el pick seguro.`,
+        rationale: llmU?.rationale || `Pick conservador en goles: el perfil ofensivo de ambos equipos sugiere un partido cerrado. Nuestra estimación cuantitativa (xG combinado bajo) muestra que el escenario más probable es un marcador conservador. Bajo ${line} goles es ${(pUnder * 100).toFixed(0)}% probable según nuestros modelos.`,
         factors: buildFactorList({ outcome: 'under' }, factors)
       });
       consPushed = true;
@@ -740,7 +713,7 @@ function mergeSelections(event, factors, quant, poisson, elo, llm) {
       book: favoredBook,
       consensusProb: favoredProb,
       confidence: baseConfidence,
-      rationale: `Modelo ensemble (Poisson + Elo + Shin${llm.provider !== 'offline' ? ' + LLM' : ''}) favorece ${favoredTeam} con ${(favoredProb * 100).toFixed(0)}% probabilidad.`,
+      rationale: `Lectura: ${favoredTeam} llega como favorito en este partido. Probabilidad estimada ${(favoredProb * 100).toFixed(0)}% — la cuota de ${favoredOdd} implica que el mercado valida el escenario. Sin mercados de DC o totals disponibles para una alternativa más conservadora, h2h directo es el pick más seguro.`,
       factors: buildFactorList({ outcome: favored }, factors)
     });
   }
@@ -762,7 +735,7 @@ function mergeSelections(event, factors, quant, poisson, elo, llm) {
       llmProb: llmS?.modelProb || null,
       confidence: baseConfidence,
       kellyHalf: quant.kellyHalf?.[favored === 'home' ? idxHome : favored === 'away' ? idxAway : idxDraw],
-      rationale: llmS?.rationale || `Pick principal: ${favoredTeam} es el favorito según consenso de modelos (Poisson xG + Elo dinámico + Shin no-vig${llm.provider !== 'offline' ? ' + análisis táctico LLM' : ''}). Probabilidad real estimada ${(favoredProb * 100).toFixed(0)}% vs implícita del mercado ${(100 / favoredOdd).toFixed(0)}%.`,
+      rationale: llmS?.rationale || `Lectura del partido: ${favoredTeam} es el favorito claro. Nuestro análisis estima ${(favoredProb * 100).toFixed(0)}% de probabilidad real de victoria, contra el ${(100 / favoredOdd).toFixed(0)}% que implica la cuota del mercado. La diferencia entre ambos números define el edge sobre la casa: si el modelo es correcto, el value está acá.`,
       warnings: llmS?.warnings || [],
       factors: buildFactorList({ outcome: favored }, factors)
     });
