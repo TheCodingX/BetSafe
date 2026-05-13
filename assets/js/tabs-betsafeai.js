@@ -473,7 +473,15 @@
             <span class="muted tiny">(+$${Math.round(profit).toLocaleString('es-AR')} ganancia neta)</span>
           </div>
           <div class="bsai-actions">
-            <button class="btn btn-outline btn-sm" id="bsaiCopy">Copiar combinada</button>
+            <button class="btn btn-outline btn-sm" id="bsaiSave" title="Guardar combinada en favoritos">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+              Guardar
+            </button>
+            <button class="btn btn-outline btn-sm" id="bsaiShare" title="Compartir combinada (link/imagen)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+              Compartir
+            </button>
+            <button class="btn btn-outline btn-sm" id="bsaiCopy">Copiar texto</button>
             <button class="btn btn-primary btn-sm" id="bsaiAddToBuilder">Agregar al Builder</button>
           </div>
         </footer>
@@ -567,10 +575,49 @@
     host.querySelector('#bsaiCopy')?.addEventListener('click', () => {
       const txt = `${r.headline}\n\nCuota total: ${r.totalOdd.toFixed(2)}\n\n${r.legs.map((l, i) =>
         `${i+1}. ${l.home.name} vs ${l.away.name} — ${l.label} @ ${l.odd.toFixed(2)} (${BSData.ALL_BOOKS.find(b => b.key === l.book)?.name || l.book})`
-      ).join('\n')}\n\n${r.narrative || ''}\n\n— Generado por BetSafe AI`;
+      ).join('\n')}\n\n${r.narrative || ''}\n\n— Generado por BetSafe AI · betsafe.bet`;
       navigator.clipboard?.writeText(txt).then(() => {
         BSUI.toast?.({ title: 'Combinada copiada', message: 'Ya podés pegarla donde quieras.', type: 'success' });
       });
+    });
+    // ── SAVE favorite (localStorage) ─────────────────────────────────
+    host.querySelector('#bsaiSave')?.addEventListener('click', () => {
+      const favs = JSON.parse(localStorage.getItem('bs:betsafe-ai:favorites') || '[]');
+      const fav = {
+        id: 'fav_' + Date.now(),
+        prompt: state.lastPrompt,
+        headline: r.headline,
+        narrative: r.narrative,
+        totalOdd: r.totalOdd,
+        legs: r.legs,
+        avgConfidence: r.avgConfidence,
+        ts: Date.now()
+      };
+      favs.unshift(fav);
+      localStorage.setItem('bs:betsafe-ai:favorites', JSON.stringify(favs.slice(0, 50)));
+      BSUI.toast?.({ title: '¡Guardada en favoritos!', message: 'Podés volver a ella desde tu historial.', type: 'success' });
+    });
+    // ── SHARE: prefer Web Share API; fallback a clipboard link ──────
+    host.querySelector('#bsaiShare')?.addEventListener('click', async () => {
+      const shareData = {
+        title: 'Combinada BetSafe AI',
+        text: `${r.headline}\nCuota: ${r.totalOdd.toFixed(2)} · ${r.legs.length} legs\n\n${r.legs.map((l, i) =>
+          `${i+1}. ${l.home.name} vs ${l.away.name} — ${l.label} @ ${l.odd.toFixed(2)}`
+        ).join('\n')}\n\nGenerada por BetSafe AI · betsafe.bet`,
+        url: location.href
+      };
+      try {
+        if (navigator.share && navigator.canShare?.(shareData)) {
+          await navigator.share(shareData);
+        } else {
+          await navigator.clipboard.writeText(shareData.text + '\n\n' + shareData.url);
+          BSUI.toast?.({ title: 'Combinada copiada para compartir', message: 'Pegala en cualquier red social o chat.', type: 'success' });
+        }
+      } catch (e) {
+        if (e.name !== 'AbortError') {
+          BSUI.toast?.({ title: 'No se pudo compartir', message: e.message, type: 'error' });
+        }
+      }
     });
     // Add to Builder
     host.querySelector('#bsaiAddToBuilder')?.addEventListener('click', () => {

@@ -56,6 +56,18 @@
         <div class="kpi"><div class="kpi-label">Yield</div><div class="kpi-value">${BSUI.pct(yieldPct)}</div></div>
       </div>
 
+      <!-- ── BANKROLL EVOLUTION CHART ── -->
+      <div class="card stack mb-4">
+        <div class="row between">
+          <strong>Evolución de banca</strong>
+          <span class="muted tiny" id="trChartMeta">${hist.length} operaciones · ${BSUI.money(profit)} total</span>
+        </div>
+        <div class="bankroll-chart-wrap">
+          <svg class="bankroll-chart" id="trBankrollChart" viewBox="0 0 600 200" preserveAspectRatio="none"></svg>
+          <div class="bankroll-chart-axis" id="trChartAxis"></div>
+        </div>
+      </div>
+
       <div class="grid grid-2 gap-4 mb-4">
         <div class="card stack">
           <strong>Distribución por deporte</strong>
@@ -126,7 +138,83 @@
     });
 
     renderBody();
+    renderBankrollChart(panel, hist);
     BSUI.bindTooltips(panel);
+  }
+
+  /* Renderiza un area chart SVG suave de la evolución de banca (cumulative profit
+   * por fecha). Gradiente desde el color final hacia transparente. Ejes simples. */
+  function renderBankrollChart(panel, hist) {
+    const svg = panel.querySelector('#trBankrollChart');
+    if (!svg) return;
+    const sorted = hist.slice().sort((a, b) => (a.at || 0) - (b.at || 0));
+    if (!sorted.length) return;
+    // Cumulative profit array
+    const points = [];
+    let cum = 0;
+    sorted.forEach((h, i) => {
+      cum += h.profit || 0;
+      points.push({ x: i, y: cum, at: h.at });
+    });
+    const n = points.length;
+    if (n < 2) {
+      svg.innerHTML = `<text x="300" y="100" text-anchor="middle" fill="currentColor" font-size="13" opacity="0.5">Cargá al menos 2 apuestas para ver la curva</text>`;
+      return;
+    }
+    const W = 600, H = 200, P = 8;
+    const ys = points.map(p => p.y);
+    const yMin = Math.min(...ys, 0);
+    const yMax = Math.max(...ys, 0);
+    const yRange = yMax - yMin || 1;
+    const xs = points.map(p => p.x);
+    const xMax = Math.max(...xs);
+    const sx = (x) => P + (x / Math.max(1, xMax)) * (W - 2 * P);
+    const sy = (y) => H - P - ((y - yMin) / yRange) * (H - 2 * P);
+    // Zero baseline
+    const yZero = sy(0);
+    const finalProfit = points[n - 1].y;
+    const lineColor = finalProfit >= 0 ? 'var(--success, #16a34a)' : 'var(--danger, #dc2626)';
+    // Smooth path (Catmull-Rom to cubic)
+    let pathD = `M ${sx(points[0].x).toFixed(2)} ${sy(points[0].y).toFixed(2)}`;
+    for (let i = 0; i < n - 1; i++) {
+      const p0 = points[Math.max(0, i - 1)];
+      const p1 = points[i];
+      const p2 = points[i + 1];
+      const p3 = points[Math.min(n - 1, i + 2)];
+      const cp1x = sx(p1.x) + (sx(p2.x) - sx(p0.x)) / 6;
+      const cp1y = sy(p1.y) + (sy(p2.y) - sy(p0.y)) / 6;
+      const cp2x = sx(p2.x) - (sx(p3.x) - sx(p1.x)) / 6;
+      const cp2y = sy(p2.y) - (sy(p3.y) - sy(p1.y)) / 6;
+      pathD += ` C ${cp1x.toFixed(2)} ${cp1y.toFixed(2)}, ${cp2x.toFixed(2)} ${cp2y.toFixed(2)}, ${sx(p2.x).toFixed(2)} ${sy(p2.y).toFixed(2)}`;
+    }
+    const areaD = pathD + ` L ${sx(points[n-1].x).toFixed(2)} ${H - P} L ${sx(points[0].x).toFixed(2)} ${H - P} Z`;
+    svg.innerHTML = `
+      <defs>
+        <linearGradient id="bankrollGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="${lineColor}" stop-opacity="0.35"/>
+          <stop offset="100%" stop-color="${lineColor}" stop-opacity="0"/>
+        </linearGradient>
+      </defs>
+      ${yMin < 0 && yMax > 0 ? `<line x1="${P}" y1="${yZero.toFixed(2)}" x2="${W - P}" y2="${yZero.toFixed(2)}" stroke="currentColor" stroke-width="0.5" stroke-dasharray="2 3" opacity="0.4"/>` : ''}
+      <path d="${areaD}" fill="url(#bankrollGrad)"/>
+      <path d="${pathD}" fill="none" stroke="${lineColor}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="${sx(points[n-1].x).toFixed(2)}" cy="${sy(points[n-1].y).toFixed(2)}" r="4" fill="${lineColor}"/>
+      <circle cx="${sx(points[n-1].x).toFixed(2)}" cy="${sy(points[n-1].y).toFixed(2)}" r="8" fill="${lineColor}" opacity="0.25">
+        <animate attributeName="r" values="4;14;4" dur="2s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0.45;0;0.45" dur="2s" repeatCount="indefinite"/>
+      </circle>
+    `;
+    // Axis labels
+    const axis = panel.querySelector('#trChartAxis');
+    if (axis) {
+      const fmtMoney = v => BSUI.money(v);
+      axis.innerHTML = `
+        <span class="muted tiny">${new Date(points[0].at).toLocaleDateString('es-AR', { day:'numeric', month:'short' })}</span>
+        <span class="muted tiny">${fmtMoney(0)}</span>
+        <strong class="${finalProfit >= 0 ? 'text-success' : 'text-danger'}" style="font-variant-numeric:tabular-nums">${fmtMoney(finalProfit)}</strong>
+        <span class="muted tiny">${new Date(points[n-1].at).toLocaleDateString('es-AR', { day:'numeric', month:'short' })}</span>
+      `;
+    }
   }
 
   function avg(a) { return a.length ? a.reduce((x,y)=>x+y,0) / a.length : 0; }

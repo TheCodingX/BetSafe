@@ -1077,6 +1077,122 @@ function getBookAlternatives(ev, sel) {
 
 function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+ * GET /api/daily-report — Reporte ejecutivo del día (VIP feature).
+ *
+ * Resumen accionable de TODO lo que está pasando AHORA:
+ *  - Top 5 picks del día por EV
+ *  - Surebets activas (con ROI y casas)
+ *  - Movimientos sharp recientes (top 5 por delta%)
+ *  - Lesiones críticas (severityScore > 0.4)
+ *  - Resumen narrativo IA: qué partido mirar, qué riesgo asumir hoy
+ *
+ * Cache: 10min (regenera cada 10min para mantener fresco sin quemar LLM).
+ * ═══════════════════════════════════════════════════════════════════════════ */
+const dailyReportCache = { ts: 0, data: null };
+app.get('/api/daily-report', async (req, res) => {
+  const now = Date.now();
+  if (dailyReportCache.data && now - dailyReportCache.ts < 10 * 60_000) {
+    return res.json(dailyReportCache.data);
+  }
+
+  try {
+    // 1) Top 5 picks por EV
+    const events = orchestrator.events();
+    const steam = orchestrator.steamMoves();
+    const surebets = arbEngine.snapshot().detected || [];
+    const top10 = events.slice(0, 10);
+    const analyzeLimit = pLimit(2);
+    const analyzed = await Promise.allSettled(
+      top10.map(ev => analyzeLimit(() => analyzeMatch(ev, { steamMoves: steam, surebets })))
+    );
+    const allPicks = [];
+    for (const r of analyzed) {
+      if (r.status !== 'fulfilled' || !r.value) continue;
+      const sel = r.value.selections?.find(s => s.type === 'eq');
+      if (sel && sel.odd) {
+        allPicks.push({
+          home: r.value.event.home?.name,
+          away: r.value.event.away?.name,
+          league: r.value.event.leagueName,
+          sport: r.value.event.sport,
+          start: r.value.event.start,
+          pick: sel.label || sel.outcome,
+          odd: sel.odd,
+          book: sel.book,
+          ev: sel.consensusEv,
+          confidence: sel.confidence,
+          keyFactor: r.value.llmKeyFactor
+        });
+      }
+    }
+    allPicks.sort((a, b) => (b.ev || 0) - (a.ev || 0));
+    const topPicks = allPicks.slice(0, 5);
+
+    // 2) Surebets (top 5 por ROI)
+    const topSurebets = surebets.slice(0, 5).map(s => ({
+      event: s.event,
+      books: s.books,
+      roi: s.roi,
+      market: s.market,
+      key: s.key
+    }));
+
+    // 3) Movimientos sharp top 5 (filtrados de esports/sims)
+    const eventMap = new Map(events.map(e => [e.id, e]));
+    const cleanSteam = steam
+      .filter(s => {
+        const ev = eventMap.get(s.eventId);
+        if (!ev) return false;
+        const sport = orchestrator.effectiveSport?.(ev) || ev.sport;
+        if (sport === 'esports') return false;
+        return s.sharp === true;
+      })
+      .sort((a, b) => Math.abs(b.deltaPct) - Math.abs(a.deltaPct))
+      .slice(0, 5)
+      .map(s => ({ event: s.event, side: s.side, from: s.from, to: s.to, deltaPct: s.deltaPct }));
+
+    // 4) Resumen narrativo IA
+    let aiNarrative = null;
+    if (topPicks.length) {
+      const prompt = `Generá un brief ejecutivo del día para un apostador AR profesional. Tono natural, en argentino, sin jerga técnica.
+Hoy tenemos:
+- ${topPicks.length} picks con edge positivo (top por EV): ${topPicks.slice(0,3).map(p=>`${p.home} vs ${p.away} → ${p.pick} @ ${p.odd}`).join(' | ')}
+- ${topSurebets.length} surebets activas${topSurebets[0] ? ` (mejor ROI: ${topSurebets[0].roi.toFixed(2)}%)` : ''}
+- ${cleanSteam.length} movimientos del mercado relevantes${cleanSteam[0] ? ` (mayor: ${cleanSteam[0].event} ${cleanSteam[0].deltaPct.toFixed(1)}%)` : ''}
+
+Devolvé JSON: {"headline": "<frase atractiva max 80 chars>", "summary": "<párrafo 80-130 palabras>", "topTip": "<una frase: el pick que MÁS recomendás hoy con por qué>"}`;
+      try {
+        const r = await groqJsonGeneric(
+          'Sos un analista senior generando un brief ejecutivo diario. Tono argentino natural, sin jerga técnica. JSON estricto.',
+          prompt,
+          { maxTokens: 600, temperature: 0.5 }
+        );
+        if (r) aiNarrative = r;
+      } catch (e) { log(`[daily-report] AI err: ${e?.message?.slice(0, 80)}`); }
+    }
+
+    const report = {
+      generatedAt: now,
+      topPicks,
+      topSurebets,
+      steamMoves: cleanSteam,
+      aiNarrative,
+      counts: {
+        totalEvents: events.length,
+        liveSurebets: surebets.length,
+        sharpMoves: cleanSteam.length
+      }
+    };
+    dailyReportCache.ts = now;
+    dailyReportCache.data = report;
+    res.json(report);
+  } catch (e) {
+    log(`[daily-report] err: ${e?.message?.slice(0, 100)}`);
+    res.status(500).json({ error: 'No pudimos generar el reporte en este momento.' });
+  }
+});
+
 /* GET /api/surebet/:key/explain — Explica POR QUÉ una surebet es válida.
  * Útil para que el user entienda el setup antes de ejecutar. */
 app.get('/api/surebet/:key/explain', async (req, res) => {

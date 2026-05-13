@@ -14,6 +14,17 @@
         <p class="ov-sub">Esto es lo que tenés disponible hoy.</p>
       </section>
 
+      <!-- ── BRIEF DEL DÍA ────────────────────────────────────────── -->
+      <section class="ov-brief reveal mt-4" id="ovBrief">
+        <div class="ov-brief-loading">
+          <span class="bsai-radar" style="width:64px;height:64px"><span class="bsai-radar__sweep"></span></span>
+          <div class="stack-sm" style="flex:1">
+            <strong>Generando brief del día…</strong>
+            <span class="muted tiny">Analizando partidos, surebets activas y movimientos del mercado.</span>
+          </div>
+        </div>
+      </section>
+
       <section class="reveal mt-6">
         <div class="ov-section-head">
           <h2 class="h3 ov-section-title">Próximos eventos</h2>
@@ -30,6 +41,9 @@
         <div class="ov-quick" id="ovQuick"></div>
       </section>
     `;
+
+    // ── Cargar Daily Report en background (no bloquea el render) ──
+    loadDailyBrief(panel);
 
     // ---- Próximos eventos ----
     const SPORT_LABEL = (key) => BSData.prettySport(key);
@@ -128,6 +142,66 @@
         if (window.BSDash?.go) BSDash.go(id);
       });
     });
+  }
+
+  /* Daily brief widget — fetch /api/daily-report y render con stats + AI summary */
+  async function loadDailyBrief(panel) {
+    const host = panel.querySelector('#ovBrief');
+    if (!host) return;
+    try {
+      const res = await fetch('/api/daily-report');
+      if (!res.ok) throw new Error('http ' + res.status);
+      const r = await res.json();
+      const ai = r.aiNarrative || {};
+      const topPick = r.topPicks?.[0];
+      const surebet = r.topSurebets?.[0];
+      const sharp = r.steamMoves?.[0];
+
+      host.innerHTML = `
+        <div class="ov-brief-card">
+          <div class="ov-brief-head">
+            <span class="ov-brief-eyebrow">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+              Brief del día · análisis IA
+            </span>
+            ${ai.headline ? `<strong class="ov-brief-headline">${BSUI.esc(ai.headline)}</strong>` : ''}
+          </div>
+          ${ai.summary ? `<p class="ov-brief-summary">${BSUI.esc(ai.summary)}</p>` : ''}
+          ${ai.topTip ? `
+            <div class="ov-brief-tip">
+              <span class="ov-brief-tip-label">★ Pick del día</span>
+              <span>${BSUI.esc(ai.topTip)}</span>
+            </div>
+          ` : ''}
+          <div class="ov-brief-stats">
+            <a href="#ai" class="ov-brief-stat">
+              <span class="ov-brief-stat-num">${r.counts?.totalEvents || 0}</span>
+              <span class="ov-brief-stat-label">eventos analizables</span>
+            </a>
+            <a href="#arbitrage" class="ov-brief-stat ${(r.counts?.liveSurebets || 0) > 0 ? 'is-active' : ''}">
+              <span class="ov-brief-stat-num">${r.counts?.liveSurebets || 0}</span>
+              <span class="ov-brief-stat-label">surebets ahora</span>
+              ${surebet ? `<span class="muted tiny">Mejor: +${surebet.roi.toFixed(2)}% ROI</span>` : ''}
+            </a>
+            <a href="#smartmoney" class="ov-brief-stat ${(r.counts?.sharpMoves || 0) > 0 ? 'is-active' : ''}">
+              <span class="ov-brief-stat-num">${r.counts?.sharpMoves || 0}</span>
+              <span class="ov-brief-stat-label">movimientos del mercado</span>
+              ${sharp ? `<span class="muted tiny">${sharp.deltaPct > 0 ? '+' : ''}${sharp.deltaPct.toFixed(1)}% mayor</span>` : ''}
+            </a>
+            ${topPick ? `
+              <a href="#ai" class="ov-brief-stat ov-brief-stat--gold">
+                <span class="ov-brief-stat-num">${topPick.odd.toFixed(2)}</span>
+                <span class="ov-brief-stat-label">cuota top pick</span>
+                <span class="muted tiny">EV +${(topPick.ev || 0).toFixed(1)}%</span>
+              </a>
+            ` : ''}
+          </div>
+        </div>
+      `;
+    } catch (e) {
+      // Silently hide brief if endpoint not available yet
+      host.style.display = 'none';
+    }
   }
 
   function doRegister() {

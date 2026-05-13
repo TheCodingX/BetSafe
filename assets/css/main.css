@@ -10723,3 +10723,178 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .bsai-voice-pulse, .bsai-history-drawer { animation: none; }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Tracker — Bankroll evolution chart
+   ───────────────────────────────────────────────────────────────────────── */
+.bankroll-chart-wrap {
+  position: relative;
+  width: 100%;
+}
+.bankroll-chart {
+  width: 100%;
+  height: 200px;
+  display: block;
+  color: var(--text-secondary);
+}
+.bankroll-chart-axis {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 6px;
+  padding: 0 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Keyboard shortcuts help modal + general kbd styling
+   ───────────────────────────────────────────────────────────────────────── */
+kbd {
+  display: inline-block;
+  min-width: 22px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-align: center;
+  line-height: 1.4;
+  box-shadow: inset 0 -1px 0 rgba(0,0,0,0.05);
+}
+.kbd-shortcuts-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 14px;
+  align-items: center;
+}
+.kbd-shortcuts-grid > div:nth-child(odd) {
+  display: inline-flex;
+  gap: 4px;
+  justify-content: flex-start;
+}
+.kbd-shortcuts-grid > div:nth-child(even) {
+  color: var(--text-secondary);
+  font-size: 0.92rem;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Overview — Daily Brief widget (IA executive summary)
+   ───────────────────────────────────────────────────────────────────────── */
+.ov-brief {
+  margin-top: 14px;
+}
+.ov-brief-loading {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 22px;
+}
+.ov-brief-card {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--brand-500) 5%, transparent), transparent 60%),
+    var(--surface);
+  border: 1px solid color-mix(in srgb, var(--brand-500) 22%, transparent);
+  border-radius: 18px;
+  padding: 22px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: 0 8px 24px -18px color-mix(in srgb, var(--brand-500) 50%, transparent);
+}
+.ov-brief-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ov-brief-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--brand-600);
+  font-weight: 700;
+}
+.ov-brief-headline {
+  font-size: 1.35rem;
+  font-weight: 800;
+  line-height: 1.25;
+  color: var(--text-primary);
+  letter-spacing: -.01em;
+}
+.ov-brief-summary {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+.ov-brief-tip {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 14px;
+  background: color-mix(in srgb, var(--gold-500) 8%, var(--surface-2));
+  border-left: 3px solid var(--gold-500);
+  border-radius: 8px;
+}
+.ov-brief-tip-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--gold-700, #c49a1a);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.ov-brief-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  margin-top: 4px;
+}
+.ov-brief-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 14px;
+  background: var(--surface-2);
+  border: 1px solid transparent;
+  border-radius: 10px;
+  text-decoration: none;
+  color: inherit;
+  transition: all .2s;
+}
+.ov-brief-stat:hover {
+  border-color: var(--brand-500);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px -6px color-mix(in srgb, var(--brand-500) 45%, transparent);
+}
+.ov-brief-stat.is-active {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--success) 10%, var(--surface-2)), var(--surface-2));
+  border-color: color-mix(in srgb, var(--success) 28%, transparent);
+}
+.ov-brief-stat--gold {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--gold-500) 10%, var(--surface-2)), var(--surface-2)) !important;
+  border-color: color-mix(in srgb, var(--gold-500) 28%, transparent) !important;
+}
+.ov-brief-stat-num {
+  font-size: 1.5rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  line-height: 1;
+}
+.ov-brief-stat--gold .ov-brief-stat-num { color: var(--gold-700, #c49a1a); }
+.ov-brief-stat.is-active .ov-brief-stat-num { color: var(--success); }
+.ov-brief-stat-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  color: var(--text-tertiary);
+}

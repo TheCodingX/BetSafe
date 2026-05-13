@@ -41,6 +41,7 @@
     initialTab();
     bindUpgradeCard();
     renderSlipBar();
+    bindKeyboardShortcuts();
 
     // First-run onboarding
     if (BSOnboarding && !BSStore.get(BSStore.KEYS.onboarding)?.done) {
@@ -260,6 +261,80 @@
       const url = location.origin + '/dashboard.html#builder?slip=' + encodeURIComponent(JSON.stringify(slip.legs));
       BSUI.share({ title: 'Mi combinada — BetSafe', url });
     });
+  }
+
+  /* ───────────────────────────────────────────────────────────────────
+   *  KEYBOARD SHORTCUTS — para power users
+   *  ───────────────────────────────────────────────────────────────────
+   *   G O = Inicio          G G = Generador IA      G A = AI Picks
+   *   G B = Builder         G S = BetSafe AI        G R = Arbitraje
+   *   G T = Tracker         G W = Mundial
+   *   /   = Focus búsqueda  ?   = Mostrar ayuda     ESC = Cerrar modal
+   */
+  function bindKeyboardShortcuts() {
+    let leader = false, leaderTimer = null;
+    const SHORTCUTS = {
+      'o': 'overview', 'g': 'aigenerator', 'a': 'ai', 'b': 'builder',
+      's': 'betsafeai', 'r': 'arbitrage', 't': 'tracker', 'w': 'worldcup',
+      'c': 'comparator', 'h': 'calc'
+    };
+    document.addEventListener('keydown', (e) => {
+      const tag = (e.target?.tagName || '').toUpperCase();
+      // No interferir con inputs / textareas / contenteditable
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target?.isContentEditable) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+      if (e.key === '?') {
+        e.preventDefault();
+        showShortcutsHelp();
+        return;
+      }
+      if (e.key === '/') {
+        e.preventDefault();
+        const search = document.querySelector('[data-shell-header] input[type="search"], #aiFilter, .search-input');
+        if (search) { search.focus(); search.select?.(); }
+        return;
+      }
+      if (e.key === 'Escape') {
+        document.querySelector('.modal-close, [data-modal-close]')?.click();
+        return;
+      }
+      // Leader key 'g' + secondary
+      if (leader && SHORTCUTS[e.key.toLowerCase()]) {
+        e.preventDefault();
+        const target = SHORTCUTS[e.key.toLowerCase()];
+        leader = false; clearTimeout(leaderTimer);
+        go(target);
+        return;
+      }
+      if (e.key.toLowerCase() === 'g' && !leader) {
+        leader = true;
+        leaderTimer = setTimeout(() => { leader = false; }, 1500);
+        return;
+      }
+    });
+  }
+
+  function showShortcutsHelp() {
+    const html = `
+      <h3 class="h3 mb-2">Atajos de teclado</h3>
+      <p class="muted tiny mb-3">Las combos empiezan con <kbd>G</kbd> (de "go to") seguido de una letra:</p>
+      <div class="kbd-shortcuts-grid">
+        <div><kbd>G</kbd> <kbd>O</kbd></div><div>Inicio (Overview)</div>
+        <div><kbd>G</kbd> <kbd>G</kbd></div><div>Generador IA</div>
+        <div><kbd>G</kbd> <kbd>A</kbd></div><div>AI Picks</div>
+        <div><kbd>G</kbd> <kbd>B</kbd></div><div>Builder</div>
+        <div><kbd>G</kbd> <kbd>S</kbd></div><div>BetSafe AI ✨</div>
+        <div><kbd>G</kbd> <kbd>R</kbd></div><div>Arbitraje</div>
+        <div><kbd>G</kbd> <kbd>T</kbd></div><div>Tracker</div>
+        <div><kbd>G</kbd> <kbd>C</kbd></div><div>Comparador</div>
+        <div><kbd>G</kbd> <kbd>W</kbd></div><div>Mundial 2026</div>
+        <div><kbd>/</kbd></div><div>Foco en búsqueda</div>
+        <div><kbd>?</kbd></div><div>Esta ayuda</div>
+        <div><kbd>Esc</kbd></div><div>Cerrar modales</div>
+      </div>
+    `;
+    if (window.BSUI?.openModal) BSUI.openModal(html);
   }
 
   // Public API for tab files
