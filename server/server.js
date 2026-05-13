@@ -611,7 +611,7 @@ app.get('/api/picks', async (req, res) => {
  *   - count=N (default 4, max 6) — máximo de combinadas a devolver
  *   - includeEsports=true (default false: NUNCA esports a menos que se pida)
  * ═══════════════════════════════════════════════════════════════════════════ */
-app.get('/api/picks/curated', async (req, res) => {
+app.get('/api/curated-combos', async (req, res) => {
   const sport = req.query.sport || 'all';
   const count = Math.min(6, Math.max(2, Number(req.query.count) || 4));
   const includeEsports = req.query.includeEsports === 'true' || sport === 'esports';

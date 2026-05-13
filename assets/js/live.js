@@ -440,13 +440,15 @@
   }
 
   /* AI-curated combos: 2-5 legs cada uno, la IA decide cuántos.
-   * Reemplaza el modelo viejo de "un pick por partido". */
+   * Reemplaza el modelo viejo de "un pick por partido".
+   * Path: /api/curated-combos (NO /api/picks/curated porque chocaba con
+   * /api/picks/:matchId que toma "curated" como matchId). */
   async function getCuratedCombos(opts = {}) {
     const q = new URLSearchParams();
     if (opts.sport && opts.sport !== 'all') q.set('sport', opts.sport);
     if (opts.count) q.set('count', String(opts.count));
     if (opts.includeEsports) q.set('includeEsports', 'true');
-    return await jget('/api/picks/curated?' + q.toString());
+    return await jget('/api/curated-combos?' + q.toString());
   }
 
   async function getPicksForMatch(matchId) {
