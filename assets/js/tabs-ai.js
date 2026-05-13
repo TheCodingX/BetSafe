@@ -209,7 +209,7 @@
       .slice(0, 3);
     const homeLogo = window.BSLogos?.teamCrest ? BSLogos.teamCrest(ev.home.id, { size: 28, name: ev.home.name, sport: ev.sport }) : BSIcons.teamLogo(ev.home, { size: 28, sport: ev.sport });
     const awayLogo = window.BSLogos?.teamCrest ? BSLogos.teamCrest(ev.away.id, { size: 28, name: ev.away.name, sport: ev.sport }) : BSIcons.teamLogo(ev.away, { size: 28, sport: ev.sport });
-    const leagueLogo = window.BSLogos?.leagueLogo ? BSLogos.leagueLogo(ev.league, { size: 14 }) : '';
+    const leagueLogo = window.BSLogos?.leagueLogo ? BSLogos.leagueLogo(ev.league || ev.leagueName, { size: 14 }) : '';
 
     return `
       <article class="card card-pad-md ai-pick-card" data-event="${ev.id}">
