@@ -298,32 +298,67 @@ function bestSide(byBook, side) {
 }
 
 // ── Surebet detection ──────────────────────────────────────────────────────
+/* Sanity caps (mismos que arbEngine):
+ *   - ROI > 25%  → data error puro, no emitir
+ *   - ROI > 12%  → "palpable error" — la casa lo anularía. Excluido del feed.
+ *   - ROI < 0.1% → ruido numérico, no emitir
+ *
+ * Además, descartamos surebets donde TODAS las patas son del mismo book
+ * (no es arb real — la misma casa cerraría una pata al instante o son
+ * cuotas stale del mismo snapshot). El motor `arbEngine` ya filtra esto en
+ * los detectores específicos, pero este path simple del orchestrator
+ * (que computa h2h sobre bestOdds.h2h) carecía del check. */
+const ROI_MIN = 0.001;
+const ROI_PALPABLE_CAP = 0.12;
+const ROI_SUSPICIOUS_CAP = 0.25;
+
 function detectSurebets(eventsIterable) {
   const out = [];
+  const seen = new Set();        // dedup intra-ciclo por eventId+market
   for (const ev of eventsIterable) {
     if (!ev.bestOdds?.h2h) continue;
+    // Solo surebets de ligas relevantes para nuestra audiencia AR.
+    // Sin esto, el feed de surebets se llenaba de LMB mexicano + semipro.
+    if (!isRelevantLeague(ev.leagueName)) continue;
     const h = ev.bestOdds.h2h.home, d = ev.bestOdds.h2h.draw, a = ev.bestOdds.h2h.away;
     const odds = d ? [h, d, a] : [h, a];
-    if (odds.some(o => !o)) continue;
+    if (odds.some(o => !Number.isFinite(o) || o <= 1.01)) continue;
+
+    const books = d ? [ev.bestOdds.h2h.homeBook, ev.bestOdds.h2h.drawBook, ev.bestOdds.h2h.awayBook]
+                     : [ev.bestOdds.h2h.homeBook, ev.bestOdds.h2h.awayBook];
+
+    // Requerimos AL MENOS 2 books distintos en las patas. Si las 2/3 patas
+    // vienen del mismo book, no es arb real — la casa nunca pagaría ambas.
+    const uniqueBooks = new Set(books.filter(Boolean));
+    if (uniqueBooks.size < 2) continue;
+
     const sum = odds.reduce((s, o) => s + 1 / o, 0);
-    if (sum < 1) {
-      const roi = (1 / sum - 1) * 100;
-      const books = d ? [ev.bestOdds.h2h.homeBook, ev.bestOdds.h2h.drawBook, ev.bestOdds.h2h.awayBook]
-                       : [ev.bestOdds.h2h.homeBook, ev.bestOdds.h2h.awayBook];
-      out.push({
-        eventId: ev.id,
-        event: `${ev.home.name} vs ${ev.away.name}`,
-        sport: ev.sport,
-        league: ev.league,
-        start: ev.start,
-        market: 'h2h',
-        outcomes: d ? ['home','draw','away'] : ['home','away'],
-        odds,
-        books,
-        roi: Number(roi.toFixed(3)),
-        ts: Date.now()
-      });
-    }
+    if (sum >= 1) continue;
+    const roi = 1 / sum - 1;
+    if (roi < ROI_MIN) continue;
+    // Filtra outliers: data error o palpable error que la casa anularía.
+    if (roi > ROI_SUSPICIOUS_CAP) continue;
+    const palpableErrorRisk = roi > ROI_PALPABLE_CAP;
+
+    const dedupKey = `${ev.id}|h2h`;
+    if (seen.has(dedupKey)) continue;
+    seen.add(dedupKey);
+
+    out.push({
+      eventId: ev.id,
+      event: `${ev.home.name} vs ${ev.away.name}`,
+      sport: ev.sport,
+      league: ev.league,
+      leagueName: ev.leagueName,
+      start: ev.start,
+      market: 'h2h',
+      outcomes: d ? ['home','draw','away'] : ['home','away'],
+      odds,
+      books,
+      roi: Number((roi * 100).toFixed(3)),
+      palpableErrorRisk,
+      ts: Date.now()
+    });
   }
   out.sort((a, b) => b.roi - a.roi);
   return out;
@@ -362,11 +397,49 @@ function detectSteam(prev, current) {
 }
 
 // ── API pública del orchestrator ──────────────────────────────────────────
-function events({ sport = 'all', league = null } = {}) {
+
+/* Whitelist de ligas relevantes — espejo del filtro del frontend.
+ * AI Picks + Generator analizan eventos a través de este helper. Sin este
+ * filtro la IA gastaba ciclos analizando LMB mexicano y otros partidos
+ * irrelevantes para nuestra audiencia AR.
+ * Pasar `{ all: true }` para bypass (debug). */
+const RELEVANT_LEAGUE_PATTERNS = [
+  /argentin|primera|liga profes/i,
+  /libertadores|sudamericana|recopa/i,
+  /chile|paraguay|uruguay|colombia|peru|ecuador|bolivia|venezuela/i,
+  /brasileir|brazil|copa do brasil/i,
+  /copa america|copa mundial|world cup/i,
+  /premier league|fa cup|championship|english/i,
+  /la ?liga|spain|copa del rey/i,
+  /serie a|coppa italia|italy/i,
+  /bundesliga|germany/i,
+  /ligue 1|france/i,
+  /champions league|europa league|conference league/i,
+  /eredivisie|netherlands|portugal|primeira liga/i,
+  /turkey|super lig|belgium|jupiler/i,
+  /eurocopa|euro\b/i,
+  /\bnba\b|\bnfl\b|\bmlb\b|\bnhl\b|\bmls\b/i,
+  /college football|ncaa/i,
+  /\batp\b|\bwta\b|grand slam|wimbledon|us open|australian open|french open/i,
+  /\bufc\b|\bmma\b|boxing|boxeo|world boxing/i,
+  /euroleague|eurocup|acb\b/i,
+  /liga nacional/i,
+  /mexico.*liga mx|mexico.*primera/i
+];
+
+function isRelevantLeague(leagueName) {
+  if (!leagueName) return false;
+  return RELEVANT_LEAGUE_PATTERNS.some(re => re.test(leagueName));
+}
+
+function events({ sport = 'all', league = null, all = false } = {}) {
   const list = [];
   state.events.forEach(ev => {
     if (sport !== 'all' && ev.sport !== sport) return;
     if (league && ev.league !== league) return;
+    // Filtro de relevancia por default — descarta LMB mexicano, CIBACOPA,
+    // semipro australiano, etc. Pasar `all: true` para incluirlos (debug).
+    if (!all && !isRelevantLeague(ev.leagueName)) return;
     list.push(ev);
   });
   list.sort((a, b) => (a.start || 0) - (b.start || 0));
@@ -531,7 +604,13 @@ async function cycle() {
   const newSteam = detectSteam(prevSnap, state.events);
 
   if (newSure.length) {
-    state.surebets = newSure.concat(state.surebets).slice(0, 200);
+    // Dedup cross-ciclo: si una surebet del mismo evento+market ya está en
+    // state.surebets, la actualizamos en lugar de duplicarla. Esto evita el
+    // bug donde el mismo partido aparecía 4× en la UI al refrescar varias
+    // veces por ciclo.
+    const newKeys = new Set(newSure.map(sb => `${sb.eventId}|${sb.market}`));
+    const filtered = state.surebets.filter(sb => !newKeys.has(`${sb.eventId}|${sb.market}`));
+    state.surebets = newSure.concat(filtered).slice(0, 200);
     newSure.forEach(sb => bus.emit('surebet', sb));
   }
   if (newSteam.length) {

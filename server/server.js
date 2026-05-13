@@ -402,13 +402,23 @@ app.post('/api/generator', express.json(), async (req, res) => {
   const {
     sport = 'all', leagues = [], risk = 'eq', legs = 3, count = 3,
     minSharp = 0, skipInjured = false, skipBadWeather = false,
-    skipCorrelated = true, markets = ['h2h', 'totals', 'btts', 'dc']
+    skipCorrelated = true, markets = ['h2h', 'totals', 'btts', 'dc'],
+    books = []
   } = req.body || {};
 
   let events = orchestrator.events({ sport: sport === 'all' ? 'all' : sport })
     .filter(e => e.bestOdds?.h2h);
   if (leagues.length && !leagues.includes('all')) {
     events = events.filter(e => leagues.includes(e.league));
+  }
+  // Si el user marcó books específicos, solo aceptamos events con AL MENOS
+  // una cuota h2h en alguna de esas casas — sin eso el pick puede caer en
+  // una casa que el user no tiene cuenta.
+  const wantedBooks = Array.isArray(books) ? books.filter(Boolean) : [];
+  if (wantedBooks.length) {
+    events = events.filter(e =>
+      Object.keys(e.markets?.h2h || {}).some(bk => wantedBooks.includes(bk))
+    );
   }
 
   // Top 20 partidos por overround (libros más eficientes = picks más confiables)
@@ -442,7 +452,13 @@ app.post('/api/generator', express.json(), async (req, res) => {
     for (let tries = 0; tries < count * 4 && combos.length < count; tries++) {
       const pool = [];
       passing.forEach(a => {
-        const filteredByMarket = (a.selections || []).filter(s => markets.includes(s.market));
+        let filteredByMarket = (a.selections || []).filter(s => markets.includes(s.market));
+        // Respetar selección de books del user — descartamos selections cuyo
+        // book no esté en la lista marcada. Sin esto, le ofrecemos al user picks
+        // en casas donde no tiene cuenta y no puede ejecutar.
+        if (wantedBooks.length) {
+          filteredByMarket = filteredByMarket.filter(s => wantedBooks.includes(s.book));
+        }
         const matching = filteredByMarket.filter(s => s.type === targetType);
         if (matching.length) pool.push({ event: a.event, factors: a.factors, sel: matching[0] });
       });

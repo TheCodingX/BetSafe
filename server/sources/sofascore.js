@@ -44,6 +44,60 @@ const SPORT_PATHS = {
   hockey:     'ice-hockey'
 };
 
+/* Whitelist de ligas: SofaScore expone TODAS las ligas del mundo. Sin filtro
+ * inundamos la UI con LMB mexicano, CIBACOPA, Canberra semipro, etc. — basura
+ * para nuestra audiencia AR. Aceptamos solo ligas top mundiales + AR/SUDAM.
+ *
+ * Cualquier nombre de liga que NO matchee un patrón → descartado.
+ * Si querés agregar ligas, añadí su patrón regex acá. */
+const RELEVANT_LEAGUE_PATTERNS = {
+  soccer: [
+    /argentin|primera|liga profes/i,
+    /libertadores|sudamericana|copa america/i,
+    /premier league|fa cup|championship/i,
+    /la ?liga|spain|copa del rey/i,
+    /serie a|coppa italia/i,
+    /bundesliga|germany/i,
+    /ligue 1|france/i,
+    /champions league|europa league|conference league/i,
+    /brasileir|brazil|copa do brasil/i,
+    /chile|paraguay|uruguay|colombia|peru|ecuador|bolivia/i,
+    /mls\b|usa\b/i,
+    /\bworld cup|mundial|eurocopa|euro\b|copa mundial/i,
+    /eredivisie|netherlands/i,
+    /portugal|primeira liga/i,
+    /turkey|super lig/i,
+    /belgium|jupiler/i
+  ],
+  basketball: [
+    /\bnba\b/i,
+    /euroleague|eurocup/i,
+    /argentin|liga nacional/i,
+    /\bacb\b|spain.*basket/i
+  ],
+  tennis: [
+    /\batp\b|\bwta\b/i,
+    /grand slam|australian open|french open|wimbledon|us open/i,
+    /master|finals/i
+  ],
+  amfootball: [
+    /\bnfl\b|college football/i
+  ],
+  baseball: [
+    /\bmlb\b/i
+  ],
+  hockey: [
+    /\bnhl\b/i
+  ]
+};
+
+function isRelevantLeague(leagueName, sport) {
+  if (!leagueName) return false;
+  const patterns = RELEVANT_LEAGUE_PATTERNS[sport];
+  if (!patterns) return true;   // sport sin whitelist → permitir todo
+  return patterns.some(re => re.test(leagueName));
+}
+
 const HEADERS = {
   'Accept': 'application/json, text/plain, */*',
   'Accept-Language': 'es-AR,es;q=0.9,en;q=0.8',
@@ -131,7 +185,13 @@ class SofaScoreSource extends SourceBase {
       const events = data?.events || [];
       for (const ev of events) {
         const mapped = this.normalize(ev, sp);
-        if (mapped) out.push(mapped);
+        if (!mapped) continue;
+        // Filtramos ligas obscuras: SofaScore trae fixtures de TODO el planeta
+        // (LMB mexicano, CIBACOPA, semipro australiano, etc.) que inundan el
+        // feed con partidos irrelevantes para nuestra audiencia AR. Mantenemos
+        // solo ligas top mundiales + cualquier liga AR/sudamericana.
+        if (!isRelevantLeague(mapped.leagueName, sp)) continue;
+        out.push(mapped);
       }
 
       // Respiro entre sports SOLO en native path (sbee tiene sus propios rate limits)

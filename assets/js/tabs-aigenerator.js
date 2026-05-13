@@ -567,15 +567,14 @@
       const btn = panel.querySelector('#agGenerate');
       if (btn) btn.classList.toggle('is-disabled', n === 0);
     }
-    panel.querySelector('#agBooksFilter').addEventListener('click', e => {
-      const card = e.target.closest('.agx-book-card');
-      if (!card) return;
-      const cb = card.querySelector('input[type=checkbox]');
-      // Si el click cayó en el input dejamos que el browser lo maneje
-      if (e.target !== cb) {
-        cb.checked = !cb.checked;
-      }
-      card.classList.toggle('is-on', cb.checked);
+    // BUG previo: clickear la label hacía DOBLE TOGGLE (browser auto + manual)
+    // y resultaba en "no pasa nada". Ahora escuchamos el `change` del checkbox
+    // (que dispara una sola vez por click via browser default).
+    panel.querySelector('#agBooksFilter').addEventListener('change', e => {
+      const cb = e.target.closest('input[type=checkbox][data-book]');
+      if (!cb) return;
+      const card = cb.closest('.agx-book-card');
+      if (card) card.classList.toggle('is-on', cb.checked);
       updateBooksCount();
     });
     panel.querySelector('#agBooksAll')?.addEventListener('click', () => {

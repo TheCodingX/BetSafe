@@ -211,7 +211,7 @@
           <div class="cluster" style="gap:6px;flex-wrap:wrap">
             <span class="badge badge-brand tiny">${leagueLogo} ${BSUI.esc(ev.leagueName || ev.league || '')}</span>
             <span class="muted tiny">${BSUI.dt(ev.start)}</span>
-            ${analysis.llmProvider !== 'offline' ? `<span class="badge badge-success tiny">IA: ${analysis.llmProvider}</span>` : '<span class="badge tiny">IA offline</span>'}
+            ${analysis.llmProvider !== 'offline' ? `<span class="badge badge-success tiny" title="LLM provider activo">IA: ${analysis.llmProvider}</span>` : '<span class="badge tiny" title="Análisis cuantitativo determinístico (Poisson + Elo + Shin) — sumá BS_GROQ_API_KEY en Render para activar análisis LLM">Análisis quant</span>'}
           </div>
         </header>
 

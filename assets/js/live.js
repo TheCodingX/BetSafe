@@ -179,21 +179,85 @@
 
   // ── API pública ─────────────────────────────────────────────────────────
 
+  /* Whitelist de ligas relevantes para nuestra audiencia AR.
+   * Sin este filtro la UI se inunda con LMB mexicano, CIBACOPA, semipro
+   * australiano, etc. — partidos irrelevantes para usuarios AR.
+   * Para mostrar TODO el catálogo (debug / power user) → events({ all: true }). */
+  const RELEVANT_LEAGUE_PATTERNS = [
+    // Argentina + Sudamérica
+    /argentin|primera|liga profes/i,
+    /libertadores|sudamericana|recopa/i,
+    /chile|paraguay|uruguay|colombia|peru|ecuador|bolivia|venezuela/i,
+    /brasileir|brazil|copa do brasil/i,
+    /copa america|copa mundial|world cup/i,
+    // Top europeas
+    /premier league|fa cup|championship|english/i,
+    /la ?liga|spain|copa del rey/i,
+    /serie a|coppa italia|italy/i,
+    /bundesliga|germany/i,
+    /ligue 1|france/i,
+    /champions league|europa league|conference league/i,
+    /eredivisie|netherlands|portugal|primeira liga/i,
+    /turkey|super lig|belgium|jupiler/i,
+    /eurocopa|euro\b/i,
+    // USA majors
+    /\bnba\b|\bnfl\b|\bmlb\b|\bnhl\b|\bmls\b/i,
+    /college football|ncaa/i,
+    // Otros relevantes
+    /\batp\b|\bwta\b|grand slam|wimbledon|us open|australian open|french open/i,
+    /\bufc\b|\bmma\b|boxing|boxeo|world boxing/i,
+    /euroleague|eurocup|acb\b/i,
+    /liga nacional/i,    // basket AR
+    /mexico.*liga mx|mexico.*primera/i   // sólo liga MX top tier
+  ];
+
+  function isRelevantLeague(leagueName) {
+    if (!leagueName) return false;
+    return RELEVANT_LEAGUE_PATTERNS.some(re => re.test(leagueName));
+  }
+
   /** Devuelve los eventos cacheados, opcionalmente filtrados. NO genera nada
-   *  sintético: si no hay datos del backend, devuelve []. */
+   *  sintético: si no hay datos del backend, devuelve [].
+   *
+   *  Por DEFAULT filtra ligas obscuras (LMB mexicano, semipro, etc.) para que
+   *  la UI muestre solo partidos relevantes para usuarios AR. Pasar
+   *  `{ all: true }` para bypass del filtro (debug / power user). */
   function events(filter = {}) {
-    const { sport, league, leagues } = filter;
+    const { sport, league, leagues, all } = filter;
+    const filterLeague = !all;
     return state.events.filter(ev =>
       (!sport || sport === 'all' || ev.sport === sport) &&
       (!league || ev.league === league) &&
-      (!Array.isArray(leagues) || leagues.includes(ev.league))
+      (!Array.isArray(leagues) || leagues.includes(ev.league)) &&
+      (!filterLeague || isRelevantLeague(ev.leagueName))
     );
+  }
+
+  /** Devuelve ABSOLUTAMENTE TODOS los eventos sin filtrar — para vistas
+   *  debug, settings, o donde el power user quiera el catálogo crudo. */
+  function eventsAll(filter = {}) {
+    return events({ ...filter, all: true });
   }
 
   /** Busca un evento por id estable */
   function findEvent(id) { return state.events.find(e => e.id === id) || null; }
 
-  function surebets() { return state.surebets.slice(); }
+  function surebets(opts = {}) {
+    let arr = state.surebets.slice();
+    if (!opts.all) {
+      // Filtrar surebets de ligas obscuras + dedup por evento+market (paranoia
+      // extra por si el backend duplicó).
+      const seen = new Set();
+      arr = arr.filter(sb => {
+        if (!isRelevantLeague(sb.leagueName || sb.league)) return false;
+        const k = `${sb.eventId}|${sb.market}`;
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
+    }
+    return arr;
+  }
   function steamMoves() { return state.steam.slice(); }
   function books() { return Object.assign({}, state.books); }
 
@@ -296,7 +360,8 @@
     state,
     start,
     fetchSnapshot,
-    events, findEvent, surebets, steamMoves, books, ready,
+    events, eventsAll, findEvent, surebets, steamMoves, books, ready,
+    isRelevantLeague,
     timeSinceUpdate, freshnessLabel,
     // API extendida
     getPicks, getPicksForMatch, getFactors,
