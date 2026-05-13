@@ -477,7 +477,48 @@ const TEAM_ALIASES = {
   'paris saint germain':'psg','paris sg':'psg','psg':'psg',
   'bayern munich':'bayern','bayern munchen':'bayern','borussia dortmund':'dortmund','dortmund':'dortmund',
   'liverpool fc':'liverpool','liverpool':'liverpool','chelsea fc':'chelsea','chelsea':'chelsea',
-  'tottenham':'tottenham','tottenham hotspur':'tottenham','arsenal':'arsenal','arsenal fc':'arsenal'
+  'tottenham':'tottenham','tottenham hotspur':'tottenham','arsenal':'arsenal','arsenal fc':'arsenal',
+  // Italian teams — múltiples formatos posibles
+  'inter':'inter','inter milan':'inter','inter milán':'inter','internazionale':'inter','fc internazionale':'inter','internazionale milano':'inter','ss inter':'inter',
+  'ac milan':'milan','milan':'milan',
+  'juventus':'juventus','juventus fc':'juventus','juve':'juventus',
+  'as roma':'roma','roma':'roma',
+  'ss lazio':'lazio','lazio':'lazio',
+  'napoli':'napoli','ssc napoli':'napoli',
+  'fiorentina':'fiorentina','acf fiorentina':'fiorentina',
+  // Spanish — common formats
+  'sevilla':'sevilla','sevilla fc':'sevilla','sevilla cf':'sevilla',
+  'villarreal':'villarreal','villarreal cf':'villarreal',
+  'valencia':'valencia','valencia cf':'valencia',
+  'real betis':'betis','betis':'betis',
+  'real sociedad':'realsociedad','rsociedad':'realsociedad',
+  'athletic':'athletic','athletic club':'athletic','athletic bilbao':'athletic',
+  // English — extended
+  'newcastle':'newcastle','newcastle united':'newcastle',
+  'manchester city':'mancity','man city':'mancity','manchester united':'manunited','man united':'manunited','man utd':'manunited',
+  'aston villa':'astonvilla','astonvilla':'astonvilla',
+  'west ham':'westham','west ham united':'westham',
+  'crystal palace':'crystalpalace','crystal palace fc':'crystalpalace',
+  // Sudamericanos comunes
+  'gimnasia y esgrima':'gimnasia','gimnasia y esgrima la plata':'gimnasia','gimnasia la plata':'gimnasia',
+  'palmeiras':'palmeiras','palmeiras sp':'palmeiras','sociedade esportiva palmeiras':'palmeiras',
+  'corinthians':'corinthians','corinthians sp':'corinthians',
+  'flamengo':'flamengo','flamengo rj':'flamengo','clube de regatas do flamengo':'flamengo',
+  'fluminense':'fluminense','fluminense fc':'fluminense','fluminense rj':'fluminense',
+  'botafogo':'botafogo','botafogo rj':'botafogo','botafogo fr':'botafogo',
+  'vasco':'vasco','vasco da gama':'vasco','vasco da gama rj':'vasco',
+  'sao paulo':'saopaulo','são paulo':'saopaulo','sao paulo fc':'saopaulo',
+  'santos':'santos','santos fc':'santos',
+  'internacional':'internacional','sc internacional':'internacional','internacional pa':'internacional','internacional p a':'internacional',
+  'atletico mineiro':'atleticomineiro','atletico mg':'atleticomineiro','atlético mineiro':'atleticomineiro','atlético mg':'atleticomineiro',
+  'cruzeiro':'cruzeiro','cruzeiro ec':'cruzeiro','cruzeiro mg':'cruzeiro',
+  'gremio':'gremio','grêmio':'gremio','gremio fbpa':'gremio',
+  // Mexicanos
+  'cruz azul':'cruzazul','club cruz azul':'cruzazul',
+  'chivas':'chivas','chivas guadalajara':'chivas','guadalajara':'chivas','cd guadalajara':'chivas',
+  'america':'america','club america':'america','club américa':'america',
+  // PSG variantes
+  'paris saint-germain':'psg','paris saint germain':'psg','paris sg':'psg','psg':'psg','paris':'psg'
 };
 
 function normalizeTeam(name) {
@@ -505,12 +546,23 @@ function normalizeTeam(name) {
   return { id, name: trimmed };
 }
 
-/* Strip de sufijos/prefijos comunes \u2014 antes del lookup de aliases. */
+/* Strip de sufijos/prefijos comunes \u2014 antes del lookup de aliases.
+ * Resuelve dedup robusto entre casas que usan distintos formatos para el
+ * mismo equipo. */
 const TEAM_NOISE_PATTERNS = [
-  /\b(fc|cf|sc|ac|ca|ss|as|ff|cd|sd|ksc|bsc|sv|tv|tsg|vfb|vfl|psv|usl)\b/g,
+  // Iniciales corporativas f\u00fatbol
+  /\b(fc|cf|sc|ac|ca|ss|as|ff|cd|sd|ksc|bsc|sv|tv|tsg|vfb|vfl|psv|usl|aaaj|aef)\b/g,
   /\b(club|ssd|usd)\b/g,
-  /\b(de mexico|de milan|de mil\u00e1n|de la plata|la plata|de avellaneda|de buenos aires)\b/g,
-  /\bjrs?\b/g
+  // Disambiguadores de ciudad (con o sin "de") \u2014 incluye estados/sufijos brasile\u00f1os
+  /\b(de\s+)?(mexico|milan|mil\u00e1n|la plata|avellaneda|buenos aires|santa fe|santa f\u00e9|guadalajara|sao paulo|s.o paulo|rio de janeiro|porto alegre|p\.?\s*a\.?|belo horizonte|montevideo|cordoba|c\u00f3rdoba|junin|tucuman|tucum\u00e1n)\b/g,
+  // Sufijos brasile\u00f1os "-SP", "-RJ", etc.
+  /-(sp|rj|mg|rs|pr|sc|ba|pe|ce|go|pa|al|ma|am|to|ms|mt|df|es|pi|pb|rn|se)\b/gi,
+  // Conjunciones espec\u00edficas argentinas
+  /\by esgrima\b/g,
+  /\bold boys\b/g,
+  // Gen\u00e9ricos
+  /\bjrs?\b/g,
+  /\b(united|utd|wanderers)\b/g
 ];
 
 function parseDecimal(text) {
