@@ -4,14 +4,14 @@
 
   function render(panel) {
     if (!BSAuth.isVip()) {
-      panel.innerHTML = `<div class="card card-vip card-pad-lg stack"><span class="badge-vip">VIP</span><h2 class="h3">What-If Simulator<a class="help-q" tabindex="0" data-tip="Probá escenarios hipotéticos sobre tus combinadas. Para una combinada de N legs, enumeramos los 2^N escenarios posibles (cada leg gana o pierde) y te mostramos profit en cada uno + Monte Carlo con 1000+ runs para ver la distribución completa de outcomes."></a></h2><p class="muted">Enumeración 2^N + Monte Carlo.</p><a href="pricing.html" class="btn btn-gold">Ver planes</a></div>`;
+      panel.innerHTML = `<div class="card card-vip card-pad-lg stack"><span class="badge-vip">VIP</span><h2 class="h3">What-If Simulator<a class="help-q" tabindex="0" data-tip="Simulación de escenarios sobre tu combinada. Calculamos profit en cada combinación posible de victorias/derrotas + Monte Carlo con 1000+ runs aleatorios para ver la distribución completa de outcomes."></a></h2><p class="muted">Simulación de escenarios + Monte Carlo.</p><a href="pricing.html" class="btn btn-gold">Ver planes</a></div>`;
       return;
     }
     panel.innerHTML = `
       <div class="row between mb-3">
         <div>
-          <h2 class="h3">What-If Simulator<a class="help-q" tabindex="0" data-tip="Probá escenarios hipotéticos sobre tus combinadas. Para una combinada de N legs, enumeramos los 2^N escenarios posibles (cada leg gana o pierde) y te mostramos profit en cada uno. Útil para entender distribución de outcomes antes de operar."></a></h2>
-          <p class="muted">Probá variaciones de probabilidad y stake sobre tu combinada antes de operarla. Enumeramos los 2^N escenarios y mostramos profit en cada uno.</p>
+          <h2 class="h3">What-If Simulator<a class="help-q" tabindex="0" data-tip="Cada leg de tu combinada puede ganar o perder. Si tenés N legs, hay 2 elevado a N escenarios totales (ej: 3 legs = 8 escenarios). Te mostramos la probabilidad de cada uno y el profit/pérdida. Plus Monte Carlo con 1000+ runs para distribución estadística."></a></h2>
+          <p class="muted">Simulá todos los escenarios posibles de tu combinada antes de operarla. Cada leg puede ganar o perder — te mostramos la probabilidad y profit de cada combinación.</p>
         </div>
       </div>
       <div class="grid" style="grid-template-columns: 1fr 1fr; gap:16px">
@@ -32,7 +32,17 @@
       </div>
     `;
 
-    let legs = [{p:0.55, odd:1.95}, {p:0.6, odd:1.85}, {p:0.5, odd:2.10}];
+    // Cargar legs desde el slip activo del user si existe — sino defaults
+    // razonables. Probabilidades se estiman vía Shin no-vig (1/cuota descontando
+    // margen) cuando vienen del slip.
+    const slip = BSStore.get(BSStore.KEYS.slip) || { legs: [] };
+    let legs = (slip.legs && slip.legs.length)
+      ? slip.legs.slice(0, 8).map(l => ({
+          p: l.odd ? Math.min(0.99, Math.max(0.01, (1 / l.odd) * 0.92)) : 0.5,   // Shin aprox
+          odd: Number(l.odd) || 2.0,
+          label: l.label || `${l.home || '?'} vs ${l.away || '?'}`
+        }))
+      : [{p:0.55, odd:1.95, label:'Leg 1'}, {p:0.6, odd:1.85, label:'Leg 2'}, {p:0.5, odd:2.10, label:'Leg 3'}];
     function renderLegs() {
       const ls = panel.querySelector('#wfLegs');
       ls.innerHTML = legs.map((l, i) => `
