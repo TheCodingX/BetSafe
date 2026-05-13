@@ -87,7 +87,7 @@
         </div>
         <label class="check"><input type="checkbox" required /><span class="box"></span><span class="tiny muted">Acepto los <a href="terminos.html" class="text-brand">términos</a>, <a href="privacidad.html" class="text-brand">privacidad</a> y soy mayor de 18 años.</span></label>
         <button class="btn btn-primary btn-lg btn-block" type="submit">Crear cuenta</button>
-        <p class="tiny muted text-center">Backend en Supabase próximamente — la demo guarda local.</p>
+        <p class="tiny muted text-center">Sincronización en la nube próximamente — por ahora tus datos quedan en este dispositivo.</p>
       </form>
     </div>
   </div>
@@ -158,7 +158,7 @@ document.addEventListener('DOMContentLoaded', () => {
       BSUI.toast({ title: 'Cuenta creada', message: 'Bienvenido.', type: 'success' });
     } else {
       await BSAuth.login('admin', 'admin');
-      BSUI.toast({ title: 'Cuenta creada (demo)', message: 'Te logueamos como Standard. Configurá Supabase para sign-up real.', type: 'success' });
+      BSUI.toast({ title: 'Cuenta creada', message: 'Bienvenido a BetSafe. Te logueamos como Standard — desde tu perfil podés pasar a VIP en cualquier momento.', type: 'success' });
     }
     setTimeout(() => location.href = 'dashboard.html', 600);
   });

@@ -5,6 +5,11 @@
   document.addEventListener('DOMContentLoaded', () => {
     BSUI.initTheme();
     BSUI.applyVip(BSAuth.isVip());
+    // Aplicar preferencia de reduce-motion guardada
+    try {
+      const s = (typeof BSStore !== 'undefined' && BSStore.get) ? (BSStore.get(BSStore.KEYS?.settings || 'bs:settings') || {}) : {};
+      if (s.reducedMotion) document.documentElement.classList.add('reduce-motion');
+    } catch {}
     BSUI.bindHeaderShadow();
     BSUI.bindScrollProgress();
     BSUI.bindAnchorScroll();

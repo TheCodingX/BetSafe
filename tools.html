@@ -158,7 +158,7 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
         <p class="muted tiny">${BSUI.esc(t.desc || 'Listo para usar')}</p>
         <div class="row between">
-          ${t.pending ? '<span class="badge badge-warning">Pendiente backend</span>' : '<span class="badge badge-success">Activo</span>'}
+          ${t.pending ? '<span class="badge badge-warning">En desarrollo</span>' : '<span class="badge badge-success">Activo</span>'}
           <a href="dashboard.html#${getTab(t)}" class="text-brand fw-600">Abrir →</a>
         </div>
       </div>`).join('');

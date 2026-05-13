@@ -71,7 +71,7 @@ document.addEventListener('DOMContentLoaded', () => {
                   <span class="badge ${i.tier==='vip'?'badge-gold':'badge-brand'}">${i.tier.toUpperCase()}</span>
                 </div>
                 <p class="muted tiny mt-2">${BSUI.esc(i.desc || '')}</p>
-                ${i.pending ? '<span class="badge badge-warning mt-2">Pendiente backend</span>' : ''}
+                ${i.pending ? '<span class="badge badge-warning mt-2">En desarrollo</span>' : ''}
               </div>
             `).join('')}
           </div>

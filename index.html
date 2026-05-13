@@ -1167,7 +1167,7 @@ function buildBuilderDemo() {
     if (legs.length >= 5) { BSUI.toast({ title: 'Demo limita a 5 legs', type: 'info' }); return; }
     const matches = liveMatches();
     if (!matches.length) {
-      BSUI.toast({ title: 'Sin partidos en vivo todavía', message: 'El backend está recibiendo cuotas; intentá en unos segundos.', type: 'info' });
+      BSUI.toast({ title: 'Sin partidos en vivo todavía', message: 'Estamos recibiendo cuotas en este momento; intentá en unos segundos.', type: 'info' });
       return;
     }
     const m = matches[legs.length % matches.length];
@@ -1192,7 +1192,7 @@ function buildFaq() {
     { q: '¿Qué es Kelly fraccional y por qué importa?', a: 'Kelly es la fórmula matemáticamente óptima para maximizar el crecimiento logarítmico de tu banca dado un edge real. Full Kelly es agresivo; usar ¼ o ½ Kelly reduce drawdown 70% sin sacrificar mucho retorno esperado. BetSafe lo calcula automáticamente y te muestra el stake recomendado por pick.' },
     { q: '¿Cómo me protege del tilt?', a: 'Detectamos automáticamente cuando llevás 4+ pérdidas seguidas y subiste el stake +50% en las últimas 2 horas. Te aparece un mensaje contextual de juego responsable con link directo a juegoresponsable.com.ar y un botón de "pausar 24h" que bloquea el dashboard.' },
     { q: '¿Puedo cancelar VIP cuando quiera?', a: 'Sí. Sin permanencia, sin letra chica. Cancelás desde Settings y conservás acceso hasta el final del ciclo facturado. Tu histórico queda intacto y exportable a CSV/JSON.' },
-    { q: '¿Dónde vive mi información?', a: 'En tu navegador (localStorage cifrado por origen). Cero tracking publicitario, cero Google Analytics. Cuando habilitemos backend opcional será Supabase con cifrado en tránsito (TLS 1.3) y reposo (AES-256). Podés exportar todos tus datos en cualquier momento.' },
+    { q: '¿Dónde vive mi información?', a: 'En tu navegador, cifrada por origen. Cero tracking publicitario, cero Google Analytics. Cuando habilitemos sincronización en la nube será con cifrado en tránsito (TLS 1.3) y en reposo (AES-256). Podés exportar todos tus datos en cualquier momento.' },
     { q: '¿Cuánta plata necesito para empezar?', a: 'BetSafe es gratis para empezar. Para que el motor de banca tenga utilidad real recomendamos una banca mínima de ARS 50.000 — con eso podés operar Kelly fraccional ¼ con stakes de 0.5-2% y ver curva en 60-90 días. No hay mínimo de la app.' },
     { q: '¿Y si las cuotas cambian mientras opero?', a: 'El comparador refresca cada 30s; el slip persistente te avisa con un flash de color (verde sube, rojo baja) si tu cuota cambió >2% antes de confirmar. Para arbitraje aplicamos slippage protection automática.' }
   ];
