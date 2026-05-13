@@ -137,7 +137,15 @@ async function analyzeMatch(event, ctx = {}) {
     llmProvider: llm.provider || 'offline',
     ts: Date.now()
   };
-  cache.set(event.id, result);
+  // Solo cachear si la LLM respondió OK. Si fue offline, queremos reintentar en
+  // la próxima request (no quedarse 5min con un fail transient).
+  if (llm.provider && llm.provider !== 'offline') {
+    cache.set(event.id, result);
+  } else {
+    // Cache MUY corta (30s) para no martillar el LLM con el mismo prompt si está
+    // genuinamente down, pero sí reintentar pronto.
+    cache.set(event.id, result, { ttl: 30 * 1000 });
+  }
   return result;
 }
 
