@@ -150,11 +150,34 @@
   async function reload(panel, limit) {
     // VIP: hasta 20 picks. Standard: solo 3 (teaser para VIP).
     const isVip = BSAuth.isVip();
-    limit = limit || (isVip ? 20 : 3);
+    // Standard: 3 picks. VIP: 12 (cap server-side por timeout).
+    limit = limit || (isVip ? 12 : 3);
     if (state.loading) return;
     state.loading = true;
     const host = panel.querySelector('#aiPicks');
-    if (host) host.innerHTML = renderSkeleton(limit);
+    if (host) host.innerHTML = renderLoadingState(limit);
+    // Iniciar contador visual de tiempo transcurrido + activar pasos secuenciales
+    const startedAt = Date.now();
+    let stepIdx = 0;
+    const timer = setInterval(() => {
+      const el = host?.querySelector('.ai-loading__seconds');
+      if (el) {
+        const s = Math.floor((Date.now() - startedAt) / 1000);
+        el.textContent = `${s}s`;
+      }
+      // Avanzar a la siguiente step cada ~8s (proporcional al tiempo esperado)
+      const steps = host?.querySelectorAll('.ai-loading__steps li');
+      if (steps && steps.length) {
+        const elapsedS = (Date.now() - startedAt) / 1000;
+        const targetIdx = Math.min(steps.length - 1, Math.floor(elapsedS / 8));
+        while (stepIdx < targetIdx) {
+          steps[stepIdx].classList.remove('is-active');
+          steps[stepIdx].classList.add('is-done');
+          stepIdx++;
+          steps[stepIdx]?.classList.add('is-active');
+        }
+      }
+    }, 1000);
     try {
       const res = await BSLive.getPicks({ ...state.filters, limit });
       state.picks = res.picks || [];
@@ -174,9 +197,46 @@
       }
       state.picks = [];
     } finally {
+      clearInterval(timer);
       state.loading = false;
       renderPicks(panel);
     }
+  }
+
+  /* Loading state RICO: explica que la IA está analizando cada partido en
+   * profundidad, con animación radar + contador de segundos transcurridos +
+   * lista de pasos visuales. Justifica la espera (~30-60s la primera vez).
+   * Después del primer load, el cache de 5min lo hace instant. */
+  function renderLoadingState(n) {
+    return `
+      <div class="ai-loading-state">
+        <div class="ai-loading__visual">
+          <span class="bsai-radar" style="width:80px;height:80px">
+            <span class="bsai-radar__sweep"></span>
+            <span class="bsai-radar__dot" style="--x:30%;--y:40%"></span>
+            <span class="bsai-radar__dot" style="--x:65%;--y:55%"></span>
+            <span class="bsai-radar__dot" style="--x:45%;--y:70%"></span>
+          </span>
+          <div class="ai-loading__text">
+            <strong>Analizando ${n} partidos con IA…</strong>
+            <span class="muted tiny">Esto puede tardar 30-60 segundos la primera vez. Después es instantáneo.</span>
+          </div>
+          <span class="ai-loading__seconds num">0s</span>
+        </div>
+        <ul class="bsai-loading__steps ai-loading__steps">
+          <li class="is-active"><span class="bsai-tick"></span>Cargando partidos del día filtrados por tus criterios</li>
+          <li><span class="bsai-tick"></span>Reuniendo clima, lesiones, histórico y movimientos del mercado</li>
+          <li><span class="bsai-tick"></span>Corriendo modelos cuantitativos (goles esperados, forma, rendimiento)</li>
+          <li><span class="bsai-tick"></span>Análisis IA profundo de cada partido</li>
+          <li><span class="bsai-tick"></span>Generando picks coherentes: conservador / equilibrado / agresivo</li>
+        </ul>
+        <div class="ai-loading__skeleton">
+          ${Array.from({ length: Math.min(n, 3) }, () => `
+            <div class="card card-pad-md skeleton-card" style="height:140px;background:linear-gradient(90deg,var(--surface) 25%,var(--surface-2) 50%,var(--surface) 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:14px"></div>
+          `).join('')}
+        </div>
+      </div>
+    `;
   }
 
   function renderPicks(panel) {

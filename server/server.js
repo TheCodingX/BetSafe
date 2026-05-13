@@ -446,24 +446,68 @@ app.get('/api/picks', async (req, res) => {
   const steam = orchestrator.steamMoves();
   const surebets = arbEngine.snapshot().detected;
 
-  // Análisis concurrente con cap. analyzeMatch hace 1 LLM call por partido
-  // (timeout 30s). Concurrency=2 + 10 events ≈ 5 batches × 8s = ~40s peor caso.
-  // El cache LRU de 5min hace que el siguiente request sea instant.
+  // ── Análisis concurrente con cap + retry loop ──
+  // Objetivo: TODOS los picks pasan por IA. Si un partido cae a llmProvider:'offline'
+  // (rate limit Groq, network blip, timeout), lo reintentamos en una segunda
+  // pasada con un poco de delay para que el rate-limit window se mueva.
   const analyzeLimit = pLimit(Number(process.env.PICKS_CONCURRENCY || 2));
-  const settled = await Promise.allSettled(
-    events.map(ev => analyzeLimit(() => analyzeMatch(ev, { steamMoves: steam, surebets })))
-  );
-  const out = settled.flatMap(r => r.status === 'fulfilled' && r.value ? [r.value] : []);
 
-  // Aplicar filtros sobre el output enriquecido
-  const filtered = out.filter(pick => {
+  async function analyzePool(evs) {
+    const settled = await Promise.allSettled(
+      evs.map(ev => analyzeLimit(() => analyzeMatch(ev, { steamMoves: steam, surebets })))
+    );
+    return settled.flatMap(r => r.status === 'fulfilled' && r.value ? [r.value] : []);
+  }
+
+  let out = await analyzePool(events);
+  // RETRY: cualquier pick que quedó offline → reintentar (Groq se recupera rápido)
+  const offlineEvents = out
+    .filter(p => p.llmProvider === 'offline')
+    .map(p => p.event.id ? events.find(e => e.id === p.event.id) : null)
+    .filter(Boolean);
+  if (offlineEvents.length > 0 && offlineEvents.length < events.length) {
+    // Pequeño delay para que el rate-limit window se mueva
+    await new Promise(r => setTimeout(r, 1500));
+    // Limpiar cache de offline para forzar nuevo intento
+    if (typeof analyzeMatch.clearCacheOffline === 'function') {
+      offlineEvents.forEach(ev => analyzeMatch.clearCacheOffline(ev.id));
+    }
+    const retried = await analyzePool(offlineEvents);
+    // Mergear: los retried reemplazan los offline si ahora tienen llmProvider real
+    const retriedMap = new Map(retried.map(r => [r.event.id, r]));
+    out = out.map(p => {
+      const r = retriedMap.get(p.event.id);
+      if (r && r.llmProvider !== 'offline' && p.llmProvider === 'offline') return r;
+      return p;
+    });
+  }
+
+  // Aplicar filtros
+  let filtered = out.filter(pick => {
     if (minSharp > 0 && (pick.factors?.sharp?.score || 0) < minSharp) return false;
     if (skipInjured && (pick.factors?.injuries?.severityScore?.home > 0.5 || pick.factors?.injuries?.severityScore?.away > 0.5)) return false;
     if (skipBadWeather && pick.factors?.weather?.impact?.goalsMultiplier && pick.factors.weather.impact.goalsMultiplier < 0.90) return false;
     return true;
   });
 
-  res.json({ picks: filtered.slice(0, limit), meta: { analyzed: out.length, filtered: filtered.length } });
+  // ── REGLA DE ORO: solo devolvemos picks con IA real. Sin fallback genérico ──
+  // Si un pick no pasó por IA (offline tras retry), NO lo mostramos al usuario.
+  // Mejor mostrar 3 picks con IA real que 6 con la mitad genéricos.
+  const aiVerified = filtered.filter(p => p.llmProvider && p.llmProvider !== 'offline');
+  const aiCount = aiVerified.length;
+  const offlineCount = filtered.length - aiCount;
+
+  res.json({
+    picks: aiVerified.slice(0, limit),
+    meta: {
+      analyzed: out.length,
+      filtered: filtered.length,
+      aiVerified: aiCount,
+      aiPending: offlineCount,
+      // Si tiramos picks offline, avisamos al cliente:
+      hint: offlineCount > 0 ? `${offlineCount} análisis IA aún procesando — refrescá en unos segundos para verlos.` : null
+    }
+  });
 });
 
 // Generador IA: misma pipeline pero con knobs (riesgo, ligas, mercados, n combinadas)
@@ -489,25 +533,47 @@ app.post('/api/generator', express.json(), async (req, res) => {
     events = events.filter(e => e.sport !== 'esports' && !orchestrator.looksLikeEsports?.(e));
   }
 
-  // Top 35 partidos por priority + overround (libros más eficientes).
-  // events() ya retorna ordenado por priority — aplicamos secondary sort
-  // por overround dentro de la misma priority.
+  // Top 20 partidos por priority + overround (libros más eficientes).
+  // Reducido de 35 → 20 para que /api/generator complete en <90s incluso si
+  // la primera tanda tiene fails y necesita retry.
   events.sort((a, b) => {
     const pdiff = (orchestrator.eventPriority?.(b) || 0) - (orchestrator.eventPriority?.(a) || 0);
     if (pdiff !== 0) return pdiff;
     return (a.overround || 99) - (b.overround || 99);
   });
-  events = events.slice(0, 35);
+  events = events.slice(0, 20);
 
   const steam = orchestrator.steamMoves();
   const surebets = arbEngine.snapshot().detected;
 
-  // Analizar con concurrencia controlada (compartimos cap con /api/picks)
+  // Analizar con concurrencia + retry de offline (igual que /api/picks).
   const analyzeLimit = pLimit(Number(process.env.PICKS_CONCURRENCY || 2));
-  const settled = await Promise.allSettled(
-    events.map(ev => analyzeLimit(() => analyzeMatch(ev, { steamMoves: steam, surebets })))
-  );
-  const analyzed = settled.flatMap(r => r.status === 'fulfilled' && r.value ? [r.value] : []);
+  async function analyzeGenPool(evs) {
+    const settled = await Promise.allSettled(
+      evs.map(ev => analyzeLimit(() => analyzeMatch(ev, { steamMoves: steam, surebets })))
+    );
+    return settled.flatMap(r => r.status === 'fulfilled' && r.value ? [r.value] : []);
+  }
+  let analyzed = await analyzeGenPool(events);
+  // Retry los offline UNA vez
+  const offlineEvs = analyzed
+    .filter(a => a.llmProvider === 'offline')
+    .map(a => events.find(e => e.id === a.event?.id))
+    .filter(Boolean);
+  if (offlineEvs.length > 0 && offlineEvs.length < events.length) {
+    await new Promise(r => setTimeout(r, 1500));
+    if (typeof analyzeMatch.clearCacheOffline === 'function') {
+      offlineEvs.forEach(ev => analyzeMatch.clearCacheOffline(ev.id));
+    }
+    const retried = await analyzeGenPool(offlineEvs);
+    const rmap = new Map(retried.map(r => [r.event.id, r]));
+    analyzed = analyzed.map(a => {
+      const r = rmap.get(a.event?.id);
+      return r && r.llmProvider !== 'offline' && a.llmProvider === 'offline' ? r : a;
+    });
+  }
+  // FILTRO IA: solo eventos con análisis IA real entran al pool del generator.
+  analyzed = analyzed.filter(a => a.llmProvider && a.llmProvider !== 'offline');
 
   // Filtros
   const passing = analyzed.filter(a => {

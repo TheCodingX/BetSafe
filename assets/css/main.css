@@ -11071,3 +11071,52 @@ html.reduce-motion *::after {
 @media (prefers-reduced-motion: reduce) {
   .ov-whatsnew__icon { animation: none; }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   AI Picks — Loading state RICO (explica la espera, justifica el tiempo)
+   ───────────────────────────────────────────────────────────────────────── */
+.ai-loading-state {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.ai-loading__visual {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+.ai-loading__text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ai-loading__seconds {
+  flex-shrink: 0;
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: var(--brand-600);
+  font-variant-numeric: tabular-nums;
+  min-width: 58px;
+  text-align: right;
+}
+.ai-loading__steps {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px 18px;
+}
+.ai-loading__skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+@media (max-width: 720px) {
+  .ai-loading__visual { flex-wrap: wrap; }
+  .ai-loading__seconds { width: 100%; text-align: left; }
+}

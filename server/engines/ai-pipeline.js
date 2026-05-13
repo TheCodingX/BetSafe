@@ -1069,4 +1069,11 @@ function outcomeLabel(outcome, event) {
   return outcome;
 }
 
+/* Helper para forzar re-análisis de un partido (limpia cache de ese evento).
+ * Usado por /api/picks cuando un partido cayó a llmProvider:'offline' y
+ * queremos reintentar inmediatamente sin esperar TTL. */
+analyzeMatch.clearCacheOffline = (eventId) => {
+  if (eventId) cache.delete(eventId);
+};
+
 module.exports = { analyzeMatch, groqJsonGeneric };
