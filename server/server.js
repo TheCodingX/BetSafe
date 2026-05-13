@@ -955,6 +955,111 @@ async function resolveLogo(team, sport) {
   return null;
 }
 
+/* Pre-warm: en startup, fetcheamos las listas de equipos de las ligas top
+ * en ESPN y poblamos logoCache. Así los users tienen logos REALES desde el
+ * primer load, sin depender de fetches por-equipo a runtime.
+ *
+ * Ligas pre-warmed (ESPN league slugs):
+ *   arg.1 (LPF Argentina), bra.1 (Brasileirão), uefa.champions/europa,
+ *   eng.1, esp.1, ita.1, ger.1, fra.1, conmebol.libertadores/sudamericana,
+ *   chi.1, par.1, uru.1, col.1, per.1, ecu.1, bol.1, mex.1, usa.1,
+ *   plus NBA/NFL/MLB/NHL.
+ *
+ * Esto se ejecuta una sola vez al startup y refresca cada 24h. */
+const PREWARM_LEAGUES = [
+  { slug: 'arg.1', sport: 'soccer' },
+  { slug: 'arg.2', sport: 'soccer' },
+  { slug: 'bra.1', sport: 'soccer' },
+  { slug: 'bra.2', sport: 'soccer' },
+  { slug: 'eng.1', sport: 'soccer' },
+  { slug: 'eng.2', sport: 'soccer' },
+  { slug: 'esp.1', sport: 'soccer' },
+  { slug: 'esp.2', sport: 'soccer' },
+  { slug: 'ita.1', sport: 'soccer' },
+  { slug: 'ger.1', sport: 'soccer' },
+  { slug: 'fra.1', sport: 'soccer' },
+  { slug: 'por.1', sport: 'soccer' },
+  { slug: 'ned.1', sport: 'soccer' },
+  { slug: 'uefa.champions', sport: 'soccer' },
+  { slug: 'uefa.europa', sport: 'soccer' },
+  { slug: 'uefa.europa.conf', sport: 'soccer' },
+  { slug: 'conmebol.libertadores', sport: 'soccer' },
+  { slug: 'conmebol.sudamericana', sport: 'soccer' },
+  { slug: 'fifa.worldq.conmebol', sport: 'soccer' },
+  { slug: 'chi.1', sport: 'soccer' },
+  { slug: 'par.1', sport: 'soccer' },
+  { slug: 'uru.1', sport: 'soccer' },
+  { slug: 'col.1', sport: 'soccer' },
+  { slug: 'per.1', sport: 'soccer' },
+  { slug: 'ecu.1', sport: 'soccer' },
+  { slug: 'bol.1', sport: 'soccer' },
+  { slug: 'mex.1', sport: 'soccer' },
+  { slug: 'usa.1', sport: 'soccer' },
+  { slug: 'nba', sport: 'basketball' },
+  { slug: 'nfl', sport: 'football' },
+  { slug: 'mlb', sport: 'baseball' },
+  { slug: 'nhl', sport: 'hockey' }
+];
+
+async function prewarmLogoFromLeague(leagueSlug, sport) {
+  // ESPN expone /apis/site/v2/sports/{sport}/{leagueSlug}/teams para soccer
+  // y para otros sports usa /apis/site/v2/sports/{sport}/leagues/{slug}/teams
+  // Probamos las dos variantes.
+  const urls = sport === 'soccer'
+    ? [`https://site.api.espn.com/apis/site/v2/sports/soccer/${leagueSlug}/teams`]
+    : [`https://site.api.espn.com/apis/site/v2/sports/${sport}/${leagueSlug}/teams`];
+
+  for (const url of urls) {
+    try {
+      const ctrl = new AbortController();
+      setTimeout(() => ctrl.abort(), 10000);
+      const r = await fetch(url, { signal: ctrl.signal, headers: { 'User-Agent': 'Mozilla/5.0' } });
+      if (!r.ok) continue;
+      const data = await r.json();
+      const teams = data?.sports?.[0]?.leagues?.[0]?.teams || [];
+      let count = 0;
+      for (const item of teams) {
+        const t = item?.team || item;
+        if (!t) continue;
+        const name = t.displayName || t.name;
+        const logos = t.logos || (t.logo ? [{ href: t.logo }] : []);
+        const logoUrl = logos.find(l => Array.isArray(l.rel) && l.rel.includes('default'))?.href || logos[0]?.href;
+        if (name && logoUrl) {
+          // Poblamos múltiples claves para mejor matching
+          const variations = [name, t.shortDisplayName, t.nickname, t.location].filter(Boolean);
+          for (const v of variations) {
+            const k = normalizeLogoKey(v) + '|' + sport;
+            logoCache.set(k, logoUrl);
+          }
+          count++;
+        }
+      }
+      if (count > 0) {
+        log(`[logo:prewarm] ${leagueSlug} → ${count} equipos`);
+        return count;
+      }
+    } catch (e) {
+      log(`[logo:prewarm] ${leagueSlug} err: ${e?.message?.slice(0, 60)}`);
+    }
+  }
+  return 0;
+}
+
+async function prewarmAllLogos() {
+  log('[logo:prewarm] iniciando...');
+  let total = 0;
+  for (const { slug, sport } of PREWARM_LEAGUES) {
+    total += await prewarmLogoFromLeague(slug, sport);
+    await new Promise(r => setTimeout(r, 250));   // gentle pace
+  }
+  log(`[logo:prewarm] terminado · ${total} equipos cacheados`);
+}
+
+// Disparar prewarm 10s después del startup (para no bloquear cold-start de Render).
+setTimeout(() => { prewarmAllLogos().catch(e => log(`[logo:prewarm] fatal: ${e?.message}`)); }, 10000);
+// Refresh cada 24h
+setInterval(() => { prewarmAllLogos().catch(() => {}); }, 24 * 60 * 60 * 1000);
+
 /* GET /api/logo?team=X&sport=Y — devuelve URL de logo o 404.
  * Cliente lo llama async y reemplaza placeholder cuando llega.
  * Pasar ?debug=1 para diagnóstico (devuelve la respuesta cruda de ESPN). */
