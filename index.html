@@ -827,10 +827,32 @@ document.addEventListener('DOMContentLoaded', () => {
       sbCard.style.display = 'none';
     }
   }
+  /* Throttle global para renders del landing — sin esto, cada bs:live-update
+   * (cada 1.2s) re-rendereaba hero + ticker + surebets + pick del día +
+   * demo comparator + builder demo simultáneamente → DOM flicker constante.
+   * Throttle 4s evita el "parpadeo" reportado por el user. */
+  function throttle(fn, ms) {
+    let last = 0, pending = null;
+    return function(...args) {
+      const now = Date.now();
+      if (now - last >= ms) {
+        last = now;
+        if (pending) { clearTimeout(pending); pending = null; }
+        fn.apply(this, args);
+      } else if (!pending) {
+        pending = setTimeout(() => {
+          last = Date.now();
+          pending = null;
+          fn.apply(this, args);
+        }, ms - (now - last));
+      }
+    };
+  }
+  const renderHeroThrottled = throttle(renderHeroLive, 4000);
   renderHeroLive();
   window.addEventListener('bs:live-snapshot', renderHeroLive);
-  window.addEventListener('bs:live-update', renderHeroLive);
-  window.addEventListener('bs:live-surebet', renderHeroLive);
+  window.addEventListener('bs:live-update', renderHeroThrottled);
+  window.addEventListener('bs:live-surebet', renderHeroThrottled);
 
   // Live ticker — cuotas REALES del backend de scraping. Se rehidrata en
   // cuanto BSLive recibe el primer snapshot (y luego en cada update).
@@ -859,8 +881,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }).join('');
     ticker.innerHTML = items + items;
   }
+  const renderTickerThrottled = throttle(renderLiveTicker, 5000);
   renderLiveTicker();
   window.addEventListener('bs:live-snapshot', renderLiveTicker);
+  window.addEventListener('bs:live-update', renderTickerThrottled);
   window.addEventListener('bs:live-update', renderLiveTicker);
 
   // Bookmark marquee — SOLO casas argentinas legales con LOGO REAL (CDN)
