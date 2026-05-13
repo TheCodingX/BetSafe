@@ -11462,3 +11462,26 @@ html.reduce-motion *::after {
   text-transform: uppercase;
   letter-spacing: .03em;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   AI Empty card processing state — IA aún analizando
+   ───────────────────────────────────────────────────────────────────────── */
+.ai-empty-card--processing {
+  border: 1px solid color-mix(in srgb, var(--brand-500) 32%, transparent);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--brand-500) 6%, transparent), transparent 60%),
+    var(--surface);
+}
+.ai-empty-card--processing .ai-empty-icon svg {
+  animation: ai-spin 1.4s linear infinite;
+  color: var(--brand-600);
+}
+.ai-empty-card--processing .ai-empty-ring {
+  border-color: color-mix(in srgb, var(--brand-500) 40%, transparent);
+}
+@keyframes ai-spin {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ai-empty-card--processing .ai-empty-icon svg { animation: none; }
+}

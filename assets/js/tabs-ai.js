@@ -259,16 +259,36 @@
       return;
     }
     if (!state.picks.length) {
-      host.innerHTML = `
-        <div class="ai-empty-card">
-          <div class="ai-empty-icon">
-            <span class="ai-empty-ring"></span>
-            <span class="ai-empty-ring ai-empty-ring--2"></span>
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          </div>
-          <strong>Sin picks por ahora</strong>
-          <p class="muted tiny" style="max-width:380px;margin:0 auto">Estamos esperando partidos que cumplan tus filtros. Probá <em>bajar el sharp mínimo</em>, destildar <em>saltear lesiones</em>, o cambiar el deporte.</p>
-        </div>`;
+      // Distinguir: "AI procesando aún" vs "Sin picks por filtros"
+      const aiPending = state.meta?.aiPending || 0;
+      if (aiPending > 0) {
+        host.innerHTML = `
+          <div class="ai-empty-card ai-empty-card--processing">
+            <div class="ai-empty-icon">
+              <span class="ai-empty-ring"></span>
+              <span class="ai-empty-ring ai-empty-ring--2"></span>
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+            </div>
+            <strong>La IA está analizando los partidos…</strong>
+            <p class="muted tiny" style="max-width:480px;margin:0 auto">${aiPending} análisis en proceso. Esperá <strong>20-40 segundos</strong> y refrescá. Una vez analizados, los siguientes picks aparecen instantáneo (cache 5min).</p>
+            <button class="btn btn-primary btn-sm mag" id="aiRetry">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><path d="M3 12a9 9 0 1 0 9-9 9.74 9.74 0 0 0-6.74 2.74L3 8"/><polyline points="3 3 3 8 8 8"/></svg>
+              Refrescar
+            </button>
+          </div>`;
+      } else {
+        host.innerHTML = `
+          <div class="ai-empty-card">
+            <div class="ai-empty-icon">
+              <span class="ai-empty-ring"></span>
+              <span class="ai-empty-ring ai-empty-ring--2"></span>
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            </div>
+            <strong>Sin picks por ahora</strong>
+            <p class="muted tiny" style="max-width:380px;margin:0 auto">Estamos esperando partidos que cumplan tus filtros. Probá <em>bajar el sharp mínimo</em>, destildar <em>saltear lesiones</em>, o cambiar el deporte.</p>
+          </div>`;
+      }
+      panel.querySelector('#aiRetry')?.addEventListener('click', () => reload(panel));
       return;
     }
     const isVip = BSAuth.isVip();

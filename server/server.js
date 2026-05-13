@@ -1708,36 +1708,99 @@ setInterval(() => { prewarmAllLogos().catch(() => {}); }, 24 * 60 * 60 * 1000);
 
 /* GET /api/ai/test — diagnóstico: prueba Groq directamente y devuelve raw response. */
 app.get('/api/ai/test', async (req, res) => {
-  const key = process.env.BS_GROQ_API_KEY || process.env.GROQ_API_KEY || '';
-  if (!key) return res.json({ ok: false, error: 'NO_GROQ_KEY', detail: 'BS_GROQ_API_KEY no está en env' });
-  const keyPreview = key.slice(0, 6) + '...' + key.slice(-4);
-  try {
-    const ctrl = new AbortController();
-    setTimeout(() => ctrl.abort(), 15000);
-    const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      signal: ctrl.signal,
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-      body: JSON.stringify({
-        model: process.env.BS_GROQ_MODEL || 'llama-3.3-70b-versatile',
-        messages: [
-          { role: 'system', content: 'Responde JSON: {"ok": true, "msg": "<saludo>"}' },
-          { role: 'user', content: 'Test' }
-        ],
-        temperature: 0.1,
-        response_format: { type: 'json_object' },
-        max_tokens: 100
-      })
-    });
-    const text = await r.text();
-    res.json({
-      ok: r.ok, status: r.status, keyPreview,
-      model: process.env.BS_GROQ_MODEL || 'llama-3.3-70b-versatile',
-      response: text.slice(0, 800)
-    });
-  } catch (e) {
-    res.json({ ok: false, error: e?.message, keyPreview });
-  }
+  const groqKey = process.env.BS_GROQ_API_KEY || process.env.GROQ_API_KEY || '';
+  const geminiKey = process.env.BS_GEMINI_API_KEY || process.env.GEMINI_API_KEY || '';
+  const anthropicKey = process.env.BS_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY || '';
+  const openrouterKey = process.env.BS_OPENROUTER_API_KEY || process.env.OPENROUTER_API_KEY || '';
+
+  const previewKey = (k) => k ? (k.slice(0, 6) + '...' + k.slice(-4)) : null;
+
+  const status = {
+    configured: {
+      groq: !!groqKey, gemini: !!geminiKey, anthropic: !!anthropicKey, openrouter: !!openrouterKey
+    },
+    keyPreviews: {
+      groq: previewKey(groqKey), gemini: previewKey(geminiKey),
+      anthropic: previewKey(anthropicKey), openrouter: previewKey(openrouterKey)
+    },
+    tests: {}
+  };
+
+  // ── Test Groq ──
+  if (groqKey) {
+    try {
+      const ctrl = new AbortController();
+      setTimeout(() => ctrl.abort(), 12000);
+      const t0 = Date.now();
+      const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST', signal: ctrl.signal,
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${groqKey}` },
+        body: JSON.stringify({
+          model: process.env.BS_GROQ_MODEL || 'llama-3.1-8b-instant',
+          messages: [{ role: 'user', content: 'Say {"ok":true} in JSON.' }],
+          temperature: 0, response_format: { type: 'json_object' }, max_tokens: 30
+        })
+      });
+      status.tests.groq = { ok: r.ok, status: r.status, durMs: Date.now() - t0 };
+      if (!r.ok) status.tests.groq.error = (await r.text()).slice(0, 200);
+    } catch (e) { status.tests.groq = { ok: false, error: e?.message }; }
+  } else status.tests.groq = { skipped: 'no key' };
+
+  // ── Test Gemini ──
+  if (geminiKey) {
+    try {
+      const model = process.env.BS_GEMINI_MODEL || 'gemini-2.5-flash';
+      const ctrl = new AbortController();
+      setTimeout(() => ctrl.abort(), 12000);
+      const t0 = Date.now();
+      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`, {
+        method: 'POST', signal: ctrl.signal,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: 'Say {"ok":true} in JSON.' }] }],
+          generationConfig: { temperature: 0, maxOutputTokens: 30, responseMimeType: 'application/json' }
+        })
+      });
+      status.tests.gemini = { ok: r.ok, status: r.status, model, durMs: Date.now() - t0 };
+      if (!r.ok) status.tests.gemini.error = (await r.text()).slice(0, 200);
+    } catch (e) { status.tests.gemini = { ok: false, error: e?.message }; }
+  } else status.tests.gemini = { skipped: 'no key' };
+
+  // ── Test Anthropic ──
+  if (anthropicKey) {
+    try {
+      const ctrl = new AbortController();
+      setTimeout(() => ctrl.abort(), 12000);
+      const t0 = Date.now();
+      const model = process.env.BS_ANTHROPIC_MODEL || 'claude-sonnet-4-5';
+      const r = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST', signal: ctrl.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': anthropicKey,
+          'anthropic-version': '2023-06-01'
+        },
+        body: JSON.stringify({
+          model, max_tokens: 30,
+          messages: [{ role: 'user', content: 'Say {"ok":true} in JSON.' }]
+        })
+      });
+      status.tests.anthropic = { ok: r.ok, status: r.status, model, durMs: Date.now() - t0 };
+      if (!r.ok) status.tests.anthropic.error = (await r.text()).slice(0, 200);
+    } catch (e) { status.tests.anthropic = { ok: false, error: e?.message }; }
+  } else status.tests.anthropic = { skipped: 'no key' };
+
+  // ── Decision tree: cuál se usa de primary? ──
+  if (geminiKey) status.activeStrategy = 'Gemini primary (3 retries) + Claude premium + Groq fallback';
+  else if (groqKey) status.activeStrategy = 'Groq primary (no Gemini configured)';
+  else status.activeStrategy = 'NINGUNA AI CONFIGURADA — picks vacíos esperados';
+
+  // Backward compat con código viejo
+  status.ok = status.tests.gemini?.ok || status.tests.groq?.ok || false;
+  status.keyPreview = previewKey(groqKey);
+  status.model = process.env.BS_GROQ_MODEL || 'llama-3.1-8b-instant';
+
+  res.json(status);
 });
 
 /* GET /api/logo?team=X&sport=Y — devuelve URL de logo o 404.
