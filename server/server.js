@@ -1035,6 +1035,42 @@ Si el usuario no menciona algo, usá defaults razonables.`;
     userIntent: String(parsed?.userIntent || prompt).slice(0, 250)
   };
 
+  // ── REGEX FALLBACK: si el LLM no extrajo leagues, hacemos detection manual
+  // por keywords en el prompt. Esto es CRÍTICO porque a veces el parser falla
+  // y el resultado son partidos random.
+  if (!filters.leagues.length) {
+    const p = prompt.toLowerCase();
+    const KW = {
+      'premier-league': /(premier\s*league|premier(?:\s+inglesa)?|epl)/i,
+      'la-liga':        /(la\s*liga|laliga|primera\s*divisi[óo]n\s*esp|liga\s*espa[ñn]ola)/i,
+      'serie-a':        /(serie\s*a|seriea|italia(?:no)?\s*serie)/i,
+      'bundesliga':     /(bundesliga|alemana)/i,
+      'ligue-1':        /(ligue\s*[1u]|ligue1|francesa)/i,
+      'ucl':            /(champions(?:\s*league)?|ucl|uefa\s*champions)/i,
+      'uel':            /(europa\s*league|uel)/i,
+      'libertadores':   /(libertadores|copa\s*libertadores)/i,
+      'sudamericana':   /(sudamericana|copa\s*sudamericana)/i,
+      'lpf':            /(liga\s*profesional|lpf|liga\s*argentina|primera\s*argentina)/i,
+      'copa-argentina': /(copa\s*argentina)/i,
+      'brasileirao':    /(brasileir[ãa]o|brasil(?:e[ñn]o)?)/i,
+      'liga-mx':        /(liga\s*mx|liga\s*mexicana)/i,
+      'mls':            /(\bmls\b|major\s*league\s*soccer)/i,
+      'nba':            /(\bnba\b|baloncesto\s*nba)/i,
+      'ufc':            /(\bufc\b|mma)/i
+    };
+    for (const [key, re] of Object.entries(KW)) {
+      if (re.test(p)) filters.leagues.push(key);
+    }
+  }
+  // Misma idea para deporte si no se detectó
+  if (filters.sport === 'all') {
+    const p = prompt.toLowerCase();
+    if (/futbol|fútbol|soccer|partid|premier|liga/i.test(p)) filters.sport = 'soccer';
+    else if (/básq|basket|nba/i.test(p)) filters.sport = 'basketball';
+    else if (/tenis|tennis|atp|wta/i.test(p)) filters.sport = 'tennis';
+    else if (/esports|cs:?go|valorant|dota|lol/i.test(p)) filters.sport = 'esports';
+  }
+
   // 2) Buscar eventos REALES del orchestrator que matcheen
   const now = Date.now();
   const timeRange = {
@@ -1065,10 +1101,13 @@ Si el usuario no menciona algo, usá defaults razonables.`;
     });
   }
 
-  // 3) Analizar los top candidates con la pipeline
+  // 3) Analizar los top candidates con la pipeline.
+  // TOP_N: pool de eventos a analizar antes de seleccionar las legs finales.
+  // Más alto = más opciones pero más tiempo. legs=4 → analizamos ~max(8, legs*2) = 8.
+  // legs=8 → analizamos 16. Cap a 14 para no exceder 30s total.
   const steam = orchestrator.steamMoves();
   const surebets = arbEngine.snapshot().detected;
-  const TOP_N = Math.min(20, candidates.length);
+  const TOP_N = Math.min(14, Math.max(8, filters.legs * 2), candidates.length);
   const top = candidates.slice(0, TOP_N);
   const analyzeLimit = pLimit(2);
   const analyzed = await Promise.allSettled(
