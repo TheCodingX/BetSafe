@@ -289,6 +289,43 @@ app.get('/api/discrepancies', (req, res) => {
 // DEBUG: corre un scraper específico y devuelve TODOS los XHRs que capturó
 // con preview del body. Sirve para inspeccionar sin abrir DevTools manualmente.
 // Uso: GET /api/debug/scraper/bplay?url=https://www.bplay.com.ar/apuestas-deportivas
+
+/* GET /api/debug/scrape-now/:name — Ejecuta un scraper EN VIVO y devuelve
+ * trace completo. Útil para diagnosticar por qué un scraper devuelve 0 events.
+ * Sin ?url= (a diferencia del debug/scraper que usa Playwright). */
+app.get('/api/debug/scrape-now/:name', async (req, res) => {
+  const name = req.params.name;
+  try {
+    let scraper;
+    try { scraper = require('./scrapers/' + name); } catch (e) {
+      return res.status(404).json({ error: 'scraper no encontrado: ' + name });
+    }
+    const t0 = Date.now();
+    // Limpiar cache si existe
+    if (typeof scraper.clearCache === 'function') scraper.clearCache();
+    const events = await scraper({ sports: ['soccer', 'basketball', 'tennis'] });
+    const dur = Date.now() - t0;
+    res.json({
+      name,
+      dur,
+      eventCount: Array.isArray(events) ? events.length : 0,
+      sample: Array.isArray(events) ? events.slice(0, 3).map(e => ({
+        home: e.home?.name,
+        away: e.away?.name,
+        sport: e.sport,
+        league: e.leagueName,
+        marketsKeys: Object.keys(e.markets || {}),
+        booksInH2h: e.markets?.h2h ? Object.keys(e.markets.h2h) : []
+      })) : [],
+      breakers: scraper.breaker ? { [name]: { state: scraper.breaker.state, fails: scraper.breaker.fails } }
+              : scraper.breakers ? Object.fromEntries(Object.entries(scraper.breakers).map(([k, b]) => [k, { state: b.state, fails: b.fails }]))
+              : null
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message, stack: e.stack?.split('\n').slice(0, 3) });
+  }
+});
+
 app.get('/api/debug/scraper/:bookKey', async (req, res) => {
   // Protección básica: requiere ?key=<DEBUG_KEY> si está configurada
   if (process.env.DEBUG_KEY && req.query.key !== process.env.DEBUG_KEY) {
