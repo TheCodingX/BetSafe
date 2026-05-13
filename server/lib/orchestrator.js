@@ -447,34 +447,50 @@ const RELEVANT_LEAGUE_PATTERNS = [
 
 /* NEGATIVE list — countries/regions que vetamos aunque matcheen positive.
  * Cubre los partidos basura que el user reportó: Egipto, Ucrania, Saudi,
- * Israel, semipro australiano, ligas obscuras asiáticas, etc. */
+ * Israel, semipro australiano, ligas obscuras asiáticas, etc.
+ *
+ * AGRESIVO ahora: matchea TANTO el nombre del equipo como el nombre de la liga.
+ * Importante: "Premier League" matchea el whitelist genérico, así que
+ * necesitamos blocklist específico por país para excluir Ukrainian Premier
+ * League, Egyptian Premier League, Israeli Premier League, etc. */
 const BLOCKED_LEAGUE_PATTERNS = [
+  // ── Países completos (bloqueados de cualquier deporte) ──
   /\b(egipto|egypt|egyptian|egyptien)\b/i,
   /\b(ucrani[ao]|ukrain[eai])\b/i,
   /\b(arabia|saudi|saudi arabia|saudita)\b/i,
-  /\b(israel|israelí|israeli)\b/i,
-  /\b(australia[no]?|a-league|aleague)\b/i,   // semipro/A-League AUS
-  /\b(canberra|canada|canadiense|canadien)\b/i,
-  /\b(japan|japón|j-?league|j1|j2|j3)\b/i,
+  /\b(israel|israel[ií]|israeli)\b/i,
+  // Sudamerica: dejamos pasar (Bplay/Betano cubren Libertadores, Sudamericana, ligas top)
+  /\b(australia[no]?|a-league|aleague|a[-\s]?league)\b/i,
+  /\b(canberra|canad[áa]|canadian|canadien|canadiense|cpl)\b/i,
+  /\b(quebec|que[bs]ec)\b/i,
+  /\b(japan|jap[óo]n|j-?league|j1|j2|j3)\b/i,
   /\b(china|chinese|csl|cba)\b/i,
-  /\b(korea|south korea|coreano|k-?league)\b/i,
-  /\b(india|indian|isl)\b/i,
-  /\b(thailand|thai|t1)\b/i,
+  /\b(korea|south korea|coreano|coreana|k-?league)\b/i,
+  /\b(india|indian|\bisl\b)\b/i,
+  /\b(thailand|thai|\bt1\b)\b/i,
   /\b(iran|iranian|persian)\b/i,
-  /\b(uae|emirate|qatar|qatari|kuwait|bahrain|oman)\b/i,
-  /\b(africa cup|caf|tunisia|tunis|morocco|moroccan|algeria|algerian|nigeria|south africa)\b/i,
+  /\b(uae|emirate|emiratos|qatar|qatari|kuwait|bahrain|oman|om[áa]n|omani)\b/i,
+  /\b(africa cup|caf|tunisia|tunis|tunisian|tunecino|morocco|moroccan|algeria|algerian|nigeria|south africa|kenia|kenya|kenyan|ghana|ghanaian)\b/i,
   /\b(scandinav|finland|finnish|sweden|swedish|norway|norweg|denmark|danish|iceland|icelandic)\b/i,
-  /\b(poland|polish|polski|czech|romanian|hungar|bulgar|serbia|serbian|croatia|croatian|slovak)\b/i,
-  /\b(belarus|bielo|kazakh|moldova|moldovan|georgia|georgian|armenian)\b/i,
-  /\b(\bgreece|greek|cyprus|turkey|turkish|super lig)\b/i,   // Turkish/Greek no top
+  /\b(poland|polish|polski|czech|romanian|hungar|bulgar|serbia|serbian|croatia|croatian|slovak|bosnia|bosnian)\b/i,
+  /\b(belarus|bielo|kazakh|moldov|georgia|georgian|armenian|azerb)\b/i,
+  /\b(greece|greek|cyprus|cypriot|stoiximan|super league.*gre|turkey|turkish|super lig\b)\b/i,
   /\b(belgium|belgian|jupiler|swiss|switzerland|austria|austrian|bundesliga.*aut)\b/i,
   /\b(scotland|scottish|spfl|spl|premiership.*scot|cymru|welsh|northern ireland)\b/i,
   /\b(eire|ireland|irish|league of ireland)\b/i,
-  /\b(reserve|reserves|youth|sub-?20|sub-?23|under-?\d+|primavera|u\d+)\b/i,
-  /\b(cibacopa|lnbp|mexicano basket)\b/i,    // basquet mexicano obscuro
+  // ── Categorías que vetamos siempre ──
+  /\b(reserve|reserves|youth|sub-?\d+|under-?\d+|primavera|u\d+|juvenil|cadete)\b/i,
+  /\b(cibacopa|lnbp|mexicano basket)\b/i,
   /\b(lmb|liga mexicana de beisbol|mexican baseball)\b/i,
-  /\b(maccabi|hapoel)\b/i,                    // teams israelíes específicos
-  /\b(zed|ghazl|ismaili|el gouna|al-?ahly|zamalek)\b/i  // teams egipcios específicos
+  // ── Teams específicos que vetamos (Israel/Egipto/Ucrania/Tunisia/Oman/Kenya) ──
+  /\b(maccabi|hapoel|\bhapo[a-z]+\b)\b/i,
+  /\b(zed|ghazl|ismaili|el gouna|al-?ahly|zamalek|al ?nasr|al ?nassr|al ?hilal)\b/i,
+  /\b(dynamo kyiv|shakhtar|oleksandri[ya]|zoria|metalist|karpaty|kryvbas|polissya|veres|epicentr|kudrivka|rukh)\b/i,
+  /\b(js omrane|avenir sportif|stade tunisien|bizertin|zarzis|gabes)\b/i,
+  /\b(saham|oman fc|bahla|al-?nasr\b)\b/i,
+  /\b(ulinzi|afc leopards)\b/i,
+  /\b(csk[as] sofia|first professional league|professional football league.*bulg|bulgarian professional)\b/i,
+  /\b(forge fc|supra|fc supra)\b/i
 ];
 
 function isRelevantLeague(leagueName) {
@@ -544,9 +560,14 @@ function eventPriority(ev) {
   return p;
 }
 
-function events({ sport = 'all', league = null, all = false, sortByPriority = true } = {}) {
+function events({ sport = 'all', league = null, all = false, sortByPriority = true, includePast = false } = {}) {
   const list = [];
+  // CRITICAL: filtrar eventos pasados. Por default solo mostramos eventos
+  // futuros (o en curso, hasta 2h después del kickoff).
+  const now = Date.now();
+  const pastThreshold = now - 2 * 60 * 60 * 1000;   // 2h después del kickoff = "en vivo o reciente"
   state.events.forEach(ev => {
+    if (!includePast && Number.isFinite(ev.start) && ev.start < pastThreshold) return;
     const evSport = effectiveSport(ev);
     if (sport !== 'all' && evSport !== sport) return;
     if (league && ev.league !== league) return;

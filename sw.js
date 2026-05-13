@@ -1,5 +1,5 @@
 // BetSafe Service Worker — cache strategy: cache-first for assets, network-first for HTML/data
-const VERSION = 'betsafe-v4.2.0';   // agg multi-leg robust + weather venue fallback + LLM diagnostics + league aliases
+const VERSION = 'betsafe-v4.3.0';   // CRITICAL: filter past events + strict blocklist (Ukraine/Tunisia/Oman/Kenya/Hapoel)
 const STATIC_CACHE = `${VERSION}-static`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 
