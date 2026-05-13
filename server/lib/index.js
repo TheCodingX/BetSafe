@@ -156,6 +156,72 @@ function httpGetNative(url, opts = {}) {
 
 async function httpJsonNative(url, opts = {}) { return httpGetNative(url, { ...opts, json: true }); }
 
+/* Stats globales de uso ScrapingBee. Acumulan créditos consumidos durante
+ * el lifetime del proceso. Se reportan en /api/sbee/usage para que el user
+ * vea el ritmo de consumo en vivo (más fino que el dashboard de sbee, que
+ * actualiza con delay).
+ *
+ * `lastUsage` se llena vía getScrapingBeeUsage() que pega contra el endpoint
+ * /usage de scrapingbee (esa call es gratis, 0 créditos). */
+const scrapingBeeStats = {
+  totalCreditsUsed: 0,    // créditos gastados desde el boot del proceso
+  callsTotal: 0,
+  callsFailed: 0,
+  callsByPath: {},        // { 'betano': N, 'sofascore': N, ... }
+  creditsByPath: {},      // { 'betano': N créditos, 'sofascore': N, ... }
+  lastUsage: null,        // { max_api_credit, used_api_credit, ts } — desde /usage
+  lastUsageCheckAt: 0
+};
+
+/* Consulta endpoint /usage de ScrapingBee (no consume créditos).
+ * Cachea 5 minutos para no abusar. */
+async function getScrapingBeeUsage(forceRefresh = false) {
+  const key = process.env.SCRAPINGBEE_KEY;
+  if (!key) return null;
+  if (!forceRefresh && scrapingBeeStats.lastUsage && Date.now() - scrapingBeeStats.lastUsageCheckAt < 5 * 60_000) {
+    return scrapingBeeStats.lastUsage;
+  }
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 10000);
+    const { body, statusCode } = await request(`https://app.scrapingbee.com/api/v1/usage?api_key=${encodeURIComponent(key)}`, {
+      method: 'GET',
+      signal: ctrl.signal
+    });
+    clearTimeout(timer);
+    if (statusCode !== 200) {
+      log(`[sbee:usage] HTTP ${statusCode}`);
+      return null;
+    }
+    const json = await body.json();
+    scrapingBeeStats.lastUsage = { ...json, ts: Date.now() };
+    scrapingBeeStats.lastUsageCheckAt = Date.now();
+    return scrapingBeeStats.lastUsage;
+  } catch (e) {
+    log(`[sbee:usage] err ${e.message?.slice(0, 80)}`);
+    return null;
+  }
+}
+
+/* Devuelve un multiplicador a aplicar al cache TTL en base a créditos
+ * remaining. Cuando el budget está bajo, extendemos el cache para no
+ * quemar la cuota antes de fin de mes.
+ *   - >= 15% remaining → 1x (TTL normal)
+ *   - 5-15% remaining → 2x (cache dobla)
+ *   - < 5% remaining → 4x (cache cuadruplica)
+ *   - 0 remaining → 99x (efectivamente desactivado hasta refill)
+ */
+function getCreditBudgetMultiplier() {
+  const u = scrapingBeeStats.lastUsage;
+  if (!u || !u.max_api_credit) return 1;
+  const remaining = u.max_api_credit - (u.used_api_credit || 0);
+  if (remaining <= 0) return 99;
+  const pct = remaining / u.max_api_credit;
+  if (pct < 0.05) return 4;
+  if (pct < 0.15) return 2;
+  return 1;
+}
+
 /* httpJsonViaScrapingBee — proxy genérico via ScrapingBee para bypass de Cloudflare
  * desde IPs cloud (Render, Fly, Railway, etc.) que están blackholeadas.
  *
@@ -170,7 +236,7 @@ async function httpJsonNative(url, opts = {}) { return httpGetNative(url, { ...o
  * monitorear quota.
  *
  * @param {string} url - URL target (e.g. betano endpoint)
- * @param {object} opts - { timeout, premium=true, renderJs=false, country='ar', json=true }
+ * @param {object} opts - { timeout, premium=true, renderJs=false, country='ar', json=true, tag='betano' }
  * @returns {Promise<{ json|text, costCredits, status }>}
  */
 async function httpViaScrapingBee(url, opts = {}) {
@@ -187,6 +253,10 @@ async function httpViaScrapingBee(url, opts = {}) {
   });
   const apiUrl = `https://app.scrapingbee.com/api/v1/?${params.toString()}`;
   const timeout = Number(opts.timeout) || 30000;
+  const tag = opts.tag || 'unknown';
+
+  scrapingBeeStats.callsTotal++;
+  scrapingBeeStats.callsByPath[tag] = (scrapingBeeStats.callsByPath[tag] || 0) + 1;
 
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(new Error(`sbee-timeout ${timeout}ms`)), timeout);
@@ -200,18 +270,28 @@ async function httpViaScrapingBee(url, opts = {}) {
     const text = await body.text();
     const costCredits = Number(headers['spb-cost'] || headers['Spb-Cost'] || 0);
     const targetStatus = Number(headers['spb-initial-status-code'] || 0);
-    if (statusCode === 401) throw new Error(`sbee-auth: API key inválida`);
-    if (statusCode === 402) throw new Error(`sbee-quota: créditos agotados`);
+    // Acumular siempre lo gastado (incluso si después tiramos error — sbee
+    // cobra los créditos por intento, no por éxito).
+    scrapingBeeStats.totalCreditsUsed += costCredits;
+    scrapingBeeStats.creditsByPath[tag] = (scrapingBeeStats.creditsByPath[tag] || 0) + costCredits;
+
+    if (statusCode === 401) { scrapingBeeStats.callsFailed++; throw new Error(`sbee-auth: API key inválida`); }
+    if (statusCode === 402) { scrapingBeeStats.callsFailed++; throw new Error(`sbee-quota: créditos agotados`); }
     if (statusCode === 422 || statusCode >= 500) {
+      scrapingBeeStats.callsFailed++;
       throw new Error(`sbee ${statusCode}: target=${targetStatus} :: ${text.slice(0, 200)}`);
     }
     if (statusCode >= 400) {
+      scrapingBeeStats.callsFailed++;
       throw new Error(`sbee HTTP ${statusCode} :: ${text.slice(0, 200)}`);
     }
     const result = { costCredits, status: targetStatus };
     if (opts.json !== false) {
       try { result.json = JSON.parse(text); }
-      catch (e) { throw new Error(`sbee-parse: ${e.message?.slice(0, 80)} :: ${text.slice(0, 200)}`); }
+      catch (e) {
+        scrapingBeeStats.callsFailed++;
+        throw new Error(`sbee-parse: ${e.message?.slice(0, 80)} :: ${text.slice(0, 200)}`);
+      }
     } else {
       result.text = text;
     }
@@ -444,6 +524,7 @@ function isFinite2(n) { return typeof n === 'number' && Number.isFinite(n) && n 
 module.exports = {
   log, sleep, httpGet, httpJson, httpGetNative, httpJsonNative,
   httpViaScrapingBee, httpJsonViaScrapingBee, browserPool,
+  scrapingBeeStats, getScrapingBeeUsage, getCreditBudgetMultiplier,
   normalizeTeam, parseDecimal, parseAmericanToDecimal, eventKey, isFinite2,
   UA, ACCEPT_LANG
 };

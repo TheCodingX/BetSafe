@@ -260,5 +260,6 @@ async function scrape() {
 }
 
 scrape.breaker = breaker;
+scrape.clearCache = () => { cachedEvents = []; cachedAt = 0; cachedLeagueNodeIds = null; cachedLeagueNodeIdsAt = 0; };
 
 module.exports = scrape;

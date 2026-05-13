@@ -600,14 +600,16 @@ function buildSources(cfg) {
   // 3) Fuentes públicas suplementarias (fixtures sin odds, pero útiles
   //    para no dejar partidos "ausentes" cuando ningún scraper los capturó).
   //
-  // SofaScore: por DEFAULT desactivado en hosts cloud porque Cloudflare
-  // bloquea sistemáticamente las IPs de Render/Fly/Railway con 403. ESPN
-  // ya cubre el mismo rol (fixtures sin odds) y SÍ responde a cloud IPs.
-  // Para reactivarlo si tenés una IP "limpia" (e.g. residential proxy),
-  // setear ENABLE_SOFASCORE=true.
-  if (process.env.ENABLE_SOFASCORE === 'true') {
+  // SofaScore: en hosts cloud Cloudflare bloquea native HTTPS. Se habilita
+  // automáticamente si tenemos SCRAPINGBEE_KEY (bypassa Cloudflare) o si el
+  // user lo fuerza con ENABLE_SOFASCORE=true. Si querés DESACTIVARLO incluso
+  // teniendo sbee (para ahorrar créditos), setear ENABLE_SOFASCORE=false.
+  const sofaEnabled = process.env.ENABLE_SOFASCORE === 'true'
+    || (process.env.SCRAPINGBEE_KEY && process.env.ENABLE_SOFASCORE !== 'false');
+  if (sofaEnabled) {
     sources.push(new SofaScoreSource());
-    log('[orchestrator] SofaScore source habilitado (opt-in)');
+    const via = process.env.SCRAPINGBEE_KEY ? 'scrapingbee' : 'native-https';
+    log(`[orchestrator] SofaScore source habilitado (via ${via})`);
   }
   if (process.env.ENABLE_ESPN !== 'false') {
     sources.push(new EspnSource());
@@ -639,24 +641,27 @@ function stop() {
   state.timer = null;
 }
 
-/* Estado de los circuit breakers de cada scraper.
- * Los scrapers exponen `scrape.breaker` (1 breaker) o `scrape.breakers` (varios,
- * e.g. betano tiene `direct` + `playwright`). Permite a /api/breakers ver si
- * Cloudflare nos baneó y cuándo va a reintentar. */
+/* Estado de los circuit breakers de cada source.
+ * Los breakers pueden estar attacheados a:
+ *   - `src.scrape.breaker`  (scrapers basados en función, e.g. bplay)
+ *   - `src.scrape.breakers` (scrapers con múltiples paths, e.g. betano direct+playwright+sbee)
+ *   - `src.breakers`        (sources basados en clase, e.g. SofaScoreSource)
+ * Permite a /api/breakers ver si Cloudflare nos baneó y cuándo va a reintentar. */
 function breakers() {
   const out = {};
+  const addBreaker = (key, br) => {
+    if (br && typeof br.status === 'function') out[key] = br.status();
+  };
+  const addBreakers = (prefix, obj) => {
+    if (!obj || typeof obj !== 'object') return;
+    for (const [subKey, br] of Object.entries(obj)) addBreaker(`${prefix}:${subKey}`, br);
+  };
+
   for (const src of state.sources) {
     const scraper = src.scrape;
-    if (scraper?.breaker && typeof scraper.breaker.status === 'function') {
-      out[src.name] = scraper.breaker.status();
-    }
-    if (scraper?.breakers && typeof scraper.breakers === 'object') {
-      for (const [subKey, br] of Object.entries(scraper.breakers)) {
-        if (br && typeof br.status === 'function') {
-          out[`${src.name}:${subKey}`] = br.status();
-        }
-      }
-    }
+    if (scraper?.breaker) addBreaker(src.name, scraper.breaker);
+    addBreakers(src.name, scraper?.breakers);
+    addBreakers(src.name, src.breakers);
   }
   return out;
 }
@@ -666,35 +671,59 @@ function breakers() {
  * Si `name` está dado, solo resetea ese; si no, resetea todos. */
 function resetBreakers(name = null) {
   const reset = [];
+  const resetOne = (br, key) => {
+    if (!br || typeof br.status !== 'function') return;
+    br.state = 'CLOSED';
+    br.consecutiveFails = 0;
+    br.cooldownAttempts = 0;
+    reset.push(key);
+  };
+
   for (const src of state.sources) {
     const scraper = src.scrape;
-    if (scraper?.breaker && typeof scraper.breaker.status === 'function') {
-      if (!name || name === src.name) {
-        scraper.breaker.state = 'CLOSED';
-        scraper.breaker.consecutiveFails = 0;
-        scraper.breaker.cooldownAttempts = 0;
-        reset.push(src.name);
-      }
+    if (scraper?.breaker && (!name || name === src.name)) {
+      resetOne(scraper.breaker, src.name);
     }
-    if (scraper?.breakers && typeof scraper.breakers === 'object') {
-      for (const [subKey, br] of Object.entries(scraper.breakers)) {
-        const k = `${src.name}:${subKey}`;
-        if (!name || name === k || name === src.name) {
-          br.state = 'CLOSED';
-          br.consecutiveFails = 0;
-          br.cooldownAttempts = 0;
-          reset.push(k);
-        }
+    const subBreakers = [
+      ...Object.entries(scraper?.breakers || {}).map(([k, b]) => [`${src.name}:${k}`, b, src.name]),
+      ...Object.entries(src.breakers || {}).map(([k, b]) => [`${src.name}:${k}`, b, src.name])
+    ];
+    for (const [fullKey, br, srcName] of subBreakers) {
+      if (!name || name === fullKey || name === srcName) {
+        resetOne(br, fullKey);
       }
     }
   }
   return reset;
 }
 
+/* Reset manual del cache de un scraper específico. Util cuando querés
+ * forzar refresh sin esperar el TTL (e.g., antes de un partido grande).
+ *
+ * Los scrapers que cachean a nivel módulo exponen `scrape.clearCache()`. */
+function clearScraperCache(name = null) {
+  const cleared = [];
+  for (const src of state.sources) {
+    const scraper = src.scrape;
+    if (scraper?.clearCache && typeof scraper.clearCache === 'function') {
+      if (!name || name === src.name) {
+        try { scraper.clearCache(); cleared.push(src.name); } catch {}
+      }
+    }
+    // Sources basados en clase (SofaScoreSource) pueden exponer su propio clearCache
+    if (typeof src.clearCache === 'function') {
+      if (!name || name === src.name) {
+        try { src.clearCache(); cleared.push(src.name); } catch {}
+      }
+    }
+  }
+  return cleared;
+}
+
 module.exports = {
   start, stop,
   events, findEvent,
-  surebets, steamMoves, bookStatus, sourceStatus, discrepancies, quota, health, breakers, resetBreakers,
+  surebets, steamMoves, bookStatus, sourceStatus, discrepancies, quota, health, breakers, resetBreakers, clearScraperCache,
   on: bus.on.bind(bus),
   off: bus.off.bind(bus),
   _mergeEventFromSource: mergeEventFromSource

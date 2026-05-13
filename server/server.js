@@ -121,6 +121,48 @@ app.post('/api/breakers/reset', (req, res) => {
   res.json({ reset, count: reset.length });
 });
 
+// Force-refresh: limpia el cache de un scraper para que el próximo ciclo
+// haga un scrape fresco (ignorando el TTL). Útil antes de un partido grande
+// cuando querés cuotas FRESCAS ya, sin esperar al TTL de 8 minutos.
+//   POST /api/sources/refresh                     → todos los scrapers
+//   POST /api/sources/refresh?name=scraper:betano → solo betano
+app.post('/api/sources/refresh', (req, res) => {
+  if (process.env.DEBUG_KEY && req.query.key !== process.env.DEBUG_KEY) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+  const name = req.query.name ? String(req.query.name) : null;
+  const cleared = orchestrator.clearScraperCache ? orchestrator.clearScraperCache(name) : [];
+  res.json({ cleared, count: cleared.length });
+});
+
+// Estado de uso de ScrapingBee: créditos consumidos + restantes, por scraper.
+// El campo `lastUsage` viene del endpoint /usage de scrapingbee (cacheado 5min).
+// El campo `stats` es local del proceso (resetea al redeploy).
+//   GET /api/sbee/usage              → estado cacheado
+//   GET /api/sbee/usage?refresh=1    → fuerza re-check contra scrapingbee
+app.get('/api/sbee/usage', async (req, res) => {
+  const { getScrapingBeeUsage, scrapingBeeStats } = require('./lib');
+  const usage = await getScrapingBeeUsage(req.query.refresh === '1');
+  if (!usage && !process.env.SCRAPINGBEE_KEY) {
+    return res.status(404).json({ error: 'SCRAPINGBEE_KEY no configurada' });
+  }
+  const out = {
+    usage,
+    remaining: usage ? Math.max(0, (usage.max_api_credit || 0) - (usage.used_api_credit || 0)) : null,
+    pctRemaining: usage?.max_api_credit
+      ? Number(((usage.max_api_credit - (usage.used_api_credit || 0)) / usage.max_api_credit * 100).toFixed(1))
+      : null,
+    processStats: {
+      callsTotal: scrapingBeeStats.callsTotal,
+      callsFailed: scrapingBeeStats.callsFailed,
+      creditsUsedSinceBoot: scrapingBeeStats.totalCreditsUsed,
+      callsByPath: scrapingBeeStats.callsByPath,
+      creditsByPath: scrapingBeeStats.creditsByPath
+    }
+  };
+  res.json(out);
+});
+
 // Brier score tracker: snapshot del estado de calibración del ensemble.
 const brierTracker = require('./engines/brier-tracker');
 app.get('/api/brier', (req, res) => {

@@ -15,7 +15,7 @@
  */
 'use strict';
 
-const { httpJsonNative, httpJsonViaScrapingBee, browserPool, log, sleep } = require('../lib');
+const { httpJsonNative, httpJsonViaScrapingBee, getCreditBudgetMultiplier, browserPool, log, sleep } = require('../lib');
 const { parseBetanoJson } = require('../lib/betanoJson');
 const { withRetry, CircuitBreaker } = require('../lib/retry');
 
@@ -147,42 +147,83 @@ async function tryPlaywright() {
 /* ScrapingBee path: para deploys cloud (Render, Fly, etc.) donde Cloudflare
  * blackholea la IP. Activado solo si SCRAPINGBEE_KEY está en env.
  *
- * Costo: ~10 créditos/req con premium_proxy. Para conservar quota free,
- * pegamos SOLO al endpoint de live overview (el más valioso para arbitrage).
- * Cache propio: 5 minutos.
+ * Pega a LOS 3 ENDPOINTS de betano (live + top-v2 + top-events) en paralelo
+ * para cobertura completa. Los responses se mergean por (home|away|start).
+ *
+ * Costo: ~10 créditos × 3 endpoints = 30 créditos por ciclo. Con cache de
+ * 8min y plan Freelance 250k:
+ *   30 créditos × 60/8 calls/hr × 24h × 30d = 162k/mes (60% del plan).
+ *
+ * Tunable via env vars:
+ *   - BETANO_SBEE_ENDPOINTS=live,top   (subset de los 3 para ahorrar)
+ *   - BETANO_CACHE_MS=480000           (8min default)
  */
+const ENDPOINT_TAGS = ['live', 'top-v2', 'top'];
+
 async function tryScrapingBee() {
   if (!process.env.SCRAPINGBEE_KEY) return null;  // null = "no configurada, skip"
   if (scrapingBeeBreaker.state === 'OPEN') {
     scrapingBeeBreaker._maybeReset();
     if (scrapingBeeBreaker.state === 'OPEN') return null;
   }
-  // Solo el endpoint live para minimizar gasto de créditos.
-  // top-events-v2/top-events son redundantes con live-overview.
-  const url = ENDPOINTS[0];
-  try {
-    const { json, costCredits, status } = await scrapingBeeBreaker.exec(() =>
-      httpJsonViaScrapingBee(url, { timeout: 35000, premium: true, renderJs: false, country: 'ar' })
-    );
-    if (!json) return [];
-    const events = parseBetanoJson(json);
-    log(`[betano-json:sbee] ${events.length} eventos · ${costCredits} créditos · target=${status}`);
-    return events;
-  } catch (e) {
-    if (e?.circuitOpen) {
-      log(`[betano-json:sbee] circuit OPEN · skip`);
+
+  // Determinar qué endpoints pegar (tunable via env). Default = los 3.
+  const wantedSet = (process.env.BETANO_SBEE_ENDPOINTS || 'live,top-v2,top')
+    .split(',').map(s => s.trim()).filter(Boolean);
+  const tasks = ENDPOINTS.map((url, i) => ({ url, tag: ENDPOINT_TAGS[i] }))
+    .filter(t => wantedSet.includes(t.tag));
+
+  if (!tasks.length) return [];
+
+  // Ejecutamos en paralelo — los 3 endpoints son independientes.
+  const results = await Promise.all(tasks.map(async ({ url, tag }) => {
+    try {
+      return await scrapingBeeBreaker.exec(() =>
+        httpJsonViaScrapingBee(url, { timeout: 35000, premium: true, renderJs: false, country: 'ar', tag: `betano:${tag}` })
+      );
+    } catch (e) {
+      if (e?.circuitOpen) return null;
+      log(`[betano-json:sbee:${tag}] err: ${e.message?.slice(0, 150)}`);
       return null;
     }
-    log(`[betano-json:sbee] err: ${e.message?.slice(0, 200)}`);
-    return [];
+  }));
+
+  // Merge dedup por (home|away|start)
+  const seen = new Set();
+  const out = [];
+  let totalCredits = 0;
+  let oks = 0;
+  for (let i = 0; i < results.length; i++) {
+    const r = results[i];
+    if (!r?.json) continue;
+    oks++;
+    totalCredits += r.costCredits || 0;
+    const events = parseBetanoJson(r.json);
+    for (const ev of events) {
+      const key = `${ev.home?.name}|${ev.away?.name}|${ev.start}`.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(ev);
+    }
   }
+
+  if (oks > 0) {
+    log(`[betano-json:sbee] ${out.length} eventos · ${oks}/${tasks.length} endpoints OK · ${totalCredits} créditos`);
+    return out;
+  }
+  return [];
 }
 
 async function scrape() {
   const t0 = Date.now();
-  // Si tenemos ScrapingBee: cache 5min (conservar créditos).
+  // Si tenemos ScrapingBee: cache 8min × budget multiplier (2x/4x si quota bajo).
   // Si no: cache 1min original (sin proxy de pago, podemos darle más vueltas).
-  const cacheTtl = process.env.SCRAPINGBEE_KEY ? 5 * 60_000 : 60_000;
+  const baseCacheTtl = process.env.SCRAPINGBEE_KEY
+    ? Number(process.env.BETANO_CACHE_MS) || 8 * 60_000
+    : 60_000;
+  const cacheTtl = process.env.SCRAPINGBEE_KEY
+    ? baseCacheTtl * getCreditBudgetMultiplier()
+    : baseCacheTtl;
   if (cachedEvents.length && Date.now() - cachedAt < cacheTtl) return cachedEvents;
 
   // Cuando hay ScrapingBee, es el path PRIMARIO (es el único que funciona
@@ -212,7 +253,10 @@ async function scrape() {
     return events;
   }
 
-  if (cachedEvents.length && Date.now() - cachedAt < 15 * 60_000) {
+  // Stale-fallback: con sbee extendemos a 30min (cuotas viejas son menos malas
+  // que no tener cuotas) — sin sbee, 15min original.
+  const staleTtl = process.env.SCRAPINGBEE_KEY ? 30 * 60_000 : 15 * 60_000;
+  if (cachedEvents.length && Date.now() - cachedAt < staleTtl) {
     log(`[betano-json] all paths failed · serving cache (${cachedEvents.length})`);
     return cachedEvents;
   }
@@ -230,5 +274,8 @@ scrape.breakers = {
   playwright: playwrightBreaker,
   scrapingbee: scrapingBeeBreaker
 };
+
+// Permite a /api/sources/refresh forzar bypass del cache (e.g. antes de un partido).
+scrape.clearCache = () => { cachedEvents = []; cachedAt = 0; };
 
 module.exports = scrape;
