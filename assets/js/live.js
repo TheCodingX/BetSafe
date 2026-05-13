@@ -179,43 +179,67 @@
 
   // ── API pública ─────────────────────────────────────────────────────────
 
-  /* Whitelist de ligas relevantes para nuestra audiencia AR.
-   * Sin este filtro la UI se inunda con LMB mexicano, CIBACOPA, semipro
-   * australiano, etc. — partidos irrelevantes para usuarios AR.
-   * Para mostrar TODO el catálogo (debug / power user) → events({ all: true }). */
+  /* Whitelist STRICT — espejo del backend.
+   * Argentina + Sudam + Top 5 europeas + UEFA + USA majors + Tenis Grand Slam
+   * + MMA top + eSports top. Cualquier liga obscura (Egipto, Ucrania, Saudi,
+   * Israel, A-League AUS, J-League, etc.) está BLOQUEADA explícitamente. */
   const RELEVANT_LEAGUE_PATTERNS = [
-    // Argentina + Sudamérica
-    /argentin|primera|liga profes/i,
-    /libertadores|sudamericana|recopa/i,
-    /chile|paraguay|uruguay|colombia|peru|ecuador|bolivia|venezuela/i,
-    /brasileir|brazil|copa do brasil/i,
-    /copa america|copa mundial|world cup/i,
-    // Top europeas
-    /premier league|fa cup|championship|english/i,
-    /la ?liga|spain|copa del rey/i,
-    /serie a|coppa italia|italy/i,
-    /bundesliga|germany/i,
-    /ligue 1|france/i,
-    /champions league|europa league|conference league/i,
-    /eredivisie|netherlands|portugal|primeira liga/i,
-    /turkey|super lig|belgium|jupiler/i,
-    /eurocopa|euro\b/i,
-    // USA majors
-    /\bnba\b|\bnfl\b|\bmlb\b|\bnhl\b|\bmls\b/i,
-    /college football|ncaa/i,
-    // Otros relevantes
-    /\batp\b|\bwta\b|grand slam|wimbledon|us open|australian open|french open/i,
-    /\bufc\b|\bmma\b|boxing|boxeo|world boxing/i,
-    /euroleague|eurocup|acb\b/i,
-    /liga nacional/i,    // basket AR
-    /mexico.*liga mx|mexico.*primera/i,   // sólo liga MX top tier
-    // eSports — torneos top
-    /\b(csgo|cs2|cs:go|counter-?strike|iem|esl|blast|epl|major)\b/i,
-    /\b(league of legends|\blol\b|worlds|lec|lck|lcs|lpl|lla|lja)\b/i,
-    /\b(dota|the international|dpc)\b/i,
+    /\b(liga profesional|primera nacional|primera division.*argent|copa argentina)\b/i,
+    /\b(libertadores|sudamericana|recopa)\b/i,
+    /\b(brasileir.o|copa do brasil)\b/i,
+    /\b(chile.*primera|colombia.*primera|peru.*primera|ecuador.*primera|paraguay.*primera|uruguay.*primera|bolivia.*primera|venezuela.*primera)\b/i,
+    /\b(primera division.*chile|primera A.*colombia|liga betplay|liga ?pro.*ecuador|liga ?1.*peru|primera division.*uru)\b/i,
+    /\b(copa america|copa mundial|world cup|mundial 2026)\b/i,
+    /\b(english premier league|epl|fa cup|carabao cup)\b/i,
+    /\b(spanish la ?liga|laliga|spain.*primera|copa del rey)\b/i,
+    /\b(italian serie a|italy.*serie a|coppa italia)\b/i,
+    /\b(german bundesliga|germany.*bundesliga|dfb pokal)\b/i,
+    /\b(french ligue 1|france.*ligue|coupe de france)\b/i,
+    /\b(portuguese primeira|primeira liga.*portug|portugal.*primeira)\b/i,
+    /\b(dutch eredivisie|netherlands.*eredivisie)\b/i,
+    /\b(champions league|uefa champions|europa league|uefa europa|conference league|uefa nations)\b/i,
+    /\b(eurocopa|euro 2024|euro 2028|euro qualif|world cup qualif)\b/i,
+    /\b(\bnba\b|\bnfl\b|\bmlb\b|\bnhl\b|\bmls\b|major league soccer)\b/i,
+    /\b(\batp\b|\bwta\b|grand slam|wimbledon|us open|australian open|french open|roland garros)\b/i,
+    /\b(\bufc\b|\bmma\b|\bpfl\b|bellator|world boxing|wba|wbc|wbo|ibf)\b/i,
+    /\b(euroleague|eurocup)\b/i,
+    /\b(liga nacional.*basket|argentina.*basket|liga nacional argentina)\b/i,
+    /\b(mexico liga mx|liga mx\b|primera division.*mex)\b/i,
+    /\b(csgo|cs2|cs:go|counter-?strike|iem|esl pro|blast premier|epl s\d|major)\b/i,
+    /\b(league of legends|\blol\b|worlds|lec|lck|lcs|lpl|lla|lja|msi)\b/i,
+    /\b(dota ?2?|the international|dpc)\b/i,
     /\b(valorant|vct|vlr)\b/i,
     /\b(esports?|e-sports?)\b/i,
-    /\b(efootball|fifa esports|king of glory)\b/i
+    /\b(efootball pro|fifa esports|king of glory)\b/i
+  ];
+
+  const BLOCKED_LEAGUE_PATTERNS = [
+    /\b(egipto|egypt|egyptian|egyptien)\b/i,
+    /\b(ucrani[ao]|ukrain[eai])\b/i,
+    /\b(arabia|saudi|saudi arabia|saudita)\b/i,
+    /\b(israel|israelí|israeli)\b/i,
+    /\b(australia[no]?|a-league|aleague)\b/i,
+    /\b(canberra|canadiense|canadien)\b/i,
+    /\b(japan|japón|j-?league|j1|j2|j3)\b/i,
+    /\b(china|chinese|csl|cba)\b/i,
+    /\b(korea|south korea|coreano|k-?league)\b/i,
+    /\b(india|indian|isl)\b/i,
+    /\b(thailand|thai|t1)\b/i,
+    /\b(iran|iranian|persian)\b/i,
+    /\b(uae|emirate|qatar|qatari|kuwait|bahrain|oman)\b/i,
+    /\b(africa cup|caf|tunisia|tunis|morocco|moroccan|algeria|algerian|nigeria|south africa)\b/i,
+    /\b(scandinav|finland|finnish|sweden|swedish|norway|norweg|denmark|danish|iceland|icelandic)\b/i,
+    /\b(poland|polish|polski|czech|romanian|hungar|bulgar|serbia|serbian|croatia|croatian|slovak)\b/i,
+    /\b(belarus|bielo|kazakh|moldova|moldovan|georgia|georgian|armenian)\b/i,
+    /\b(\bgreece|greek|cyprus|turkey|turkish|super lig)\b/i,
+    /\b(belgium|belgian|jupiler|swiss|switzerland|austria|austrian|bundesliga.*aut)\b/i,
+    /\b(scotland|scottish|spfl|spl|premiership.*scot|cymru|welsh|northern ireland)\b/i,
+    /\b(eire|ireland|irish|league of ireland)\b/i,
+    /\b(reserve|reserves|youth|sub-?20|sub-?23|under-?\d+|primavera|u\d+)\b/i,
+    /\b(cibacopa|lnbp|mexicano basket)\b/i,
+    /\b(lmb|liga mexicana de beisbol|mexican baseball)\b/i,
+    /\b(maccabi|hapoel)\b/i,
+    /\b(zed|ghazl|ismaili|el gouna|al-?ahly|zamalek)\b/i
   ];
 
   /* Patrones para detectar esports por NOMBRE de liga — usado para forzar
@@ -235,24 +259,55 @@
     /\b(starcraft|sc2)\b/i,
     /\b(rainbow six|r6)\b/i,
     /\b(king of glory|honor of kings)\b/i,
-    /\b(iem|esl|blast|epl|major)\b/i
+    /\b(iem|esl pro|blast premier|epl s\d+|major)\b/i,
+    // Simulaciones esports tipo "NBA H2H GG League 4x5 minutes"
+    /\b(gg league|h2h gg|battle league|battle esports)\b/i,
+    /\bbattle\s*-\s*\w+\s*-\s*\d+\s*(minutos?|minutes?)/i,
+    /\d+\s*x\s*\d+\s*(minutos?|minutes?)/i,
+    /\b\d+\s*minutos?\s*(de juego|playing|match)\b/i
+  ];
+
+  const ESPORTS_TEAM_PATTERNS = [
+    /\(esports?\)/i,
+    /\((frenzy|fury|titanium|hyper|zion|tornado|cyber|lumix|dragon|phoenix|ninja|wolf|gladiator|champion|legend|elite|pro|master)\)/i
   ];
 
   function isRelevantLeague(leagueName) {
     if (!leagueName) return false;
+    if (BLOCKED_LEAGUE_PATTERNS.some(re => re.test(leagueName))) return false;
     return RELEVANT_LEAGUE_PATTERNS.some(re => re.test(leagueName));
   }
 
-  function looksLikeEsports(leagueName) {
-    if (!leagueName) return false;
-    return ESPORTS_LEAGUE_PATTERNS.some(re => re.test(leagueName));
+  /* Prioridad de partido — 0..3 score. Sirve para ordenar eventos en la UI
+   * mostrando primero los partidos con equipos/ligas más reconocidos.
+   * Esto es lo que pidió el user: "que priorice los equipos más conocidos". */
+  const TOP_TEAMS = /\b(boca|river|racing|independiente|san lorenzo|estudiantes|velez|talleres|argentinos|gimnasia|huracan|lanus|banfield|tigre|defensa|newells|rosario central|colon|union|godoy|barracas|liverpool|arsenal|manchester city|manchester united|chelsea|tottenham|newcastle|aston villa|west ham|real madrid|barcelona|atletico|sevilla|villarreal|valencia|athletic|real sociedad|betis|napoli|juventus|inter|milan|roma|lazio|atalanta|fiorentina|bayern|dortmund|leipzig|leverkusen|psg|marseille|monaco|lyon|nice|lille|porto|benfica|sporting|ajax|psv|feyenoord|flamengo|palmeiras|santos|sao paulo|corinthians|gremio|internacional|atletico mineiro|fluminense|botafogo|cruzeiro|vasco|liga de quito|barcelona sc|independiente del valle|peñaroll|nacional|olimpia|cerro porte|universidad catolica|colo|universidad de chile|alianza lima|universitario|sporting cristal|america de cali|junior|millonarios|santa fe|nacional med|club leon|america mex|monterrey|tigres|guadalajara|cruz azul|pumas|nfl|nba|mlb|nhl|nets|lakers|celtics|warriors|heat|nuggets|bucks|76ers|knicks|bulls|spurs|raptors|mavericks|suns|clippers|cowboys|patriots|eagles|chiefs|49ers|packers|steelers|yankees|dodgers|red sox|cubs|astros|rangers|atp|wta|federer|nadal|djokovic|alcaraz|sinner|medvedev|atletico mineiro|barcelona|chelsea|real betis)\b/i;
+
+  function eventPriority(ev) {
+    let p = 0;
+    if (isRelevantLeague(ev.leagueName)) p += 1;
+    const teams = `${ev.home?.name || ''} ${ev.away?.name || ''}`;
+    if (TOP_TEAMS.test(teams)) p += 2;
+    // Bonus si AMBOS equipos son top
+    if (TOP_TEAMS.test(ev.home?.name || '') && TOP_TEAMS.test(ev.away?.name || '')) p += 1;
+    return p;
   }
 
-  /* Devuelve el sport "efectivo" — si la liga grita esports, devuelve 'esports'
-   * sin importar lo que dijera el scraper. Garantiza que cuando user filtra
-   * 'soccer', nunca aparecen partidos con liga estilo "IEM Atlanta". */
+  function looksLikeEsports(ev) {
+    if (typeof ev === 'string') return ESPORTS_LEAGUE_PATTERNS.some(re => re.test(ev));
+    if (!ev) return false;
+    if (ev.leagueName && ESPORTS_LEAGUE_PATTERNS.some(re => re.test(ev.leagueName))) return true;
+    const teamsBlob = `${ev.home?.name || ''} ${ev.away?.name || ''}`;
+    if (ESPORTS_TEAM_PATTERNS.some(re => re.test(teamsBlob))) return true;
+    return false;
+  }
+
+  /* Devuelve el sport "efectivo" — si la liga o los nombres de equipo gritan
+   * esports, devuelve 'esports' sin importar lo que dijera el scraper.
+   * Cubre simulaciones como "NBA H2H GG League 4x5 minutes" o equipos con
+   * sufijo "(Esports)" / "(FRENZY)" (player handles). */
   function effectiveSport(ev) {
-    if (ev.sport !== 'esports' && looksLikeEsports(ev.leagueName)) return 'esports';
+    if (ev.sport !== 'esports' && looksLikeEsports(ev)) return 'esports';
     return ev.sport;
   }
 
@@ -267,9 +322,9 @@
    *  eventos con liga estilo "IEM Atlanta" aunque el scraper haya clasificado
    *  mal el evento. */
   function events(filter = {}) {
-    const { sport, league, leagues, all } = filter;
+    const { sport, league, leagues, all, sortByPriority = true } = filter;
     const filterLeague = !all;
-    return state.events.filter(ev => {
+    const out = state.events.filter(ev => {
       const evSport = effectiveSport(ev);
       return (!sport || sport === 'all' || evSport === sport);
     }).filter(ev =>
@@ -277,6 +332,16 @@
       (!Array.isArray(leagues) || leagues.includes(ev.league)) &&
       (!filterLeague || isRelevantLeague(ev.leagueName))
     );
+    if (sortByPriority) {
+      // Prioridad: partidos con equipos top primero, después por proximidad de start.
+      // Es lo que pidió el user: "priorice mediante IA los equipos más conocidos".
+      out.sort((a, b) => {
+        const pdiff = eventPriority(b) - eventPriority(a);
+        if (pdiff !== 0) return pdiff;
+        return (a.start || Infinity) - (b.start || Infinity);
+      });
+    }
+    return out;
   }
 
   /** Devuelve ABSOLUTAMENTE TODOS los eventos sin filtrar — para vistas
@@ -432,7 +497,7 @@
     start,
     fetchSnapshot,
     events, eventsAll, findEvent, surebets, steamMoves, books, ready,
-    isRelevantLeague,
+    isRelevantLeague, eventPriority,
     timeSinceUpdate, freshnessLabel,
     // API extendida
     getPicks, getPicksForMatch, getFactors,

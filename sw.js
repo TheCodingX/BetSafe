@@ -1,5 +1,5 @@
 // BetSafe Service Worker — cache strategy: cache-first for assets, network-first for HTML/data
-const VERSION = 'betsafe-v3.4.0';   // bump: esports independiente + about.html fix
+const VERSION = 'betsafe-v3.5.0';   // bump: strict league filter + AI priority + esports simulations
 const STATIC_CACHE = `${VERSION}-static`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 
