@@ -57,7 +57,7 @@ services:
       - key: ENABLED_BOOKS
         value: 'bplay,betano,betwarrior,bet365ar,codere,betsson'
       - key: PICKS_CONCURRENCY
-        value: '5'
+        value: '2'
       - key: ODDS_API_SPORTS_PER_CYCLE
         value: '6'
       - key: CORS_ORIGIN
