@@ -10982,3 +10982,81 @@ html.reduce-motion *::after {
 @media (prefers-reduced-motion: reduce) {
   .bottom-nav-flagship::before { animation: none; }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Overview — What's New banner (dismissable, gold gradient)
+   ───────────────────────────────────────────────────────────────────────── */
+.ov-whatsnew {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--gold-500) 14%, transparent), color-mix(in srgb, var(--gold-500) 4%, transparent)),
+    var(--surface);
+  border: 1px solid color-mix(in srgb, var(--gold-500) 40%, transparent);
+  border-radius: 14px;
+  margin-bottom: 16px;
+  box-shadow: 0 4px 16px -10px color-mix(in srgb, var(--gold-500) 60%, transparent);
+  position: relative;
+  overflow: hidden;
+}
+.ov-whatsnew::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0;
+  width: 4px;
+  height: 100%;
+  background: linear-gradient(180deg, var(--gold-500), var(--gold-700, #c49a1a));
+}
+.ov-whatsnew__icon {
+  flex-shrink: 0;
+  width: 38px;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--gold-500), var(--gold-700, #c49a1a));
+  color: #1a1208;
+  border-radius: 10px;
+  box-shadow: 0 4px 12px -4px color-mix(in srgb, var(--gold-500) 60%, transparent);
+  animation: ov-whatsnew-icon 2.4s ease-in-out infinite;
+}
+@keyframes ov-whatsnew-icon {
+  0%, 100% { transform: rotate(0); }
+  50%      { transform: rotate(8deg); }
+}
+.ov-whatsnew__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ov-whatsnew__title {
+  display: inline-block;
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: .05em;
+  color: var(--gold-700, #c49a1a);
+  text-transform: uppercase;
+}
+.ov-whatsnew__desc {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+.ov-whatsnew__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+@media (max-width: 720px) {
+  .ov-whatsnew { flex-wrap: wrap; }
+  .ov-whatsnew__actions { width: 100%; justify-content: flex-end; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ov-whatsnew__icon { animation: none; }
+}

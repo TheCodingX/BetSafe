@@ -7,7 +7,29 @@
     const name = (session?.name || 'apostador').split(' ')[0];
     const isVip = BSAuth.isVip();
 
+    // ── WHAT'S NEW banner: aparece una vez por feature nueva (sticky en LS) ──
+    const WHATS_NEW_VERSION = 'betsafe-ai-v1';
+    const dismissedWhatsNew = localStorage.getItem('bs:whatsnew') === WHATS_NEW_VERSION;
+
     panel.innerHTML = `
+      ${!dismissedWhatsNew ? `
+        <section class="ov-whatsnew reveal" id="ovWhatsNew">
+          <div class="ov-whatsnew__icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.5 5.5L19 10l-5.5 1.5L12 17l-1.5-5.5L5 10l5.5-1.5L12 3z"/><path d="M19 14l.8 2.7L22 17.5l-2.2.8L19 21l-.8-2.7L16 17.5l2.2-.8L19 14z"/></svg>
+          </div>
+          <div class="ov-whatsnew__body">
+            <strong class="ov-whatsnew__title">NUEVO · BetSafe AI</strong>
+            <p class="ov-whatsnew__desc">Pedile combinadas a medida hablando o escribiendo. "Haceme una combinada de 4 partidos de la Premier con cuota cerca de 6, dentro de todo segura" — y la IA arma todo cumpliendo tus condiciones.</p>
+          </div>
+          <div class="ov-whatsnew__actions">
+            <a href="#betsafeai" class="btn btn-gold btn-sm mag">Probar ahora</a>
+            <button class="btn-ghost btn-icon btn-sm" id="ovWhatsNewClose" aria-label="Cerrar">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+        </section>
+      ` : ''}
+
       <section class="ov-hero reveal">
         <span class="ov-eyebrow">${isVip ? 'VIP · Gold' : 'Bienvenida'}</span>
         <h1 class="ov-welcome">Bienvenido, <span class="ov-name">${BSUI.esc(name)}</span></h1>
@@ -44,6 +66,18 @@
 
     // ── Cargar Daily Report en background (no bloquea el render) ──
     loadDailyBrief(panel);
+
+    // ── Bind What's New banner close ──
+    panel.querySelector('#ovWhatsNewClose')?.addEventListener('click', () => {
+      localStorage.setItem('bs:whatsnew', 'betsafe-ai-v1');
+      const banner = panel.querySelector('#ovWhatsNew');
+      if (banner) {
+        banner.style.transition = 'opacity .25s, transform .25s';
+        banner.style.opacity = '0';
+        banner.style.transform = 'translateY(-8px)';
+        setTimeout(() => banner.remove(), 250);
+      }
+    });
 
     // ---- Próximos eventos ----
     const SPORT_LABEL = (key) => BSData.prettySport(key);
