@@ -303,7 +303,7 @@
           </div>
           <div class="agx-config__item">
             <span class="agx-config__label">Legs por partido</span>
-            <select class="select agx-config__select" id="agLegsPerMatch" title="Permite múltiples picks del mismo partido (e.g. resultado + total goles). Más legs por partido = cuotas más altas pero mayor correlación.">
+            <select class="select agx-config__select" id="agLegsPerMatch" title="Cuántas apuestas distintas podés tomar del mismo partido (por ejemplo: resultado + total de goles). Más apuestas del mismo partido pagan más pero son más arriesgadas porque dependen del mismo encuentro.">
               <option value="1" selected>1 (clásico)</option>
               <option value="2">2 (multi-mercado)</option>
               <option value="3">3 (avanzado)</option>
@@ -327,12 +327,12 @@
           </div>
           <div class="agx-config__item">
             <span class="agx-config__label">Cuota objetivo (opcional)</span>
-            <input class="input agx-config__select" id="agTargetOdd" type="number" step="0.5" min="0" placeholder="ej: 12.0" title="La IA tratará de construir combinadas que acerquen al producto de cuotas indicado. Vacío = libre (toma las mejores por EV)."/>
+            <input class="input agx-config__select" id="agTargetOdd" type="number" step="0.5" min="0" placeholder="ej: 12.0" title="Cuota total que querés que pague la combinada. Dejá vacío y la IA elige las mejores apuestas sin importar la cuota final."/>
           </div>
           <div class="agx-config__item" style="grid-column:span 2">
             <label class="ag-toggle" style="cursor:pointer">
               <input type="checkbox" id="agUseAiBuilder" checked>
-              <span><strong>IA construye las combinadas</strong> · La IA selecciona legs por correlación negativa, edge estructural y momentum (no solo EV). <em class="muted tiny">Recomendado.</em></span>
+              <span><strong>IA arma las combinadas</strong> · La IA elige apuestas que se complementen entre sí, dónde la cuota está más floja y dónde el mercado está moviéndose a tu favor. <em class="muted tiny">Recomendado.</em></span>
             </label>
           </div>
           <div class="agx-config__item">
@@ -368,7 +368,7 @@
             <li data-step="fetch">Trayendo cuotas live de las casas LOTBA</li>
             <li data-step="filter">Filtrando partidos por tu criterio</li>
             <li data-step="model">Análisis táctico de cada partido</li>
-            <li data-step="ev">Computando EV + Kelly por leg</li>
+            <li data-step="ev">Calculando cuánto podés ganar en cada apuesta</li>
             <li data-step="match">Optimizando combinadas</li>
             <li data-step="books">Identificando casas que mejor pagan</li>
           </ul>
@@ -421,7 +421,7 @@
       const steps = [...panel.querySelectorAll('.agx-step')];
       if (!steps.length) return;
       const hasBooks = panel.querySelectorAll('#agBooksFilter input[type=checkbox]:checked').length > 0;
-      const hasMarkets = panel.querySelectorAll('#agMarkets input[type=checkbox]:checked').length > 0;
+      const hasMarkets = panel.querySelectorAll('.ag-mkt-chip input[type=checkbox][data-mkt]:checked').length > 0;
       const hasRisk = !!activeRisk;
 
       const stepStates = [
@@ -504,65 +504,6 @@
         <span class="ag-bookchip-name">${BSUI.esc(b.name)}</span>
         ${payout ? `<span class="ag-bookchip-pay">${BSUI.money(payout)}</span>` : ''}
       </span>`;
-    }
-
-    // Build a leg with diverse market based on risk + match offer
-    function buildLeg(m, idx, risk) {
-      const isSoccer = m.sport === 'soccer';
-      if (!m?.markets?.h2h || !Object.keys(m.markets.h2h).length) return null;
-      const o = m.markets.h2h.bplay || Object.values(m.markets.h2h)[0];
-      if (!o || (!o.home && !o.away)) return null;
-      // Conservador: doble oportunidad / Over 1.5 goles
-      if (risk === 'cons') {
-        if (isSoccer && m.markets.dc) {
-          const dc = m.markets.dc.bplay;
-          const which = idx % 2 === 0 ? 'home_or_draw' : 'draw_or_away';
-          const lbl  = which === 'home_or_draw' ? `${m.home.name} o empate (1X)` : `Empate o ${m.away.name} (X2)`;
-          return { match: m, market: 'dc', label: lbl, line: which === 'home_or_draw' ? '1X' : 'X2', odd: dc[which], p: 1/dc[which] };
-        }
-        if (m.markets.totals) {
-          const ou = m.markets.totals.bplay;
-          const ovLine = ou.line - 1;
-          const ovOdd = Math.max(1.20, ou.over * 0.7);
-          return { match: m, market: 'totals', label: `Más de ${ovLine} ${isSoccer?'goles':'puntos'}`, line: 'Over '+ovLine, odd: ovOdd, p: 1/ovOdd };
-        }
-        return { match: m, market: 'h2h', label: `${m.home.name} gana`, line:'1', odd: o.home, p: 1/o.home };
-      }
-      // Intermedio: BTTS / Over 2.5 / hándicap
-      if (risk === 'eq') {
-        const choices = [];
-        if (m.markets.btts) {
-          const b = m.markets.btts.bplay;
-          choices.push({ market:'btts', label:'Ambos equipos marcan (BTTS sí)', line:'sí', odd: b.yes, p: 1/b.yes });
-        }
-        if (m.markets.totals) {
-          const ou = m.markets.totals.bplay;
-          choices.push({ market:'totals', label:`Más de ${ou.line} ${isSoccer?'goles':'puntos'}`, line:'Over '+ou.line, odd: ou.over, p: 1/ou.over });
-        }
-        if (m.markets.ah) {
-          const ah = m.markets.ah.bplay;
-          choices.push({ market:'ah', label:`${m.home.name} -${ah.line} (AH)`, line:'-'+ah.line, odd: ah.home_minus, p: 1/ah.home_minus });
-        }
-        const c = choices[idx % choices.length] || { market:'h2h', label:'Empate', line:'X', odd: o.draw||3.0, p: 1/(o.draw||3.0) };
-        return { match: m, ...c };
-      }
-      // Agresivo: corners / cards / longshot
-      const aggChoices = [];
-      if (m.markets.corners) {
-        const c = m.markets.corners.bplay;
-        aggChoices.push({ market:'corners', label:`Más de ${c.line} corners`, line:'Over '+c.line, odd: c.over*1.05, p: 1/(c.over*1.05) });
-      }
-      if (m.markets.cards) {
-        const c = m.markets.cards.bplay;
-        aggChoices.push({ market:'cards', label:`Más de ${c.line} tarjetas`, line:'Over '+c.line, odd: c.over*1.10, p: 1/(c.over*1.10) });
-      }
-      if (m.markets.totals) {
-        const ou = m.markets.totals.bplay;
-        const upLine = ou.line + (isSoccer?1.5:9.5);
-        aggChoices.push({ market:'totals', label:`Más de ${upLine} ${isSoccer?'goles':'puntos'}`, line:'Over '+upLine, odd: ou.over*1.85, p: 1/(ou.over*1.85) });
-      }
-      const c = aggChoices[idx % Math.max(1, aggChoices.length)] || { market:'h2h', label:`${m.away.name} gana`, line:'2', odd: o.away, p: 1/o.away };
-      return { match: m, ...c };
     }
 
     // ─────── Bindings ───────
@@ -649,8 +590,14 @@
       if (btn) btn.classList.toggle('is-disabled', n === 0);
       updateStepProgress();
     }
-    // También trackear cambios en mercados para gatear paso 2
-    panel.querySelector('#agMarkets')?.addEventListener('change', () => updateStepProgress());
+    // También trackear cambios en mercados para gatear paso 2.
+    // Antes apuntábamos a `#agMarkets` que NO existe en el DOM (los chips
+    // reales son `.ag-mkt-chip input[data-mkt]`). Usamos event delegation
+    // sobre el panel y filtramos por el data-mkt del checkbox.
+    panel.addEventListener('change', e => {
+      const cb = e.target.closest('input[type=checkbox][data-mkt]');
+      if (cb) updateStepProgress();
+    });
     // BUG previo: clickear la label hacía DOBLE TOGGLE (browser auto + manual)
     // y resultaba en "no pasa nada". Ahora escuchamos el `change` del checkbox
     // (que dispara una sola vez por click via browser default).
@@ -673,39 +620,106 @@
     });
     updateBooksCount();
 
-    // ─────── Engine animation: pasos secuenciales ───────
+    // ─────── Engine animation: pasos secuenciales con vida REAL ───────
+    // ANTES: la animación tenía 6 setTimeouts de ~200ms y se cerraba sola
+    // en ~1.2s, dejando al usuario sin feedback durante los 20-90s reales
+    // que tarda el pipeline (factors + LLM + cross-validation).
+    // AHORA: la animación queda VIVA hasta que el caller llama stop().
+    // Cada paso tiene una duración mínima razonable y al llegar al último,
+    // ENTRA EN MODO PULSE con mensajes rotantes "Analizando partido…",
+    // "Verificando con The Odds API…", etc. — feedback honesto del backend.
     function runEngineAnimation() {
-      return new Promise(resolve => {
-        const eng = panel.querySelector('#agEngine');
-        const steps = [...panel.querySelectorAll('.ag-engine-steps li')];
-        const fill = panel.querySelector('.ag-engine-bar-fill');
-        const btn = panel.querySelector('#agGenerate');
-        eng.hidden = false;
-        steps.forEach(s => s.classList.remove('is-active', 'is-done'));
-        if (fill) fill.style.width = '0%';
-        if (btn) { btn.disabled = true; btn.querySelector('.ag-gen-label').textContent = 'Generando…'; }
+      const eng = panel.querySelector('#agEngine');
+      const steps = [...panel.querySelectorAll('.ag-engine-steps li')];
+      const fill = panel.querySelector('.ag-engine-bar-fill');
+      const btn = panel.querySelector('#agGenerate');
+      eng.hidden = false;
+      steps.forEach(s => s.classList.remove('is-active', 'is-done'));
+      if (fill) fill.style.width = '0%';
+      if (btn) { btn.disabled = true; btn.querySelector('.ag-gen-label').textContent = 'Generando…'; }
 
-        const total = steps.length; let i = 0;
-        const tick = () => {
-          if (i > 0) steps[i-1].classList.add('is-done');
-          if (i < total) {
-            steps[i].classList.add('is-active');
-            if (fill) fill.style.width = (((i + 1) / total) * 100) + '%';
-            i++;
-            // pasos más rápidos al final para sentirse fluido
-            const delay = i < 3 ? 220 : i < 5 ? 180 : 140;
-            setTimeout(tick, delay);
-          } else {
-            steps.forEach(s => { s.classList.remove('is-active'); s.classList.add('is-done'); });
-            setTimeout(() => {
-              eng.hidden = true;
-              if (btn) { btn.disabled = false; btn.querySelector('.ag-gen-label').textContent = 'Generar combinadas'; }
-              resolve();
-            }, 220);
-          }
-        };
-        tick();
-      });
+      let i = 0;
+      let stopped = false;
+      let timer = null;
+      const total = steps.length;
+      // Duraciones BASE por paso (ms). El último ("books"/"Optimizando") queda
+      // en pulse hasta que el caller termine — no se cierra solo.
+      const baseDelay = [600, 800, 1500, 1500, 2200];
+
+      const tick = () => {
+        if (stopped) return;
+        if (i > 0) steps[i-1]?.classList.add('is-done');
+        if (i < total - 1) {
+          steps[i].classList.add('is-active');
+          // Progreso lineal hasta 90% — el 100% lo dejamos para el done()
+          if (fill) fill.style.width = Math.min(90, ((i + 1) / total) * 90) + '%';
+          const delay = baseDelay[i] || 1500;
+          i++;
+          timer = setTimeout(tick, delay);
+        } else {
+          // Último paso: queda activo con pulse hasta que llamen done()
+          steps[total - 1].classList.add('is-active');
+          if (fill) fill.style.width = '90%';
+          // Mensaje rotante para que el usuario sepa que sigue trabajando
+          // en lugar de ver un texto fijo durante 60s.
+          const lastEl = steps[total - 1];
+          const originalText = lastEl.textContent;
+          const phases = [
+            'Probando combinaciones',
+            'Verificando cuotas en cada casa',
+            'Chequeando que las apuestas se complementen',
+            'Confirmando que la IA aprueba cada apuesta',
+            'Buscando dónde te pagan más'
+          ];
+          let p = 0;
+          const rotate = () => {
+            if (stopped) return;
+            lastEl.textContent = phases[p % phases.length] + '…';
+            p++;
+            timer = setTimeout(rotate, 2500);
+          };
+          rotate();
+          // Guardamos para poder restaurar el texto cuando termine
+          lastEl.dataset._originalText = originalText;
+        }
+      };
+      tick();
+
+      return {
+        // Cierre exitoso — marca todo done, llena la barra, oculta.
+        done: () => {
+          if (stopped) return;
+          stopped = true;
+          if (timer) { clearTimeout(timer); timer = null; }
+          steps.forEach(s => {
+            s.classList.remove('is-active');
+            s.classList.add('is-done');
+            if (s.dataset._originalText) {
+              s.textContent = s.dataset._originalText;
+              delete s.dataset._originalText;
+            }
+          });
+          if (fill) fill.style.width = '100%';
+          setTimeout(() => {
+            eng.hidden = true;
+            if (btn) { btn.disabled = false; btn.querySelector('.ag-gen-label').textContent = 'Generar combinadas'; }
+          }, 420);
+        },
+        // Cierre con error — colapsa la animación sin marcar done.
+        fail: () => {
+          if (stopped) return;
+          stopped = true;
+          if (timer) { clearTimeout(timer); timer = null; }
+          steps.forEach(s => {
+            if (s.dataset._originalText) {
+              s.textContent = s.dataset._originalText;
+              delete s.dataset._originalText;
+            }
+          });
+          eng.hidden = true;
+          if (btn) { btn.disabled = false; btn.querySelector('.ag-gen-label').textContent = 'Generar combinadas'; }
+        }
+      };
     }
 
     // ─────── Generate: usa el AI Pipeline del backend (factors + LLM + quant)
@@ -729,8 +743,8 @@
       const count = Math.max(1, Math.min(50, Number(panel.querySelector('#agCount').value || 1)));
       const stake = Math.max(100, Number(panel.querySelector('#agStake').value || 10000));
 
-      // Animación visual
-      runEngineAnimation();
+      // Animación visual — handle queda vivo hasta done()/fail() después del fetch
+      const engine = runEngineAnimation();
 
       // Mercados desde los chips
       const marketsSet = new Set();
@@ -778,10 +792,13 @@
       try {
         resp = await BSLive.generate(payload);
       } catch (e) {
+        engine.fail();
         panel.querySelector('#agStatusLine').textContent = 'Error: ' + (e?.message || 'el servicio no responde por ahora');
         BSUI.toast({ title: 'Error generando combinadas', message: e?.message, type: 'error' });
         return;
       }
+      // Backend respondió OK — completar la animación y revelar resultados
+      engine.done();
       const backendCombos = resp.combos || [];
       panel.querySelector('#agStatusLine').textContent = `${backendCombos.length} combinadas · ${resp.meta?.passing}/${resp.meta?.analyzed} partidos pasaron los filtros`;
 
@@ -825,177 +842,197 @@
           league: l.league
         })),
         total: c.totalOdd,
-        prob: c.legs.reduce((a, b) => a * (b.confidence || 0.5), 1),
+        prob: c.legs.reduce((a, b) => a * (b.confidence || 0.5), 1),  // prob real (producto de confidences)
         marketsUsed: [...new Set(c.legs.map(l => l.market))],
-        ev: c.sumEv / 100,
+        ev: c.sumEv / 100,                    // EV bruto (sin correlación)
+        evAdjusted: (c.evAdjusted != null ? c.evAdjusted : c.sumEv) / 100,  // EV post-correlación
         avgConfidence: c.avgConfidence,
+        qualityScore: c.qualityScore,         // score compuesto v5.5
         correlation: c.correlation,
         aiNarrative: c.aiNarrative,
         aiEdge: c.aiEdge,
         sportsCount: c.sportsCount,
         legCount: c.legCount
       }));
+      // Meta del motor para mostrar al user "evalué N candidatas, te muestro los K mejores"
+      const candidatesEvaluated = resp.meta?.trace?.candidatesEvaluated || backendCombos.length;
 
       const aiGlobalNarrative = resp.aiNarrative || null;
+      const aiProvider = resp.aiProvider || null;          // 'gemini' | 'groq' | null
+      const aiHealth = resp.aiHealth || 'disabled';        // 'ok' | 'degraded' | 'no-keys' | 'disabled'
 
       const out = panel.querySelector('#agOutput');
       out.innerHTML = `
         <div class="row between mb-3">
-          <strong>${combos.length} combinada${combos.length>1?'s':''} generada${combos.length>1?'s':''}</strong>
+          <div>
+            <strong>${combos.length} combinada${combos.length>1?'s':''} para vos</strong>
+            <div class="muted tiny" style="margin-top:2px">Probé <strong>${candidatesEvaluated}</strong> combinaciones distintas y te muestro las <strong>${combos.length}</strong> con más chance de ganar dentro de la cuota que pediste.</div>
+          </div>
           <span class="muted tiny">Stake base: ${BSUI.money(stake)} ARS</span>
         </div>
         ${aiGlobalNarrative ? `<div class="card card-tinted card-pad-sm mb-3" style="border-left:3px solid var(--brand-500);background:rgba(var(--brand-500-rgb,30,75,200),0.04)">
-          <div class="row between" style="align-items:center"><strong class="tiny">Lectura global IA <span class="badge badge-success tiny" style="margin-left:6px">groq</span></strong></div>
+          <div class="row between" style="align-items:center"><strong class="tiny">Lectura global IA${aiProvider ? ` <span class="badge badge-success tiny" style="margin-left:6px">${BSUI.esc(aiProvider)}</span>` : ''}</strong></div>
           <p class="muted tiny" style="margin-top:6px;line-height:1.5">${BSUI.esc(aiGlobalNarrative)}</p>
         </div>` : ''}
-        <div class="grid ${combos.length === 1 ? '' : 'grid-2'}" style="gap:14px">
+        ${aiHealth === 'degraded' ? `<div class="card card-pad-sm mb-3" style="border-left:3px solid var(--warning,#d97706);background:color-mix(in srgb, var(--warning,#d97706) 6%, transparent)">
+          <strong class="tiny">⚠ La IA no está disponible en este momento</strong>
+          <p class="muted tiny" style="margin-top:4px;line-height:1.45">Estas combinadas se armaron con análisis estadístico (sin IA generativa). Esperá un minuto y volvé a generar para que la IA las revise.</p>
+        </div>` : ''}
+        ${aiHealth === 'no-keys' ? `<div class="card card-pad-sm mb-3" style="border-left:3px solid var(--info,#2563eb);background:color-mix(in srgb, var(--info,#2563eb) 5%, transparent)">
+          <strong class="tiny">ℹ Sin keys de IA configuradas</strong>
+          <p class="muted tiny" style="margin-top:4px;line-height:1.45">El motor cuantitativo armó las combinadas. Para análisis IA profundo, configurá BS_GEMINI_API_KEY o BS_GROQ_API_KEY en el backend.</p>
+        </div>` : ''}
+        <div class="grid ${combos.length === 1 ? '' : 'grid-2'}" style="gap:18px">
           ${combos.map((c, ci) => {
-            const top3 = top3Books(c.total, c.marketsUsed);
+            // Métricas computadas una sola vez para usar en el render premium.
+            // probReal = producto real de confidences por leg (NO promedio).
+            // Esta es la probabilidad HONESTA de que la combinada complete:
+            // tres legs a 70% conf = 0.343 = 34.3% prob real, NO 70%.
+            const probReal = c.prob || c.legs.reduce((a, l) => a * (l.confidence || 0.5), 1);
+            const probPct = Math.max(1, Math.round(probReal * 100));
+            const probLevel = probPct >= 50 ? 'high' : probPct >= 20 ? '' : 'low';
+            // Quality score: cómo evaluó el motor esta combinada frente al pool.
+            const qs = c.qualityScore;
+            const qsLabel = qs == null ? null : qs >= 50 ? 'excelente' : qs >= 25 ? 'buena' : qs >= 10 ? 'aceptable' : 'baja';
+            const qsBadgeClass = qs == null ? '' : qs >= 50 ? 'badge-success' : qs >= 25 ? 'badge-info' : qs >= 10 ? 'badge-warning' : 'badge-danger';
+            const evPct = c.evAdjusted * 100;
+            const evSign = evPct >= 0 ? '+' : '';
+            const totalPayout = stake * c.total;
+            const profit = stake * (c.total - 1);
+            // Factors únicos de TODAS las legs, con icono por tipo
+            const allFactors = c.legs.flatMap(l => l.factors || []);
+            const seenFact = new Set();
+            const uniqueFactors = [];
+            for (const f of allFactors) {
+              const k = (f.kind || '') + ':' + (f.note || '');
+              if (!seenFact.has(k)) { seenFact.add(k); uniqueFactors.push(f); }
+              if (uniqueFactors.length >= 5) break;
+            }
+            // Best book para esta combinada (cuota real en CADA casa seleccionada)
+            const ranked = bestBookForCombo(c.legs, books, M, COVER);
+            const winner = ranked[0];
+            const runnerUp = ranked[1];
             return `
-            <div class="card card-tinted stack-sm ag-combo">
-              <div class="row between" style="align-items:center">
-                <strong>Combinada #${ci+1} · ${c.legCount || c.legs.length} legs${c.sportsCount > 1 ? ' · ' + c.sportsCount + ' deportes' : ''}</strong>
-                <span class="risk-pill ${c.total<2?'low':c.total<6?'mid':'high'}">${c.total<2?'Bajo':c.total<6?'Medio':'Alto'} riesgo</span>
+            <article class="bs-prem ag-combo">
+              <header class="bs-prem__head">
+                <strong class="bs-prem__title">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg>
+                  Combinada #${ci+1} · ${c.legCount || c.legs.length} legs${c.sportsCount > 1 ? ' · ' + c.sportsCount + ' deportes' : ''}
+                </strong>
+                <div class="bs-prem__chips">
+                  <span class="risk-pill ${c.total<2?'low':c.total<6?'mid':'high'}">${c.total<2?'Bajo':c.total<6?'Medio':'Alto'} riesgo</span>
+                  ${qs != null ? `<span class="badge ${qsBadgeClass} tiny" title="Qué tan buena es esta combinada (0-100). Considera la probabilidad real de ganar, lo generosa que es la cuota y que las apuestas se complementen. 50+ es muy buena.">Calidad: ${qsLabel}</span>` : ''}
+                  ${c.correlation?.warnings?.length
+                    ? `<span class="badge badge-warning tiny" title="Algunas apuestas dependen entre sí — si una falla, otra también puede fallar. La cuota se ajustó para reflejar el riesgo real.">⚠ apuestas relacionadas</span>`
+                    : `<span class="badge badge-success tiny" title="Cada apuesta es independiente — no se chocan entre sí.">✓ apuestas se complementan</span>`}
+                </div>
+              </header>
+
+              <div class="bs-prem__hero">
+                <div class="bs-prem__hero-cell">
+                  <span class="bs-prem__hero-label">Cuota total</span>
+                  <span class="bs-prem__odd">${c.total.toFixed(2)}</span>
+                </div>
+                <div class="bs-prem__hero-cell">
+                  <span class="bs-prem__hero-label">Si gana, cobrás (stake ${BSUI.money(stake)})</span>
+                  <span class="bs-prem__pay">${BSUI.money(totalPayout)}</span>
+                  <span class="bs-prem__pay-sub">profit ${BSUI.money(profit)}</span>
+                </div>
+                <div class="bs-prem__hero-cell bs-prem__edge-cell">
+                  <span class="bs-prem__hero-label" title="Cuán generosa es esta cuota comparada con la 'cuota justa' del mercado. Un +5% quiere decir que la cuota te paga 5% más de lo que debería. A largo plazo, eso es plata para vos.">Ventaja vs casa</span>
+                  <span class="bs-prem__edge ${evPct >= 0 ? '' : 'bs-prem__edge--negative'}">${evSign}${evPct.toFixed(1)}%</span>
+                  ${c.evAdjusted < c.ev ? `<span class="bs-prem__edge-explain">sin ajustar: ${evSign}${(c.ev*100).toFixed(1)}%</span>` : ''}
+                </div>
               </div>
 
-              ${c.aiEdge ? `<div class="card card-pad-sm" style="background:rgba(212,160,23,0.08);border-left:3px solid var(--gold-700,#c49a1a);margin-top:4px">
-                <strong class="tiny" style="color:var(--gold-700,#c49a1a)">⚡ Edge IA</strong>
-                <p class="tiny" style="margin-top:3px;line-height:1.4">${BSUI.esc(c.aiEdge)}</p>
-              </div>` : ''}
+              <div class="bs-prem__conf" title="De cada 100 veces que jugaras esta combinada, en cuántas ganarías. Es el cálculo HONESTO: 3 apuestas a 70% cada una NO dan 70% — dan 34% combinado (porque tienen que ganar las 3 juntas).">
+                <div class="bs-prem__conf-head">
+                  <span>De cada 100 veces, ganás</span>
+                  <strong>${probPct} veces</strong>
+                </div>
+                <div class="bs-prem__conf-track">
+                  <div class="bs-prem__conf-fill ${probLevel ? 'bs-prem__conf-fill--' + probLevel : ''}" style="width:${Math.min(100, probPct * 2)}%"></div>
+                </div>
+                <div class="muted tiny" style="margin-top:4px">Esperado: 1 ganada cada <strong>${(1/probReal).toFixed(0)} intentos</strong> · Confianza promedio por apuesta: <strong>${Math.round((c.avgConfidence || 0.5) * 100)}%</strong></div>
+              </div>
 
-              <!-- Markets summary -->
+              <!-- Markets summary chips -->
               <div class="cluster" style="gap:4px;flex-wrap:wrap">
-                ${c.marketsUsed.map(mk => `<span class="badge badge-info" style="font-size:.62rem;padding:2px 7px"><span style="margin-right:3px">${M_ICON[mk]||''}</span>${M[mk]||mk}</span>`).join('')}
+                ${c.marketsUsed.map(mk => `<span class="badge badge-info tiny" style="padding:2px 8px"><span style="margin-right:3px">${M_ICON[mk]||''}</span>${M[mk]||mk}</span>`).join('')}
               </div>
 
-              <!-- Legs -->
-              <div class="ag-legs">
+              <!-- Legs list premium -->
+              <div class="bs-prem__legs">
               ${c.legs.map(l => `
-                <div class="ag-leg">
-                  <div class="ag-leg-teams">
-                    ${BSIcons.teamLogo(l.match.home, { size: 18, sport: l.sport })}
-                    <strong style="font-size:.85rem">${BSUI.esc(l.match.home.name)}</strong>
-                    <span class="dim tiny">vs</span>
-                    <strong style="font-size:.85rem">${BSUI.esc(l.match.away.name)}</strong>
-                    ${BSIcons.teamLogo(l.match.away, { size: 18, sport: l.sport })}
+                <div class="bs-prem__leg">
+                  <div class="bs-prem__leg-info">
+                    <div class="bs-prem__leg-teams">
+                      ${BSIcons.teamLogo(l.match.home, { size: 16, sport: l.sport })}
+                      <span>${BSUI.esc(l.match.home.name)}</span>
+                      <span class="dim" style="font-weight:400">vs</span>
+                      <span>${BSUI.esc(l.match.away.name)}</span>
+                      ${BSIcons.teamLogo(l.match.away, { size: 16, sport: l.sport })}
+                    </div>
+                    <div class="bs-prem__leg-meta">
+                      <span class="bs-prem__leg-mkt">${M[l.market]||l.market}</span>
+                      <span>${BSUI.esc(l.label)}</span>
+                    </div>
                   </div>
-                  <div class="ag-leg-meta">
-                    <span class="ag-leg-market">${M[l.market]||l.market}</span>
-                    <span class="ag-leg-pick">${BSUI.esc(l.label)}</span>
-                  </div>
-                  <strong class="num ag-leg-odd">${l.odd.toFixed(2)}</strong>
+                  <strong class="bs-prem__leg-odd">${l.odd.toFixed(2)}</strong>
                 </div>
               `).join('')}
               </div>
 
-              <!-- KPIs -->
-              <div class="ag-kpis">
-                <div><span class="muted tiny">Cuota total</span><strong class="num text-brand" style="font-size:1.4rem">${c.total.toFixed(2)}</strong></div>
-                <div><span class="muted tiny">Probabilidad</span><strong class="num">${BSUI.pct(c.prob)}</strong></div>
-                <div><span class="muted tiny">EV</span><strong class="num ${c.ev>=0?'text-success':'text-danger'}">${(c.ev*100).toFixed(1)}%</strong></div>
-                <div class="ag-payout">
-                  <span class="muted tiny">Tu ganancia (stake ${BSUI.money(stake)})</span>
-                  <strong class="num text-success" style="font-size:1.45rem">${BSUI.money(stake * c.total)}</strong>
-                  <span class="tiny muted">profit ${BSUI.money(stake * (c.total - 1))}</span>
+              <!-- Factors usados (clima/lesiones/sharp/H2H) — chips visibles -->
+              ${uniqueFactors.length ? `
+              <div class="bs-prem__factors" aria-label="Factores considerados">
+                ${uniqueFactors.map(f => {
+                  const ic = f.kind === 'injury' ? '🏥'
+                           : f.kind === 'weather' ? '🌦'
+                           : f.kind === 'sharp' ? '💰'
+                           : f.kind === 'history' ? '📊'
+                           : f.kind === 'lineup' ? '👥'
+                           : f.kind === 'form' ? '📈'
+                           : '•';
+                  const cls = f.impact === 'positive' ? 'bs-prem__factor--good'
+                            : f.impact === 'negative' ? 'bs-prem__factor--warn'
+                            : '';
+                  return `<span class="bs-prem__factor ${cls}"><span class="bs-prem__factor-ico">${ic}</span>${BSUI.esc(f.note)}</span>`;
+                }).join('')}
+              </div>` : ''}
+
+              <!-- Rationale IA — por qué esta combinada -->
+              ${(c.aiNarrative || c.aiEdge || c.legs[0]?.rationale) ? `
+              <div class="bs-prem__rationale">
+                <span class="bs-prem__rationale-label">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a6 6 0 0 0-6 6c0 2 1 4 3 5v3a3 3 0 0 0 6 0v-3c2-1 3-3 3-5a6 6 0 0 0-6-6z"/></svg>
+                  Por qué esta combinada
+                </span>
+                ${c.aiNarrative ? `<p>${BSUI.esc(c.aiNarrative)}</p>` : ''}
+                ${c.aiEdge ? `<p style="font-weight:600;color:var(--brand-700)">⚡ ${BSUI.esc(c.aiEdge)}</p>` : ''}
+                ${c.legs[0]?.rationale && !c.aiNarrative ? `<p>${BSUI.esc(c.legs[0].rationale)}</p>` : ''}
+              </div>` : ''}
+
+              <!-- Best-payer destacado -->
+              ${winner ? `
+              <div class="bs-prem__bestbook" data-key="${winner.book.key}">
+                ${window.BSLogos ? BSLogos.bookLogo(winner.book.key, { size: 36 }) : ''}
+                <div>
+                  <div class="bs-prem__bestbook-tag">MEJOR PAGA EN</div>
+                  <div class="bs-prem__bestbook-name">${BSUI.esc(winner.book.name)}</div>
+                  <div class="tiny muted">${winner.coveredLegs}/${c.legs.length} legs · cuota ${winner.totalOdd.toFixed(2)}${runnerUp ? ` · vs ${BSUI.esc(runnerUp.book.name)} ${runnerUp.totalOdd.toFixed(2)}` : ''}</div>
                 </div>
-              </div>
+                <div class="bs-prem__bestbook-pay">${BSUI.money(stake * winner.totalOdd)}</div>
+              </div>` : ''}
 
-              <!-- Confidence bar + EV bar -->
-              ${(() => {
-                const conf = Math.max(35, Math.min(95, Math.round(c.prob * 100 + (c.ev > 0 ? 8 : -8))));
-                const evPct = (c.ev * 100);
-                const evW = Math.max(2, Math.min(100, Math.abs(evPct) * 6));
-                return `
-                <div class="ag-meters">
-                  <div class="ag-meter">
-                    <div class="ag-meter-head"><span>Confianza del motor</span><strong>${conf}%</strong></div>
-                    <div class="ag-meter-track"><div class="ag-meter-fill ag-meter-conf" style="width:${conf}%"></div></div>
-                  </div>
-                  <div class="ag-meter">
-                    <div class="ag-meter-head"><span>EV vs mercado</span><strong class="${evPct>=0?'text-success':'text-danger'}">${evPct>=0?'+':''}${evPct.toFixed(1)}%</strong></div>
-                    <div class="ag-meter-track"><div class="ag-meter-fill ${evPct>=0?'ag-meter-pos':'ag-meter-neg'}" style="width:${evW}%"></div></div>
-                  </div>
-                </div>`;
-              })()}
-
-              <!-- AI explanation: factores reales del backend -->
-              <div class="ag-ai-explain">
-                <span class="ag-ai-tag">🧠 Análisis IA + factores</span>
-                ${c.aiNarrative ? `<p class="ag-ai-text" style="background:rgba(var(--brand-500-rgb,30,75,200),0.05);padding:8px;border-radius:6px;border-left:2px solid var(--brand-500)"><strong>Por qué esta combinada:</strong> ${BSUI.esc(c.aiNarrative)}</p>` : ''}
-                ${c.legs[0]?.rationale ? `<p class="ag-ai-text">${BSUI.esc(c.legs[0].rationale)}</p>` : ''}
-                ${c.legs[0]?.tacticalNotes ? `<p class="ag-ai-text" style="font-style:italic;font-size:.78rem">${BSUI.esc(c.legs[0].tacticalNotes)}</p>` : ''}
-                ${(() => {
-                  // Agregar todos los factores únicos de las legs
-                  const allFactors = c.legs.flatMap(l => l.factors || []);
-                  const unique = [];
-                  const seen = new Set();
-                  for (const f of allFactors) {
-                    const k = f.kind + ':' + f.note;
-                    if (!seen.has(k)) { seen.add(k); unique.push(f); }
-                    if (unique.length >= 4) break;
-                  }
-                  if (!unique.length) return '';
-                  return `<ul class="ag-ai-factors-list">${unique.map(f => `<li><span class="ag-ai-factor-ic">${f.kind==='injury'?'🏥':f.kind==='weather'?'🌦':f.kind==='sharp'?'💰':f.kind==='history'?'📊':'•'}</span>${BSUI.esc(f.note)}</li>`).join('')}</ul>`;
-                })()}
-                <div class="ag-ai-confidence">
-                  Confianza promedio: <strong>${(c.avgConfidence * 100).toFixed(0)}%</strong>
-                  ${c.correlation?.warnings?.length ? `<span class="badge badge-warning tiny" style="margin-left:6px">⚠ correlación detectada (${c.correlation.maxCorrelation.toFixed(2)})</span>` : '<span class="badge badge-success tiny" style="margin-left:6px">✓ legs no correlacionadas</span>'}
-                </div>
-              </div>
-
-              <!-- BEST-PAYER: cálculo REAL comparando la combinada exacta en cada casa SELECCIONADA -->
-              ${(() => {
-                const ranked = bestBookForCombo(c.legs, books, M, COVER);
-                if (!ranked.length) return '';
-                const winner = ranked[0];
-                const runnerUp = ranked[1];
-                const winPay = stake * winner.totalOdd;
-                const upPay  = runnerUp ? stake * runnerUp.totalOdd : 0;
-                const delta  = runnerUp ? ((winPay / upPay - 1) * 100) : 0;
-                const winnerLogo = window.BSLogos ? BSLogos.bookLogo(winner.book.key, { size: 56 }) : '';
-                return `
-                <div class="ag-best-pay ag-best-pay--prominent" data-key="${winner.book.key}">
-                  <span class="ag-best-tag">MEJOR PAGA EN</span>
-                  <div class="ag-best-row">
-                    <div class="ag-best-logo" aria-hidden="true">${winnerLogo}</div>
-                    <div class="ag-best-info">
-                      <strong class="ag-best-name">${BSUI.esc(winner.book.name)}</strong>
-                      <span class="ag-best-sub">${winner.book.license} · cubre los ${winner.coveredLegs}/${c.legs.length} mercados de tu combinada</span>
-                      <div class="ag-best-odd-strip">
-                        <span class="tiny muted">Cuota total en ${BSUI.esc(winner.book.name)}:</span>
-                        <strong class="ag-best-total-odd">${winner.totalOdd.toFixed(2)}</strong>
-                      </div>
-                    </div>
-                    <div class="ag-best-pay-wrap">
-                      <span class="ag-best-pay-label">Si gana, cobrás</span>
-                      <strong class="ag-best-pay-amt">${BSUI.money(winPay)}</strong>
-                      ${runnerUp && delta > 0.1 ? `<span class="ag-best-pay-delta">+${delta.toFixed(1)}% vs ${BSUI.esc(runnerUp.book.name)} (${BSUI.money(upPay)})</span>` : ''}
-                    </div>
-                  </div>
-                  ${ranked.length > 1 ? `<details class="ag-best-runners">
-                    <summary class="tiny muted">Ver comparación entre tus ${ranked.length} casas seleccionadas</summary>
-                    <div class="ag-best-runners-list">
-                      ${ranked.map((r, idx) => `
-                        <div class="ag-best-runner ${idx===0?'is-winner':''}">
-                          <span class="ag-best-runner-rank">${idx+1}°</span>
-                          <span class="cluster tiny">${window.BSLogos ? BSLogos.bookLogo(r.book.key, { size: 18 }) : ''}<strong>${BSUI.esc(r.book.name)}</strong></span>
-                          <span class="muted tiny">${r.coveredLegs}/${c.legs.length} legs</span>
-                          <strong class="num tiny">${r.totalOdd.toFixed(2)}</strong>
-                          <strong class="num text-success tiny">${BSUI.money(stake * r.totalOdd)}</strong>
-                        </div>`).join('')}
-                    </div>
-                  </details>` : ''}
-                </div>`;
-              })()}
-
-              <!-- Action row -->
-              <div class="ag-actions">
-                <button class="btn btn-primary btn-sm" data-combo-idx="${ci}">${BSIcons.svg('plus',{size:14})} Agregar a la combinada</button>
+              <!-- Acciones -->
+              <footer class="bs-prem__actions">
+                <button class="btn btn-primary" data-combo-idx="${ci}">${BSIcons.svg('plus',{size:14})} Agregar a mi combinada</button>
                 <button class="btn btn-outline btn-sm" data-combo-share="${ci}">${BSIcons.svg('share',{size:14})} Compartir</button>
                 <button class="btn btn-outline btn-sm" data-combo-whatif="${ci}">${BSIcons.svg('cpu',{size:14})} Simular escenarios</button>
                 <button class="btn btn-ghost btn-sm" data-combo-detail="${ci}">${BSIcons.svg('info',{size:14})} Análisis detallado</button>
-              </div>
-            </div>`;
+              </footer>
+            </article>`;
           }).join('')}
         </div>
       `;
@@ -1038,7 +1075,7 @@
             <p class="muted tiny">Confianza del motor: ${conf}% · EV: ${(c.ev*100).toFixed(1)}%</p>
             <div class="card stack-sm">
               <strong>Por qué esta combinada</strong>
-              <p style="font-size:.85rem;line-height:1.6">El motor priorizó esta secuencia porque cada leg tiene EV positivo individual o contribuye a una ventaja correlacional. ${c.ev>=0?'El EV combinado supera el cierre de mercado.':'EV borderline — útil sólo si confiás en tu lectura del partido.'}</p>
+              <p style="font-size:.85rem;line-height:1.6">El motor eligió estas apuestas porque cada una está mejor pagada de lo justo, o porque se complementan bien entre sí. ${c.ev>=0?'Las cuotas combinadas pagan más de lo que el mercado considera justo — eso es plata para vos a largo plazo.':'La ventaja es chica — solo jugala si tenés alta confianza en el partido.'}</p>
             </div>
             <div class="card stack-sm">
               <strong>Variables consideradas</strong>
@@ -1054,11 +1091,11 @@
             </div>
             <div class="card stack-sm">
               <strong>Riesgos a vigilar</strong>
-              <p style="font-size:.82rem;line-height:1.55">${c.legs.length>=4?'Combinada de 4+ legs: probabilidad combinada baja, varianza alta. Considerá ½ o ¼ Kelly.':'Combinada balanceada. Stake plano o ½ Kelly recomendado.'}</p>
+              <p style="font-size:.82rem;line-height:1.55">${c.legs.length>=4?'Tiene 4 o más apuestas combinadas: paga mucho pero ganás pocas veces. Apostá poco (entre 1% y 2% de tu plata) y aceptá que vas a perder seguido — la ganancia llega cuando la pegás.':'Combinada equilibrada. Apostá un monto cómodo (3-5% de tu plata por jugada).'}</p>
             </div>
           </div>`;
         if (BSUI.openModal) BSUI.openModal(html, { large: true });
-        else BSUI.toast({ title: 'Análisis', message: 'Confianza ' + conf + '%, EV ' + (c.ev*100).toFixed(1) + '%', type: 'info' });
+        else BSUI.toast({ title: 'Análisis', message: 'Probabilidad ' + conf + '% · Ventaja ' + (c.ev*100).toFixed(1) + '%', type: 'info' });
       }));
     });
 

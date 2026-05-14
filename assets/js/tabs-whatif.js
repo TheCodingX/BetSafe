@@ -10,8 +10,8 @@
     panel.innerHTML = `
       <div class="row between mb-3">
         <div>
-          <h2 class="h3">What-If Simulator<a class="help-q" tabindex="0" data-tip="Cada leg de tu combinada puede ganar o perder. Si tenés N legs, hay 2 elevado a N escenarios totales (ej: 3 legs = 8 escenarios). Te mostramos la probabilidad de cada uno y el profit/pérdida. Plus Monte Carlo con 1000+ runs para distribución estadística."></a></h2>
-          <p class="muted">Simulá todos los escenarios posibles de tu combinada antes de operarla. Cada leg puede ganar o perder — te mostramos la probabilidad y profit de cada combinación.</p>
+          <h2 class="h3">¿Qué pasa si...? · simulador de escenarios<a class="help-q" tabindex="0" data-tip="Cada apuesta de tu combinada puede salir bien o mal. Te mostramos la probabilidad de cada resultado posible y cuánto ganás o perdés. Además simulamos 1000 escenarios para ver la distribución."></a></h2>
+          <p class="muted">Simulá todos los resultados posibles de tu combinada antes de jugarla. Cada apuesta puede salir bien o mal — te mostramos la probabilidad y cuánto ganás/perdés en cada caso.</p>
         </div>
       </div>
       <div class="grid" style="grid-template-columns: 1fr 1fr; gap:16px">

@@ -179,7 +179,7 @@ body {
   color: var(--text-primary);
   font-size: 15px;
   line-height: 1.55;
-  overflow-x: hidden;
+  overflow-x: clip;
   font-feature-settings: "ss01","cv11";
 }
 
@@ -460,17 +460,42 @@ body {
 .tooltip { position: absolute; background: #0f172a; color: #fff; padding: 6px 10px; font-size: .78rem; border-radius: 6px; pointer-events: none; opacity: 0; transform: translateY(2px); transition: opacity .12s, transform .12s; z-index: 400; white-space: nowrap; box-shadow: var(--shadow-md); }
 .tooltip.show { opacity: 1; transform: translateY(0); }
 
-/* ---------- Reveal animations ---------- */
-.reveal { opacity: 0; transform: translateY(16px); transition: opacity .6s var(--ease-out), transform .6s var(--ease-out); }
-.reveal.in { opacity: 1; transform: translateY(0); }
-.reveal-stagger > * { opacity: 0; transform: translateY(14px); transition: opacity .55s var(--ease-out), transform .55s var(--ease-out); }
-.reveal-stagger.in > *:nth-child(1) { transition-delay: .04s; }
-.reveal-stagger.in > *:nth-child(2) { transition-delay: .12s; }
-.reveal-stagger.in > *:nth-child(3) { transition-delay: .20s; }
-.reveal-stagger.in > *:nth-child(4) { transition-delay: .28s; }
-.reveal-stagger.in > *:nth-child(5) { transition-delay: .36s; }
-.reveal-stagger.in > *:nth-child(6) { transition-delay: .44s; }
-.reveal-stagger.in > * { opacity: 1; transform: translateY(0); }
+/* ---------- Reveal animations ----------
+ * UNIFICADO (antes había 2 definiciones duplicadas: .reveal.in y .reveal.is-in
+ * en zonas distintas del archivo, con transitions/easings distintos, lo que
+ * causaba race condition donde el opacity quedaba atrapado en 0.012). Ahora
+ * una sola regla, aceptando ambas clases por compat. !important garantiza que
+ * cuando se aplica `in`/`is-in`, opacity siempre sea 1 (no se queda mid). */
+.reveal, .reveal-x, .reveal-stagger > * {
+  opacity: 0;
+  transform: translateY(16px);
+  transition: opacity .6s var(--ease-out), transform .6s var(--ease-out);
+  will-change: opacity, transform;
+}
+.reveal-x { transform: translateX(-22px); }
+.reveal.in, .reveal.is-in,
+.reveal-x.in, .reveal-x.is-in {
+  opacity: 1 !important;
+  transform: none !important;
+}
+.reveal-stagger.in > *,
+.reveal-stagger.is-in > * { opacity: 1 !important; transform: none !important; }
+.reveal-stagger.in > *:nth-child(1), .reveal-stagger.is-in > *:nth-child(1) { transition-delay: .04s; }
+.reveal-stagger.in > *:nth-child(2), .reveal-stagger.is-in > *:nth-child(2) { transition-delay: .12s; }
+.reveal-stagger.in > *:nth-child(3), .reveal-stagger.is-in > *:nth-child(3) { transition-delay: .20s; }
+.reveal-stagger.in > *:nth-child(4), .reveal-stagger.is-in > *:nth-child(4) { transition-delay: .28s; }
+.reveal-stagger.in > *:nth-child(5), .reveal-stagger.is-in > *:nth-child(5) { transition-delay: .36s; }
+.reveal-stagger.in > *:nth-child(6), .reveal-stagger.is-in > *:nth-child(6) { transition-delay: .44s; }
+
+/* Failsafe: si por algún motivo el IntersectionObserver no dispara, después
+ * de 5s todos los .reveal se fuerzan a visibles. Evita el bug de "media
+ * página invisible" cuando el IO se queda colgado. */
+@keyframes bs-reveal-failsafe {
+  to { opacity: 1; transform: none; }
+}
+.reveal, .reveal-x, .reveal-stagger > * {
+  animation: bs-reveal-failsafe 0.001s linear 4s forwards;
+}
 
 /* Count-up flash */
 .flash-up { animation: flash-up .8s var(--ease-out); }
@@ -869,13 +894,11 @@ body {
 .odd-up   { animation: odd-up .5s cubic-bezier(.2,.7,.2,1); }
 .odd-down { animation: odd-down .5s cubic-bezier(.2,.7,.2,1); }
 
-/* -------- Scroll reveal w/ stagger */
-.reveal { opacity: 0; transform: translateY(18px); transition: opacity .7s ease, transform .7s cubic-bezier(.2,.7,.2,1); }
-.reveal.is-in { opacity: 1; transform: none; }
-.reveal-x { opacity: 0; transform: translateX(-22px); transition: opacity .65s ease, transform .65s cubic-bezier(.2,.7,.2,1); }
-.reveal-x.is-in { opacity: 1; transform: none; }
+/* Reveal stagger (legacy duplicate REMOVIDO — definición única arriba en L464+).
+ * Mantenemos solo el .stagger > * (sin reveal prefix) que es otro componente. */
 .stagger > * { opacity: 0; transform: translateY(12px); transition: opacity .55s ease, transform .55s cubic-bezier(.2,.7,.2,1); }
-.stagger.is-in > * { opacity: 1; transform: none; }
+.stagger.is-in > * { opacity: 1 !important; transform: none !important; }
+.stagger.in > * { opacity: 1 !important; transform: none !important; }
 .stagger.is-in > *:nth-child(1) { transition-delay: .03s; }
 .stagger.is-in > *:nth-child(2) { transition-delay: .08s; }
 .stagger.is-in > *:nth-child(3) { transition-delay: .13s; }
@@ -1906,12 +1929,8 @@ body::after {
   opacity: .55;
 }
 
-@keyframes aurora-drift {
-  0%   { transform: translate3d(0, 0, 0)        scale(1);    }
-  33%  { transform: translate3d(-2.5%, 1.8%, 0) scale(1.04); }
-  66%  { transform: translate3d(1.5%, -1.2%, 0) scale(0.98); }
-  100% { transform: translate3d(2.5%, 1%, 0)    scale(1.02); }
-}
+/* aurora-drift: dos overrides antiguas borradas; la definición canónica
+ * está más abajo en este archivo (líneas ~2150). Mantener esa única. */
 
 /* Dark mode: deeper aurora with cooler tones */
 [data-theme=dark] body {
@@ -2002,14 +2021,8 @@ main > section.section:nth-of-type(even)::before {
  * Faster drift, larger amplitude, secondary breathing layer, hero shimmer
  * ===================================================================*/
 
-/* Override v7: faster + larger drift so motion is obvious */
-@keyframes aurora-drift {
-  0%   { transform: translate3d(0, 0, 0)        scale(1);    }
-  25%  { transform: translate3d(-6%, 4%, 0)     scale(1.08); }
-  50%  { transform: translate3d(5%, -3%, 0)     scale(1.04); }
-  75%  { transform: translate3d(-3%, -5%, 0)    scale(1.10); }
-  100% { transform: translate3d(4%, 3%, 0)      scale(1.05); }
-}
+/* Override v7 eliminado — la definición canónica de aurora-drift está
+ * más abajo (~línea 2150). Mantenemos solo el binding al body::before. */
 body::before {
   animation: aurora-drift 22s ease-in-out infinite alternate !important;
 }
@@ -2101,20 +2114,8 @@ html::before {
   filter: blur(80px) !important; opacity: .75 !important;
   animation: orb-float-3 26s ease-in-out infinite !important;
 }
-@keyframes orb-float-1 {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  33%      { transform: translate(40px, 30px) scale(1.1); }
-  66%      { transform: translate(-30px, 50px) scale(.95); }
-}
-@keyframes orb-float-2 {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  50%      { transform: translate(-50px, 40px) scale(1.15); }
-}
-@keyframes orb-float-3 {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  40%      { transform: translate(60px, -40px) scale(1.08); }
-  80%      { transform: translate(-40px, 20px) scale(1.02); }
-}
+/* orb-float-1/2/3: definiciones tempranas eliminadas. La versión canónica
+ * (con movimientos más amplios) está más abajo (~línea 2226). */
 
 /* prefers-reduced-motion: kill these */
 @media (prefers-reduced-motion: reduce) {
@@ -3219,7 +3220,7 @@ body::before {
                     rgba(34, 197, 94, .07), transparent 60%),
     radial-gradient(700px 600px at var(--nx) var(--ny),
                     rgba(34, 197, 94, .04), transparent 65%) !important;
-  animation: mesh-drift 32s ease-in-out infinite alternate !important;
+  animation: mesh-drift-vars 32s ease-in-out infinite alternate !important;
   filter: none !important;
   opacity: 1 !important;
 }
@@ -3232,7 +3233,10 @@ html[data-theme=dark] body::before {
                     rgba(74, 144, 226, .06), transparent 65%) !important;
 }
 
-@keyframes mesh-drift {
+/* Renombrado de mesh-drift → mesh-drift-vars para evitar colisión con la
+ * definición en línea ~790 que es transform-based. Esta variante anima
+ * CSS custom properties (--mx, --my, etc) y solo se usa en body::before. */
+@keyframes mesh-drift-vars {
   0%   { --mx: 30%; --my: 25%; --nx: 75%; --ny: 70%; }
   25%  { --mx: 55%; --my: 40%; --nx: 30%; --ny: 80%; }
   50%  { --mx: 70%; --my: 30%; --nx: 25%; --ny: 50%; }
@@ -5985,6 +5989,13 @@ body {
 /* ============================================================================
    COMPARADOR — top 3 casas por mercado (mismo mercado entre casas)
    ============================================================================ */
+/* COMPARADOR v3 — alineación garantizada entre columnas
+ * El bug histórico: headers de altura variable + cells con altura variable
+ * causaban que las cuotas quedaran descentradas entre columnas y se vieran
+ * "corridas" hacia la derecha. Fix: ALTURAS FIJAS en header (56px) y row
+ * (48px) — el grid columnar respeta esas alturas y todas las row N de las
+ * 3 columnas terminan exactamente al mismo nivel vertical.
+ */
 .cmp3 {
   display: grid;
   grid-template-columns: repeat(3, minmax(0,1fr));
@@ -5994,60 +6005,76 @@ body {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
-  padding: 14px 14px 12px;
+  padding: 12px;
   display: flex;
   flex-direction: column;
   gap: 8px;
   position: relative;
   transition: border-color var(--d-fast), box-shadow var(--d-fast);
   min-width: 0;
+  overflow: visible;                  /* pill "Mejor" usa top: -8px */
 }
 .cmp3-col:hover { border-color: var(--brand-300); box-shadow: var(--shadow-md); }
 .cmp3-col-head {
   display: flex;
-  align-items: baseline;
+  align-items: center;                /* centrado vertical en el bloque fijo */
   justify-content: space-between;
   padding-bottom: 8px;
   border-bottom: 1px dashed var(--border);
+  height: 38px;                       /* FIJO — uniforme entre columnas */
+  flex-shrink: 0;
+  gap: 6px;
+  overflow: hidden;
 }
 .cmp3-col-head .label {
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 700;
-  letter-spacing: .1em;
+  letter-spacing: .04em;
   text-transform: uppercase;
   color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.2;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 .cmp3-col-head .outcome {
   font-weight: 800;
   font-size: 14px;
   color: var(--text-primary);
   letter-spacing: -.005em;
+  flex-shrink: 0;
+  line-height: 1;
 }
 .cmp3-row {
   display: grid;
-  /* logo casa fija | nombre casa flexible | CUOTA fija (5ch ≈ "12.34") centrada al borde derecho */
-  grid-template-columns: 30px minmax(0, 1fr) 60px;
-  gap: 10px;
+  /* logo (28px) | nombre flexible (overflow ellipsis) | cuota (auto — toma exactamente lo que necesita) */
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  gap: 8px;
   align-items: center;
-  padding: 9px 14px 9px 12px;
+  padding: 0 12px;
   border-radius: 10px;
   background: var(--surface-2);
   border: 1px solid transparent;
   transition: background var(--d-fast), border-color var(--d-fast), transform var(--d-fast);
   position: relative;
   min-width: 0;
-  min-height: 48px;                   /* uniformiza altura de todos los rows */
+  height: 44px;                       /* FIJO — uniforme entre cells de todas las columnas */
+  flex-shrink: 0;
+  overflow: visible;                  /* pill "MEJOR" usa top:-8px y debe ser visible fuera */
 }
 .cmp3-row .price {
-  text-align: right;                  /* cuotas alineadas a la derecha verticalmente */
-}
-.cmp3-row .price {
-  padding-left: 8px;                  /* más aire entre nombre y cuota */
-  padding-right: 2px;
+  text-align: right;
+  padding-left: 6px;
+  padding-right: 0;
   font-variant-numeric: tabular-nums;
   font-weight: 800;
   font-size: 0.95rem;
+  letter-spacing: -.01em;
   white-space: nowrap;
+  line-height: 1;
+  min-width: 0;
   flex-shrink: 0;
 }
 .cmp3-row .book {
@@ -6064,8 +6091,8 @@ body {
 .cmp3-col > * { min-width: 0; }
 /* Rank ahora es una caja con el LOGO de la casa (sin números 1/2/3) */
 .cmp3-row .rank.rank-book {
-  width: 30px; height: 30px;
-  border-radius: 8px;
+  width: 28px; height: 28px;
+  border-radius: 7px;
   background: var(--surface);
   border: 1px solid var(--border);
   display: inline-flex;
@@ -11491,4 +11518,416 @@ html.reduce-motion *::after {
 }
 @media (prefers-reduced-motion: reduce) {
   .ai-empty-card--processing .ai-empty-icon svg { animation: none; }
+}
+
+/* ============================================================================
+ * GLOBAL REDUCED MOTION OVERRIDE (WCAG 2.3.3)
+ * ============================================================================
+ * Hay ~125 animaciones repartidas por todo el archivo sin protección
+ * `prefers-reduced-motion`. Agregar reglas selector-por-selector sería
+ * gigantesco y frágil. Esta regla universal mata cualquier animation y
+ * transition cuando el usuario lo pidió en su SO (Reduce motion en macOS,
+ * Windows, iOS, Android), sin tocar el resto del CSS.
+ *
+ * Vinculado a partir de la auditoría 2026-05-14 — antes de esto el sitio
+ * forzaba pulsos, drift de fondos, aurora-waves, shimmer, etc. incluso a
+ * usuarios con vestíbulo/náuseas/vértigo.
+ * ============================================================================ */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  /* Mantener visibles los reveals que usaban opacity 0 → 1: forzar visible
+   * para que el contenido nunca quede oculto si las animaciones se desactivan. */
+  .reveal, .reveal-x, .stagger > *, [class*="reveal"] {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
+
+/* ============================================================================
+ * PREMIUM CARD SYSTEM (v5.4)
+ * ============================================================================
+ * Sistema reutilizable de "hero cards" para combinadas, picks, arbitraje y
+ * coach IA. La idea: cuando el usuario abre un análisis, lo PRIMERO que ve
+ * es la CUOTA TOTAL en gigante + el PROFIT con su stake actual + el EDGE
+ * destacado. Después vienen las legs, factors y rationale.
+ *
+ * Composición típica:
+ *   <article class="bs-prem">
+ *     <header class="bs-prem__head">...</header>
+ *     <div class="bs-prem__hero">
+ *       <div class="bs-prem__odd">3.85</div>
+ *       <div class="bs-prem__pay">$385.000</div>
+ *       <div class="bs-prem__edge">+8.4% edge</div>
+ *     </div>
+ *     <div class="bs-prem__legs">...</div>
+ *     <div class="bs-prem__factors">...</div>
+ *     <footer class="bs-prem__actions">...</footer>
+ *   </article>
+ * ============================================================================ */
+
+/* Contenedor base — bordes suaves, sombra elevada, gradient sutil */
+.bs-prem {
+  position: relative;
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--brand-500) 3%, var(--surface)),
+    var(--surface) 40%);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 24px;
+  display: grid;
+  gap: 18px;
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--brand-500) 8%, transparent),
+              0 12px 28px -16px color-mix(in srgb, var(--brand-700) 18%, transparent),
+              0 28px 60px -36px rgba(15, 23, 42, .14);
+  overflow: hidden;
+  transition: transform .25s cubic-bezier(.2,.7,.2,1), box-shadow .25s ease;
+}
+.bs-prem:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--brand-500) 12%, transparent),
+              0 18px 36px -16px color-mix(in srgb, var(--brand-700) 24%, transparent),
+              0 40px 72px -36px rgba(15, 23, 42, .18);
+}
+/* Banda dorada/verde superior — barra de 3px con gradient */
+.bs-prem::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: linear-gradient(90deg,
+    var(--brand-500), var(--brand-700), var(--brand-500));
+  background-size: 200% 100%;
+  animation: bs-prem-band 6s linear infinite;
+}
+@keyframes bs-prem-band {
+  to { background-position: 200% 0; }
+}
+.bs-prem--vip::before {
+  background: linear-gradient(90deg, #FFE07A, #C49A1A, #FFE07A);
+  background-size: 200% 100%;
+}
+
+/* Header: título + badges */
+.bs-prem__head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap;
+}
+.bs-prem__title {
+  font-size: .95rem; font-weight: 700; letter-spacing: -.01em;
+  color: var(--text-primary); display: flex; align-items: center; gap: 8px;
+}
+.bs-prem__chips { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* HERO: cuota gigante + payout + edge en una sola fila visual */
+.bs-prem__hero {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(140px, 1.4fr) minmax(100px, .9fr);
+  gap: 14px;
+  align-items: end;
+  padding: 18px 0 14px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+}
+@media (max-width: 640px) {
+  .bs-prem__hero { grid-template-columns: 1fr 1fr; }
+  .bs-prem__hero .bs-prem__edge-cell { grid-column: span 2; }
+}
+.bs-prem__hero-cell {
+  display: flex; flex-direction: column; gap: 2px;
+}
+.bs-prem__hero-label {
+  font-size: .68rem; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .08em; color: var(--text-tertiary);
+}
+.bs-prem__odd {
+  font-family: var(--font-mono, 'JetBrains Mono', ui-monospace, monospace);
+  font-size: clamp(2.4rem, 4.5vw, 3.4rem); font-weight: 800;
+  letter-spacing: -.03em; line-height: 1;
+  background: linear-gradient(135deg, var(--brand-600), var(--brand-800, var(--brand-700)));
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-variant-numeric: tabular-nums;
+}
+.bs-prem--vip .bs-prem__odd {
+  background: linear-gradient(135deg, #C49A1A, #8B6914);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.bs-prem__pay {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: clamp(1.8rem, 3.2vw, 2.4rem); font-weight: 800;
+  letter-spacing: -.025em; line-height: 1.05;
+  color: var(--success, #16a34a);
+  font-variant-numeric: tabular-nums;
+}
+.bs-prem__pay-sub {
+  font-size: .72rem; font-weight: 500; color: var(--text-tertiary);
+  margin-top: 4px;
+}
+.bs-prem__edge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px; border-radius: 999px;
+  background: color-mix(in srgb, var(--success, #16a34a) 12%, transparent);
+  color: var(--success, #16a34a);
+  font-weight: 800; font-size: 1.1rem;
+  font-variant-numeric: tabular-nums;
+  width: fit-content;
+}
+.bs-prem__edge--negative {
+  background: color-mix(in srgb, var(--danger, #dc2626) 12%, transparent);
+  color: var(--danger, #dc2626);
+}
+.bs-prem__edge-explain {
+  font-size: .7rem; color: var(--text-tertiary); margin-top: 4px;
+}
+
+/* Confidence bar destacada */
+.bs-prem__conf {
+  display: grid; gap: 6px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--brand-500) 4%, var(--surface-2));
+  border: 1px solid color-mix(in srgb, var(--brand-500) 8%, transparent);
+  border-radius: 10px;
+}
+.bs-prem__conf-head {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: .78rem;
+}
+.bs-prem__conf-head strong {
+  font-size: 1.1rem; font-weight: 800; color: var(--brand-700);
+  font-variant-numeric: tabular-nums;
+}
+.bs-prem__conf-track {
+  height: 8px; background: color-mix(in srgb, var(--border) 50%, transparent);
+  border-radius: 999px; overflow: hidden; position: relative;
+}
+.bs-prem__conf-fill {
+  height: 100%; border-radius: 999px;
+  background: linear-gradient(90deg, var(--brand-500), var(--brand-700));
+  transition: width .6s cubic-bezier(.2,.7,.2,1);
+}
+.bs-prem__conf-fill--low { background: linear-gradient(90deg, #f59e0b, #d97706); }
+.bs-prem__conf-fill--high { background: linear-gradient(90deg, #16a34a, #15803d); }
+
+/* Factor chips — clima, lesiones, sharp, H2H con iconos */
+.bs-prem__factors {
+  display: flex; flex-wrap: wrap; gap: 6px;
+}
+.bs-prem__factor {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 10px; border-radius: 8px;
+  background: color-mix(in srgb, var(--brand-500) 5%, var(--surface-2));
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  font-size: .75rem; color: var(--text-secondary);
+  font-weight: 500;
+}
+.bs-prem__factor-ico { font-size: .9rem; line-height: 1; }
+.bs-prem__factor--warn {
+  background: color-mix(in srgb, var(--warning, #d97706) 8%, var(--surface-2));
+  border-color: color-mix(in srgb, var(--warning, #d97706) 30%, var(--border));
+  color: color-mix(in srgb, var(--warning, #d97706) 70%, var(--text-primary));
+}
+.bs-prem__factor--good {
+  background: color-mix(in srgb, var(--success, #16a34a) 8%, var(--surface-2));
+  border-color: color-mix(in srgb, var(--success, #16a34a) 30%, var(--border));
+  color: color-mix(in srgb, var(--success, #16a34a) 70%, var(--text-primary));
+}
+
+/* Legs list — limpia, alineada */
+.bs-prem__legs {
+  display: grid; gap: 8px;
+}
+.bs-prem__leg {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--brand-500) 2%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  border-radius: 10px;
+  font-size: .85rem;
+}
+.bs-prem__leg-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.bs-prem__leg-teams {
+  display: flex; align-items: center; gap: 6px;
+  font-weight: 600; color: var(--text-primary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.bs-prem__leg-meta {
+  display: flex; align-items: center; gap: 8px;
+  font-size: .72rem; color: var(--text-tertiary);
+}
+.bs-prem__leg-mkt {
+  padding: 2px 6px; border-radius: 4px;
+  background: color-mix(in srgb, var(--brand-500) 10%, transparent);
+  color: var(--brand-700); font-weight: 600;
+}
+.bs-prem__leg-odd {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 1.05rem; font-weight: 800; color: var(--brand-700);
+  font-variant-numeric: tabular-nums;
+  min-width: 50px; text-align: right;
+}
+
+/* Rationale / AI explain block — más prominente */
+.bs-prem__rationale {
+  padding: 12px 14px;
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--brand-500) 4%, transparent),
+    color-mix(in srgb, var(--brand-700) 2%, transparent));
+  border-left: 3px solid var(--brand-500);
+  border-radius: 8px;
+  font-size: .85rem; line-height: 1.5;
+  color: var(--text-primary);
+}
+.bs-prem__rationale-label {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: .7rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .06em;
+  color: var(--brand-700); margin-bottom: 6px;
+}
+.bs-prem__rationale p { margin: 0; }
+.bs-prem__rationale p + p { margin-top: 6px; }
+
+/* Footer actions — botones siempre visibles */
+.bs-prem__actions {
+  display: flex; gap: 8px; flex-wrap: wrap;
+  padding-top: 6px;
+}
+.bs-prem__actions .btn { flex: 0 0 auto; }
+.bs-prem__actions .btn-primary { flex: 1 1 180px; }
+
+/* Best-book strip — destacado */
+.bs-prem__bestbook {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--success, #16a34a) 4%, transparent),
+    color-mix(in srgb, var(--brand-500) 3%, transparent));
+  border: 1px solid color-mix(in srgb, var(--success, #16a34a) 18%, var(--border));
+  border-radius: 12px;
+}
+.bs-prem__bestbook-tag {
+  font-size: .65rem; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--success, #16a34a);
+}
+.bs-prem__bestbook-name {
+  font-size: 1rem; font-weight: 700; color: var(--text-primary);
+}
+.bs-prem__bestbook-pay {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 1.3rem; font-weight: 800;
+  color: var(--success, #16a34a); text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Empty state premium — cuando no hay data, en vez de "0 surebets" muerto */
+.bs-empty-prem {
+  display: grid; gap: 10px; place-items: center;
+  padding: 36px 24px; text-align: center;
+  background: color-mix(in srgb, var(--brand-500) 3%, var(--surface-2));
+  border: 1px dashed color-mix(in srgb, var(--brand-500) 25%, var(--border));
+  border-radius: 16px;
+}
+.bs-empty-prem__ico {
+  width: 64px; height: 64px;
+  display: grid; place-items: center;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--brand-500) 12%, var(--surface));
+  color: var(--brand-700);
+}
+.bs-empty-prem__title {
+  font-size: 1.05rem; font-weight: 700; color: var(--text-primary);
+}
+.bs-empty-prem__hint {
+  font-size: .85rem; color: var(--text-secondary);
+  max-width: 360px; line-height: 1.5;
+}
+
+/* ============================================================================
+ * Z-INDEX SCALE (TIER 2e)
+ * ============================================================================
+ * Antes había wars donde .spotlight (250) quedaba debajo de modal (201).
+ * Reordenamos en una escala explícita:
+ *   bg layers   = -1
+ *   sticky      = 50
+ *   header      = 100
+ *   bottom-nav  = 80
+ *   overlay     = 200
+ *   drawer/modal= 220
+ *   spotlight   = 240  (debajo de modal/drawer)
+ *   toasts      = 320  (encima de modal para confirmaciones)
+ *   tooltip     = 360  (encima de toasts)
+ *   confetti    = 980  (efectos celebratorios encima de todo)
+ *   preloader   = 999  (no se ve nada por encima)
+ * ============================================================================ */
+.spotlight { z-index: 240 !important; }
+.toasts { z-index: 320 !important; }
+.tooltip { z-index: 360 !important; }
+
+/* Soporte adicional para ai-pick--prem (selections de AI Picks usan algunas
+ * clases del sistema premium, pero conservan su layout original más compacto). */
+.ai-pick--prem .ai-pick__odd-row {
+  display: flex; justify-content: space-between; align-items: flex-end;
+  margin-top: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+}
+.ai-pick--prem .ai-pick__odd {
+  font-size: clamp(1.8rem, 3vw, 2.4rem);
+  display: block; line-height: 1;
+}
+.ai-pick--prem .ai-pick__book {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 8px;
+  background: var(--surface-2); border-radius: 8px;
+}
+.ai-pick--prem .bs-prem__hero-label {
+  display: block; margin-bottom: 2px;
+}
+
+/* Arbitrage plan rows: número de paso destacado */
+.arb-plan__rank {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--brand-500), var(--brand-700));
+  color: #fff; font-size: .72rem; font-weight: 800;
+  margin-right: 4px;
+}
+
+/* AI explain inline (cuando se expande) */
+.bs-prem .ai-explain:empty { display: none; }
+.bs-prem .ai-explain {
+  padding: 12px; border-radius: 10px;
+  background: color-mix(in srgb, var(--brand-500) 4%, var(--surface-2));
+  border-left: 3px solid var(--brand-500);
+  font-size: .85rem;
+}
+
+/* Coach IA: empty state steps */
+.bsai-empty-steps {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px; margin-top: 8px; width: 100%;
+}
+.bsai-empty-steps > span {
+  display: flex; align-items: center; gap: 6px;
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--brand-500) 4%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  border-radius: 8px; font-size: .78rem; color: var(--text-secondary);
+}
+.bsai-empty-steps > span > strong {
+  display: inline-grid; place-items: center;
+  width: 22px; height: 22px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--brand-500), var(--brand-700));
+  color: #fff; font-size: .72rem; font-weight: 800;
 }

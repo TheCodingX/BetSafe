@@ -189,8 +189,12 @@
         badges.push(`<span class="badge cmp-margin-badge">Margen casa ${scored.margin.toFixed(1)}%</span>`);
       }
 
-      const homeLbl = `Gana ${BSUI.esc(m.home.name)}`;
-      const awayLbl = `Gana ${BSUI.esc(m.away.name)}`;
+      // Antes: "Gana NombreLargo" se cortaba en celdas estrechas (mismo bug
+      // que el comparador del landing). Ahora pasamos solo el nombre — el
+      // outcome (1/X/2) al lado ya indica que es "ganar". Las CSS .cmp3-col-head
+      // truncan con ellipsis si el nombre no entra en 1 línea.
+      const homeLbl = BSUI.esc(m.home.name);
+      const awayLbl = BSUI.esc(m.away.name);
       const hasDraw = !!scored.outD;
 
       const html = `
@@ -230,9 +234,9 @@
         <p class="muted tiny mb-3">${BSUI.esc(m.leagueName || '')} · ${BSUI.dt(m.start)}</p>
         <div class="cmp-detail-grid">
           <div class="cmp-detail-head">Casa</div>
-          <div class="cmp-detail-head">Gana ${BSUI.esc(m.home.name)}</div>
+          <div class="cmp-detail-head">${BSUI.esc(m.home.name)}</div>
           ${books.some(([_, b]) => b.draw) ? '<div class="cmp-detail-head">Empate</div>' : ''}
-          <div class="cmp-detail-head">Gana ${BSUI.esc(m.away.name)}</div>
+          <div class="cmp-detail-head">${BSUI.esc(m.away.name)}</div>
           ${books.map(([k, b]) => `
             <div class="cmp-detail-cell"><span class="cluster">${window.BSLogos?.bookLogo?.(k, {size:20}) || ''}<span>${BSUI.esc(bn(k))}</span></span></div>
             <div class="cmp-detail-cell num">${Number.isFinite(b.home) && b.home > 1.01 ? b.home.toFixed(2) : '—'}</div>

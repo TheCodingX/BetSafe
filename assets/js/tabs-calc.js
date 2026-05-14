@@ -18,8 +18,8 @@
     panel.innerHTML = `
       <div class="row between mb-3">
         <div>
-          <h2 class="h3">Calc Hub · 9 calculadoras esenciales<a class="help-q" tabindex="0" data-tip="Las 9 calculadoras más usadas: Kelly (stake óptimo), Hedge (cerrar posición), Dutching (apostar a múltiples outcomes), Arbitraje, Parlay, Free Bet (SNR), CLV, Drawdown, Middle. Cada una con su tooltip explicando para qué sirve. Versión Pro con 24 cálculos en CalcPro VIP."></a></h2>
-          <p class="muted">Kelly, Hedge, Dutch, Arb, Parlay, Free Bet, CLV, Drawdown, Middle.</p>
+          <h2 class="h3">Calculadoras esenciales · 9 herramientas<a class="help-q" tabindex="0" data-tip="9 calculadoras pensadas para apostar mejor: cuánto apostar para que tu banca crezca sin riesgo de fundirla, cómo asegurar ganancia cerrando una posición, cómo dividir el monto entre varios resultados, cómo aprovechar bonos sin riesgo, cuántas veces vas a perder seguido. Versión avanzada con 24 herramientas en CalcPro VIP."></a></h2>
+          <p class="muted">Cuánto apostar · Cerrar posición · Dividir entre resultados · Ganancia segura · Combinada · Bonos · Valor cierre · Pérdidas seguidas · Doble cobertura.</p>
         </div>
         <a href="#calcpro" class="btn btn-gold btn-sm" onclick="if(!BSAuth.isVip()){event.preventDefault();BSDash.go('calcpro')}">CalcPro VIP →</a>
       </div>

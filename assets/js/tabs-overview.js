@@ -230,27 +230,41 @@
             </div>
           ` : ''}
           <div class="ov-brief-stats">
-            <a href="#ai" class="ov-brief-stat">
+            <a href="#ai" class="ov-brief-stat" title="Partidos en vivo que el motor está analizando en este momento">
               <span class="ov-brief-stat-num">${r.counts?.totalEvents || 0}</span>
               <span class="ov-brief-stat-label">eventos analizables</span>
+              <span class="muted tiny">en las 6 casas legales AR</span>
             </a>
-            <a href="#arbitrage" class="ov-brief-stat ${(r.counts?.liveSurebets || 0) > 0 ? 'is-active' : ''}">
+            <a href="#arbitrage" class="ov-brief-stat ${(r.counts?.liveSurebets || 0) > 0 ? 'is-active' : ''}" title="Apuestas matemáticamente sin riesgo detectadas ahora">
               <span class="ov-brief-stat-num">${r.counts?.liveSurebets || 0}</span>
               <span class="ov-brief-stat-label">surebets ahora</span>
-              ${surebet ? `<span class="muted tiny">Mejor: +${surebet.roi.toFixed(2)}% ROI</span>` : ''}
+              ${surebet
+                ? `<span class="tiny text-success">Mejor: +${surebet.roi.toFixed(2)}% ROI</span>`
+                : `<span class="muted tiny">Escaneamos cada 5s</span>`}
             </a>
-            <a href="#smartmoney" class="ov-brief-stat ${(r.counts?.sharpMoves || 0) > 0 ? 'is-active' : ''}">
+            <a href="#smartmoney" class="ov-brief-stat ${(r.counts?.sharpMoves || 0) > 0 ? 'is-active' : ''}" title="Partidos donde la cuota se movió más de 5% — eso indica que apostadores profesionales están tomando posición fuerte. Suele ser señal de que saben algo.">
               <span class="ov-brief-stat-num">${r.counts?.sharpMoves || 0}</span>
-              <span class="ov-brief-stat-label">movimientos del mercado</span>
-              ${sharp ? `<span class="muted tiny">${sharp.deltaPct > 0 ? '+' : ''}${sharp.deltaPct.toFixed(1)}% mayor</span>` : ''}
+              <span class="ov-brief-stat-label">señales del mercado</span>
+              ${sharp
+                ? `<span class="tiny ${sharp.deltaPct > 0 ? 'text-success' : 'text-danger'}">${sharp.deltaPct > 0 ? '+' : ''}${sharp.deltaPct.toFixed(1)}% movimiento</span>`
+                : `<span class="muted tiny">Mercado estable</span>`}
             </a>
-            ${topPick ? `
-              <a href="#ai" class="ov-brief-stat ov-brief-stat--gold">
+            ${topPick ? (() => {
+              const ev = Number(topPick.ev) || 0;
+              const sign = ev >= 0 ? '+' : '';
+              const cls = ev >= 0 ? 'text-success' : 'text-danger';
+              return `
+              <a href="#ai" class="ov-brief-stat ov-brief-stat--gold" title="La apuesta del día donde la cuota está más floja respecto a la probabilidad real. Más ventaja a tu favor.">
                 <span class="ov-brief-stat-num">${topPick.odd.toFixed(2)}</span>
-                <span class="ov-brief-stat-label">cuota top pick</span>
-                <span class="muted tiny">EV +${(topPick.ev || 0).toFixed(1)}%</span>
-              </a>
-            ` : ''}
+                <span class="ov-brief-stat-label">mejor apuesta hoy</span>
+                <span class="tiny ${cls}">${sign}${ev.toFixed(1)}% a favor</span>
+              </a>`;
+            })() : `
+              <span class="ov-brief-stat" title="El motor todavía no terminó de analizar los partidos del día">
+                <span class="ov-brief-stat-num">…</span>
+                <span class="ov-brief-stat-label">top pick</span>
+                <span class="muted tiny">esperando análisis</span>
+              </span>`}
           </div>
         </div>
       `;

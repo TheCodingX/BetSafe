@@ -53,7 +53,7 @@
     return `
       <div class="row between mb-4">
         <div>
-          <h2 class="h3">AI Picks · top combinadas curadas<a class="help-q" tabindex="0" data-tip="La IA analiza TODOS los partidos del día y devuelve solo las MEJORES combinadas posibles. Cada una con 2 a 5 legs (la IA decide cuántas según la calidad de las señales). Foco en calidad, no cantidad. Mezcla de riesgos: 1 segura, 1-2 equilibradas, opcionalmente 1 agresiva."></a></h2>
+          <h2 class="h3">Picks del día — combinadas hechas por la IA<a class="help-q" tabindex="0" data-tip="La IA mira TODOS los partidos del día y te muestra solo las mejores combinadas. Cada una junta entre 2 y 5 apuestas (la IA decide cuántas según qué tan fuertes son las señales). Mezcla: 1 conservadora, 1-2 equilibradas, opcionalmente 1 agresiva para pagar más."></a></h2>
           <p class="muted">${isVip ? `VIP — hasta ${count} combinadas curadas por día` : `Standard — top ${count} combinadas curadas (VIP desbloquea más)`}</p>
         </div>
         <div class="cluster">
@@ -299,7 +299,7 @@
           <div class="ai-vip-teaser__content">
             <span class="badge-vip" style="align-self:flex-start">VIP exclusivo</span>
             <strong class="ai-vip-teaser__title">Te estás perdiendo <span class="num">17 picks</span> más</strong>
-            <p class="muted tiny" style="max-width:480px">Los miembros VIP ven análisis completo de hasta 20 partidos por día — fútbol europeo top, Libertadores, tenis Grand Slam, NBA y más. Cada pick con factores reales, edge calculado y combinada agresiva.</p>
+            <p class="muted tiny" style="max-width:480px">Los miembros VIP ven el análisis completo de hasta 20 partidos por día — fútbol europeo top, Libertadores, tenis Grand Slam, NBA y más. Cada apuesta con datos reales del partido, indicación de dónde la cuota está más floja y una combinada pensada para pagar fuerte.</p>
             <div class="ai-vip-teaser__features">
               <span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Hasta 20 picks/día</span>
               <span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Smart Money en vivo</span>
@@ -349,7 +349,7 @@ ${legsText}
 
 💡 ${c.narrative}
 
-⚡ Edge: ${c.edge}
+⚡ Por qué jugarla: ${c.edge}
 
 — Análisis generado por BetSafe`;
       try {
@@ -468,7 +468,7 @@ ${legsText}
             ${isAnalytical
               ? `<span class="muted" style="font-size:.6rem;font-style:italic">cuota estimada</span>`
               : `<div class="cluster" style="gap:3px;font-size:.65rem">${bookLogo}<span class="muted">${BSUI.esc(bookName(l.book))}</span></div>`}
-            ${l.ev != null ? `<span class="${evClass}" style="font-size:.65rem">EV ${l.ev > 0 ? '+' : ''}${l.ev.toFixed(1)}%</span>` : ''}
+            ${l.ev != null ? `<span class="${evClass}" style="font-size:.65rem" title="Cuán generosa es la cuota comparada con lo justo. Positivo = la casa te está pagando más de lo que debería.">Ventaja ${l.ev > 0 ? '+' : ''}${l.ev.toFixed(1)}%</span>` : ''}
           </div>
         </div>`;
     }).join('');
@@ -512,7 +512,7 @@ ${legsText}
             <strong>${(c.avgConfidence * 100).toFixed(0)}%</strong>
           </div>
           <div>
-            <div class="muted">EV promedio</div>
+            <div class="muted">Ventaja promedio</div>
             <strong class="${c.avgEv > 0 ? 'text-success' : 'muted'}">${c.avgEv > 0 ? '+' : ''}${c.avgEv.toFixed(1)}%</strong>
           </div>
           <div class="text-right">
@@ -560,7 +560,9 @@ ${legsText}
           <div class="cluster" style="gap:6px;flex-wrap:wrap">
             <span class="badge badge-brand tiny">${leagueLogo} ${BSUI.esc(ev.leagueName || ev.league || '')}</span>
             <span class="muted tiny">${BSUI.dt(ev.start)}</span>
-            ${analysis.llmProvider !== 'offline' ? `<span class="badge badge-success tiny" title="Análisis con IA">Análisis IA</span>` : '<span class="badge tiny">Análisis</span>'}
+            ${analysis.llmProvider && analysis.llmProvider !== 'offline'
+              ? `<span class="badge badge-success tiny" title="Análisis con IA generativa (${BSUI.esc(analysis.llmProvider)})">Análisis IA · ${BSUI.esc(analysis.llmProvider)}</span>`
+              : `<span class="badge badge-warning tiny" title="La IA generativa no está disponible en este momento. El análisis usa solo nuestros modelos estadísticos. Refrescá en 1 min para que la IA revise.">⚠ Análisis sin IA</span>`}
           </div>
         </header>
 
@@ -623,7 +625,7 @@ ${legsText}
     if (s.poissonProb != null) probs.push({ label: 'Modelo', v: s.poissonProb });
     if (s.eloProb != null)     probs.push({ label: 'Forma', v: s.eloProb });
     if (s.llmProb != null)     probs.push({ label: 'IA', v: s.llmProb });
-    if (s.consensusProb != null) probs.push({ label: 'Consenso', v: s.consensusProb, highlight: true });
+    if (s.consensusProb != null) probs.push({ label: 'Final', v: s.consensusProb, highlight: true });
 
     const addPayload = JSON.stringify({
       matchId: ev.id, eventId: ev.id, label: s.label || s.outcome,
@@ -644,27 +646,46 @@ ${legsText}
         `).join('')}
       </div>` : '';
 
+    // Edge sign/class para mostrar como pill prominente (igual que combinadas)
+    const evSign = ev_pct != null && ev_pct >= 0 ? '+' : '';
+    const edgeCls = ev_pct == null ? '' : ev_pct >= 0 ? '' : 'bs-prem__edge--negative';
+    const confPct = Math.round(conf * 100);
+    const confLevel = confPct >= 70 ? 'high' : confPct >= 50 ? '' : 'low';
+
     return `
-      <div class="ai-pick" data-type="${s.type}"${isCombo ? ' data-combo="1"' : ''}>
-        <div class="row between">
+      <div class="ai-pick ai-pick--prem" data-type="${s.type}"${isCombo ? ' data-combo="1"' : ''}>
+        <div class="row between" style="align-items:center">
           <span class="risk-pill ${typeClass}">${typeLabel}${isCombo ? ` · ${s.legs.length} legs` : ''}</span>
-          <span class="badge badge-${confClass} tiny" title="Score de confianza del análisis">Conf ${(conf*100).toFixed(0)}%</span>
+          ${ev_pct != null ? `<span class="bs-prem__edge ${edgeCls}" style="padding:3px 9px;font-size:.85rem" title="Cuán generosa es esta cuota comparada con la cuota justa. Positivo = la casa paga más de lo que debería.">${evSign}${ev_pct.toFixed(1)}% a favor</span>` : ''}
         </div>
-        ${isCombo ? legsHtml : `<strong style="display:block;margin:8px 0">${BSUI.esc(s.label || s.outcome)}</strong>`}
-        <div class="cluster" style="justify-content:space-between;align-items:baseline">
-          <strong class="num text-brand" style="font-size:1.4rem">${s.odd?.toFixed?.(2) || '—'}</strong>
-          <span class="cluster tiny">${bookLogo}<span class="muted">${BSUI.esc(bookName(s.book))}</span></span>
+        ${isCombo ? legsHtml : `<strong style="display:block;margin:10px 0 4px;font-size:.95rem;line-height:1.3">${BSUI.esc(s.label || s.outcome)}</strong>`}
+        <div class="ai-pick__odd-row">
+          <div>
+            <span class="bs-prem__hero-label">Cuota</span>
+            <span class="bs-prem__odd ai-pick__odd">${s.odd?.toFixed?.(2) || '—'}</span>
+          </div>
+          <div class="ai-pick__book">
+            ${bookLogo}
+            <span class="muted tiny">${BSUI.esc(bookName(s.book))}</span>
+          </div>
+        </div>
+        <div class="bs-prem__conf" style="padding:8px 10px;margin-top:8px">
+          <div class="bs-prem__conf-head">
+            <span>Confianza del modelo</span><strong>${confPct}%</strong>
+          </div>
+          <div class="bs-prem__conf-track">
+            <div class="bs-prem__conf-fill ${confLevel ? 'bs-prem__conf-fill--' + confLevel : ''}" style="width:${confPct}%"></div>
+          </div>
         </div>
         ${probs.length ? `<div class="ai-probs">${probs.map(p => `<span class="ai-prob${p.highlight?' is-consensus':''}"><span class="muted tiny">${p.label}</span><strong>${(p.v*100).toFixed(0)}%</strong></span>`).join('')}</div>` : ''}
         <div class="ai-metrics-grid">
-          ${ev_pct != null ? `<div class="ai-metric"><span class="muted tiny">EV</span><strong class="${evClass}">${ev_pct > 0 ? '+' : ''}${ev_pct.toFixed(2)}%</strong></div>` : ''}
-          ${s.valueGap != null ? `<div class="ai-metric" title="Diferencia entre la probabilidad real y la implícita por la cuota"><span class="muted tiny">Valor</span><strong class="${s.valueGap > 0 ? 'text-success' : 'muted'}">${s.valueGap > 0 ? '+' : ''}${s.valueGap.toFixed(1)}%</strong></div>` : ''}
-          ${s.modelConvergence ? `<div class="ai-metric" title="Qué tan de acuerdo están los 4 modelos entre sí"><span class="muted tiny">Convergencia</span><strong class="${s.modelConvergence === 'alta' ? 'text-success' : s.modelConvergence === 'baja' ? 'text-warning' : ''}">${s.modelConvergence}</strong></div>` : ''}
-          ${s.kellyFractional ? `<div class="ai-metric" title="Monto sugerido según Kelly fraccional 1/4 (conservador, sobre tu banca total)"><span class="muted tiny">Apuesta sugerida</span><strong>${(s.kellyFractional*100).toFixed(1)}% banca</strong></div>` : ''}
+          ${s.valueGap != null ? `<div class="ai-metric" title="Cuán diferente es la probabilidad REAL de la probabilidad que sugiere la cuota. Positivo = la cuota está sobreestimando la dificultad — te conviene jugarla."><span class="muted tiny">Valor extra</span><strong class="${s.valueGap > 0 ? 'text-success' : 'muted'}">${s.valueGap > 0 ? '+' : ''}${s.valueGap.toFixed(1)}%</strong></div>` : ''}
+          ${s.modelConvergence ? `<div class="ai-metric" title="Si los distintos modelos (estadístico, forma reciente, IA) coinciden en el pronóstico"><span class="muted tiny">Modelos</span><strong class="${s.modelConvergence === 'alta' ? 'text-success' : s.modelConvergence === 'baja' ? 'text-warning' : ''}">${s.modelConvergence === 'alta' ? 'coinciden' : s.modelConvergence === 'baja' ? 'discrepan' : 'parcial'}</strong></div>` : ''}
+          ${s.kellyFractional ? `<div class="ai-metric" title="Cuánto de tu plata total te conviene apostar — calculado para crecer la banca sin riesgo de quemarla. Es conservador, podés apostar menos si querés."><span class="muted tiny">Apostá</span><strong>${(s.kellyFractional*100).toFixed(1)}% de tu plata</strong></div>` : ''}
         </div>
-        ${s.rationale ? `<p class="muted tiny" style="margin-top:6px;line-height:1.4">${BSUI.esc(s.rationale).slice(0, 180)}${s.rationale.length > 180 ? '…' : ''}</p>` : ''}
+        ${s.rationale ? `<p class="muted tiny" style="margin-top:8px;line-height:1.4">${BSUI.esc(s.rationale).slice(0, 180)}${s.rationale.length > 180 ? '…' : ''}</p>` : ''}
         ${(s.warnings || []).length ? `<div class="cluster tiny" style="margin-top:6px;flex-wrap:wrap">${s.warnings.map(w => `<span class="badge badge-warning tiny">⚠ ${BSUI.esc(w)}</span>`).join('')}</div>` : ''}
-        <button class="btn btn-primary btn-sm w-full" style="margin-top:8px" data-add-slip='${addPayload}'>Agregar a la combinada</button>
+        <button class="btn btn-primary btn-sm w-full" style="margin-top:10px" data-add-slip='${addPayload}'>${BSIcons.svg('plus',{size:14})} Agregar a la combinada</button>
       </div>
     `;
   }
@@ -810,7 +831,7 @@ ${legsText}
         <div class="grid grid-3 gap-2">
           <div><span class="muted tiny">Margen libro</span><div class="num">${q.margin?.toFixed(2)}%</div></div>
           <div><span class="muted tiny" title="Cuota matemáticamente justa (sin margen de la casa)">Cuota justa</span><div class="tiny">${(q.fairOdds || []).map(o => o?.toFixed(2) || '—').join(' / ')}</div></div>
-          <div><span class="muted tiny">EV vs mercado</span><div class="tiny">${(q.ev || []).map(v => (v > 0 ? '+' : '') + v.toFixed(2) + '%').join(' / ')}</div></div>
+          <div><span class="muted tiny">Ventaja sobre la casa</span><div class="tiny">${(q.ev || []).map(v => (v > 0 ? '+' : '') + v.toFixed(2) + '%').join(' / ')}</div></div>
         </div>
       </div>`);
     }

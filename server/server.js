@@ -37,6 +37,14 @@
  */
 'use strict';
 
+// Cargar .env (busca primero en raíz del proyecto, después en server/) para
+// que en local funcionen las keys sin tener que `export` cada vez. En Render
+// las vars vienen del dashboard y dotenv no encuentra .env — no rompe nada.
+try {
+  require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
+  require('dotenv').config({ path: require('path').resolve(__dirname, '.env') });
+} catch (_) { /* sin dotenv, sigue como antes con env del shell */ }
+
 const express = require('express');
 const http = require('http');
 const { WebSocketServer } = require('ws');
@@ -48,14 +56,29 @@ const orchestrator = require('./lib/orchestrator');
 const { ArbitrageEngine } = require('./engines/arbitrage');
 const { analyzeMatch, groqJsonGeneric, geminiJsonGeneric } = require('./engines/ai-pipeline');
 
-// Helper: usa Gemini si está disponible, sino cae a Groq. Para parsers/explainers
-// donde queremos siempre la mejor calidad disponible sin tocar code de cada call.
+// Helper: cascada GEMINI-FIRST (el user pidió explícitamente que Gemini sea
+// el motor principal — pagar Gemini 2.5 Flash no es problema, 1M context).
+// Patrón: 3 retries de Gemini con backoff, después Groq como red de seguridad
+// para no devolver vacío al cliente. Si en el futuro queremos Claude para
+// algunos parsers, agregar acá entre los retries de Gemini y Groq.
 const HAS_GEMINI = !!(process.env.BS_GEMINI_API_KEY || process.env.GEMINI_API_KEY);
+const HAS_GROQ = !!(process.env.BS_GROQ_API_KEY || process.env.GROQ_API_KEY);
 async function preferredJson(systemPrompt, userPrompt, opts = {}) {
+  let lastErr = null;
   if (HAS_GEMINI) {
-    try { return await geminiJsonGeneric(systemPrompt, userPrompt, opts); } catch (_) {}
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        return await geminiJsonGeneric(systemPrompt, userPrompt, opts);
+      } catch (e) {
+        lastErr = e;
+        // Backoff exponencial: 200ms, 600ms, 1800ms
+        if (attempt < 3) await new Promise(r => setTimeout(r, 200 * Math.pow(3, attempt - 1)));
+      }
+    }
+    log(`[preferredJson] gemini falló 3 veces: ${lastErr?.message?.slice(0,80)} — fallback a Groq`);
   }
-  return groqJsonGeneric(systemPrompt, userPrompt, opts);
+  if (HAS_GROQ) return groqJsonGeneric(systemPrompt, userPrompt, opts);
+  throw lastErr || new Error('Sin LLM disponible (configurá BS_GEMINI_API_KEY o BS_GROQ_API_KEY)');
 }
 const { analyzeCombo, pairCorrelation } = require('./engines/correlation');
 const { buildFactors } = require('./factors');
@@ -142,6 +165,203 @@ app.get('/api/health', (req, res) => {
     interval: SCRAPE_INTERVAL_MS,
     enabledBooks: ENABLED_BOOKS,
     ts: Date.now()
+  });
+});
+
+// Verifica CADA API key haciendo un request real al provider. Devuelve
+// {ok: true|false, status: 200, msg: ...} por cada uno. Útil para diagnosticar
+// "key configurada pero inválida" vs "key correcta y funcionando".
+// Cada test es lightweight (1 request) y tiene timeout de 8s.
+app.get('/api/keys-verify', async (req, res) => {
+  const verify = async (name, fn) => {
+    const t0 = Date.now();
+    try {
+      const r = await Promise.race([
+        fn(),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('timeout 8s')), 8000))
+      ]);
+      return { ...r, durMs: Date.now() - t0 };
+    } catch (e) {
+      return { ok: false, error: (e?.message || String(e)).slice(0, 200), durMs: Date.now() - t0 };
+    }
+  };
+
+  const results = {};
+
+  // Gemini
+  results.gemini = await verify('gemini', async () => {
+    const k = process.env.BS_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+    if (!k) return { ok: false, error: 'key not set' };
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${k}`);
+    if (!r.ok) return { ok: false, status: r.status, error: (await r.text()).slice(0, 200) };
+    const j = await r.json();
+    return { ok: true, status: 200, modelsCount: (j.models || []).length };
+  });
+
+  // Anthropic Claude
+  results.anthropic = await verify('anthropic', async () => {
+    const k = process.env.BS_ANTHROPIC_API_KEY;
+    if (!k) return { ok: false, error: 'key not set' };
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': k, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({ model: 'claude-haiku-4-5', max_tokens: 5, messages: [{ role: 'user', content: 'hi' }] })
+    });
+    if (!r.ok) return { ok: false, status: r.status, error: (await r.text()).slice(0, 200) };
+    return { ok: true, status: 200 };
+  });
+
+  // Groq
+  results.groq = await verify('groq', async () => {
+    const k = process.env.BS_GROQ_API_KEY || process.env.GROQ_API_KEY;
+    if (!k) return { ok: false, error: 'key not set' };
+    const r = await fetch('https://api.groq.com/openai/v1/models', {
+      headers: { Authorization: 'Bearer ' + k }
+    });
+    if (!r.ok) return { ok: false, status: r.status, error: (await r.text()).slice(0, 200) };
+    const j = await r.json();
+    return { ok: true, status: 200, modelsCount: (j.data || []).length };
+  });
+
+  // OpenRouter
+  results.openrouter = await verify('openrouter', async () => {
+    const k = process.env.BS_OPENROUTER_API_KEY;
+    if (!k) return { ok: false, error: 'key not set' };
+    const r = await fetch('https://openrouter.ai/api/v1/auth/key', {
+      headers: { Authorization: 'Bearer ' + k }
+    });
+    if (!r.ok) return { ok: false, status: r.status, error: (await r.text()).slice(0, 200) };
+    const j = await r.json();
+    return { ok: true, status: 200, info: j.data?.label || 'authed' };
+  });
+
+  // The Odds API
+  results.theOddsApi = await verify('theOddsApi', async () => {
+    const k = process.env.THE_ODDS_API_KEY;
+    if (!k) return { ok: false, error: 'key not set' };
+    const r = await fetch(`https://api.the-odds-api.com/v4/sports?apiKey=${k}`);
+    if (!r.ok) return { ok: false, status: r.status, error: (await r.text()).slice(0, 200) };
+    const remaining = r.headers.get('x-requests-remaining');
+    const j = await r.json();
+    return { ok: true, status: 200, sportsCount: Array.isArray(j) ? j.length : 0, requestsRemaining: remaining };
+  });
+
+  // API-Football directo
+  results.apiSports = await verify('apiSports', async () => {
+    const k = process.env.APISPORTS_KEY;
+    if (!k) return { ok: false, error: 'key not set' };
+    const r = await fetch('https://v3.football.api-sports.io/status', {
+      headers: { 'x-apisports-key': k }
+    });
+    if (!r.ok) return { ok: false, status: r.status, error: (await r.text()).slice(0, 200) };
+    const j = await r.json();
+    const acct = j.response?.account || {};
+    const sub = j.response?.subscription || {};
+    return { ok: true, status: 200, plan: sub.plan, active: sub.active, account: acct.firstname };
+  });
+
+  // RapidAPI (api-football via rapid)
+  results.rapidApi = await verify('rapidApi', async () => {
+    const k = process.env.RAPIDAPI_KEY;
+    if (!k) return { ok: false, error: 'key not set' };
+    const r = await fetch('https://api-football-v1.p.rapidapi.com/v3/status', {
+      headers: {
+        'X-RapidAPI-Key': k,
+        'X-RapidAPI-Host': 'api-football-v1.p.rapidapi.com'
+      }
+    });
+    if (!r.ok) return { ok: false, status: r.status, error: (await r.text()).slice(0, 200) };
+    return { ok: true, status: 200 };
+  });
+
+  // OpenWeather
+  results.openWeather = await verify('openWeather', async () => {
+    const k = process.env.OPENWEATHER_API_KEY;
+    if (!k) return { ok: false, error: 'key not set' };
+    const r = await fetch(`https://api.openweathermap.org/data/2.5/weather?q=Buenos%20Aires&appid=${k}`);
+    if (!r.ok) return { ok: false, status: r.status, error: (await r.text()).slice(0, 200) };
+    const j = await r.json();
+    return { ok: true, status: 200, city: j.name, temp: j.main?.temp };
+  });
+
+  // Football-Data.org
+  results.footballData = await verify('footballData', async () => {
+    const k = process.env.BS_FOOTBALL_DATA_API_KEY;
+    if (!k) return { ok: false, error: 'key not set' };
+    const r = await fetch('https://api.football-data.org/v4/competitions', {
+      headers: { 'X-Auth-Token': k }
+    });
+    if (!r.ok) return { ok: false, status: r.status, error: (await r.text()).slice(0, 200) };
+    const j = await r.json();
+    return { ok: true, status: 200, competitionsCount: (j.competitions || []).length };
+  });
+
+  // ScrapingBee
+  results.scrapingBee = await verify('scrapingBee', async () => {
+    const k = process.env.SCRAPINGBEE_KEY;
+    if (!k) return { ok: false, error: 'key not set' };
+    const r = await fetch(`https://app.scrapingbee.com/api/v1/usage?api_key=${k}`);
+    if (!r.ok) return { ok: false, status: r.status, error: (await r.text()).slice(0, 200) };
+    const j = await r.json();
+    return { ok: true, status: 200, creditsRemaining: j.max_api_credit - j.used_api_credit, plan: j.subscription_name };
+  });
+
+  // Summary
+  const summary = {
+    primary_gemini_works: results.gemini?.ok === true,
+    has_data_for_player_props: results.apiSports?.ok || results.rapidApi?.ok,
+    has_weather: results.openWeather?.ok === true,
+    has_h2h_history: results.footballData?.ok === true,
+    has_cross_validation: results.theOddsApi?.ok === true,
+    total_working: Object.values(results).filter(r => r.ok).length,
+    total_tested: Object.keys(results).length
+  };
+
+  res.json({ results, summary, hint: 'OK = key configurada Y working. Si una falla con 401/403 → key inválida. Con 429 → rate limit. Con network/timeout → bloqueo de red.' });
+});
+
+// Status de las API keys configuradas. NO devuelve los valores — solo true/false
+// si están presentes y un preview (3 primeros chars + length) para verificar
+// que sean keys "razonables" (no strings vacíos accidentales).
+app.get('/api/keys-status', (req, res) => {
+  const check = (name) => {
+    const v = process.env[name];
+    if (!v) return { present: false };
+    return {
+      present: true,
+      length: v.length,
+      preview: v.slice(0, 4) + '…' + v.slice(-2)
+    };
+  };
+  res.json({
+    primary: {
+      'BS_GEMINI_API_KEY': check('BS_GEMINI_API_KEY'),
+      'GEMINI_API_KEY':    check('GEMINI_API_KEY')
+    },
+    fallback: {
+      'BS_ANTHROPIC_API_KEY': check('BS_ANTHROPIC_API_KEY'),
+      'BS_GROQ_API_KEY':      check('BS_GROQ_API_KEY'),
+      'GROQ_API_KEY':         check('GROQ_API_KEY'),
+      'BS_OPENROUTER_API_KEY': check('BS_OPENROUTER_API_KEY')
+    },
+    data: {
+      'THE_ODDS_API_KEY':       check('THE_ODDS_API_KEY'),
+      'APISPORTS_KEY':          check('APISPORTS_KEY'),
+      'RAPIDAPI_KEY':           check('RAPIDAPI_KEY'),
+      'OPENWEATHER_API_KEY':    check('OPENWEATHER_API_KEY'),
+      'BS_FOOTBALL_DATA_API_KEY': check('BS_FOOTBALL_DATA_API_KEY'),
+      'SCRAPINGBEE_KEY':        check('SCRAPINGBEE_KEY')
+    },
+    persistence: {
+      'BS_SUPABASE_URL':      check('BS_SUPABASE_URL'),
+      'BS_SUPABASE_ANON_KEY': check('BS_SUPABASE_ANON_KEY')
+    },
+    notes: {
+      envLoaded: typeof process.env.BS_GEMINI_API_KEY !== 'undefined' || typeof process.env.THE_ODDS_API_KEY !== 'undefined',
+      nodeEnv: process.env.NODE_ENV || 'development',
+      port: process.env.PORT || '8787',
+      hint: 'Pon las keys en /Users/rocki/Documents/betposta/.env (o donde corra el server) y reinicia. .env se carga automáticamente.'
+    }
   });
 });
 
@@ -1044,24 +1264,12 @@ Generá las ${count} mejores combinadas posibles. Usá los índices del pool. Re
 // (córners, tarjetas, goleadores, marcador exacto, etc.) para que el generador
 // produzca combinadas variadas en vez de "4 unders y un h2h".
 app.post('/api/generator', express.json(), async (req, res) => {
-  const ALL_MARKETS_DEFAULT = [
-    // Tradicionales (scrapeados de casas)
-    'h2h', 'totals', 'btts', 'dc', 'ah',
-    // Analíticos (predicciones del motor)
-    'corners-total', 'corners-ht', 'corners-team',
-    'cards-total', 'red-card', 'penalty', 'fouls-total', 'shots-on-target-total',
-    'goalscorer-anytime', 'first-goalscorer', 'first-team-score',
-    'exact-score', 'ht-result', 'totals-ht', 'dnb', 'result-btts',
-    // Por deporte
-    'totals-points', 'totals-points-team', 'totals-q1', 'overtime',
-    'player-points', 'player-rebounds', 'player-assists',
-    'tennis-totals-games', 'tennis-tiebreak', 'tennis-aces-total',
-    'nfl-totals', 'nfl-overtime',
-    'hockey-totals', 'hockey-totals-p1',
-    'mlb-totals', 'mlb-yrfi',
-    'mma-rounds', 'mma-method', 'mma-first-minute',
-    'esports-maps-total', 'esports-rounds-total', 'esports-kills-total'
-  ];
+  // Catálogo COMPLETO de mercados — single source of truth en lib/marketCatalog.
+  // Antes era una lista manual desincronizada con el prompt LLM. Ahora todo
+  // sale del mismo catálogo (126 keys legacy + variantes nuevas).
+  // El LLM ve el mismo catálogo en ai-pipeline.llmStructured() vía describeForPrompt.
+  const { allLegacyKeys: _allLegacyKeys } = require('./lib/marketCatalog');
+  const ALL_MARKETS_DEFAULT = _allLegacyKeys();
 
   const {
     sport = 'all', leagues = [], risk = 'eq', legs = 3, count = 3,
@@ -1162,11 +1370,55 @@ app.post('/api/generator', express.json(), async (req, res) => {
       // Analytical picks NO se filtran por casa (no tienen book asignado)
       .filter(s => s.analytical || !wantedBooks.length || wantedBooks.includes(s.book));
     for (const sel of evSelections) {
-      // Score base: EV + confianza
-      let score = (sel.consensusEv || 0) + (sel.confidence || 0) * 5;
-      // BOOST a los mercados analíticos: tienen prob alta por construcción y
-      // los necesitamos para diversidad. Si no boosteamos, los h2h con EV alto
-      // dominan TODO el ranking y las combinadas terminan siendo 3 h2h.
+      // Scoring v5.5 — "máxima precisión dentro del riesgo elegido por el user"
+      //
+      // El user fija el riesgo (cuota target, legs, count). El motor NO debe
+      // penalizar magnitud de cuota — debe maximizar la PROBABILIDAD REAL
+      // del pick condicionado a su cuota. Una cuota de 5.0 con 35% prob real
+      // y EV+8% es OBJETIVAMENTE MEJOR que una cuota de 1.5 con 65% prob real
+      // y EV-3% — aunque la primera "parezca más arriesgada".
+      //
+      // Score por leg = z-score de calidad:
+      //   • conf × edge: cuánto cree el modelo Y cuánto excede el precio fair
+      //   • confianza relativa al precio: prob real / prob implícita
+      //   • boost analíticos para diversidad (corners/tarjetas/props)
+      //   • factor coherencia: penaliza picks con factors negativos críticos
+      //
+      // El user_decide cuota total — la combinación de legs se busca después
+      // (buildOneCombo) con sampling exhaustivo respetando target_odd.
+      const ev = sel.consensusEv || 0;          // % (-100..+100), value vs fair
+      const conf = sel.confidence || 0;         // 0..1, prob real del modelo
+      const odd = sel.odd || 1.5;
+      const fairProb = odd > 1.01 ? (1 / odd) : 0.5;
+      // edge = qué tan undervalued está la cuota para el modelo
+      const edgeRatio = fairProb > 0 ? Math.max(0, (conf - fairProb) / fairProb) : 0;
+      // Score base: confidence relativa al precio (no absoluta).
+      // Una cuota de 1.5 con conf 70% (esperada 67%) tiene edgeRatio ~0.05.
+      // Una cuota de 4.0 con conf 30% (esperada 25%) tiene edgeRatio ~0.20.
+      // → la segunda es MEJOR porque el modelo cree que el precio está mal.
+      let score = (ev || 0) * 0.5            // EV crudo en %, 0.5x para no dominar
+                + edgeRatio * 100            // edge ratio en %
+                + conf * 3;                  // pequeño boost por confianza absoluta
+      // Factor de coherencia: si los factors marcan riesgo crítico (lesiones
+      // severas del lado favorecido, clima muy adverso para totals altos, etc.)
+      // → penalizamos el score para que el motor prefiera otros candidatos.
+      const factors = a.factors || {};
+      const sev = factors.injuries?.severityScore;
+      if (sev) {
+        // Si la lesión severa está del lado que el pick favorece, malo.
+        const isHomePick = /home|local|1$/.test(String(sel.outcome));
+        const isAwayPick = /away|visit|2$/.test(String(sel.outcome));
+        if (isHomePick && sev.home > 0.4) score -= 6;
+        if (isAwayPick && sev.away > 0.4) score -= 6;
+      }
+      // Clima adverso (lluvia / viento) para mercados de goles altos
+      const wm = factors.weather?.impact?.goalsMultiplier;
+      if (wm && wm < 0.88 && /over|btts/.test(String(sel.outcome))) score -= 3;
+      // Sharp money respaldando el lado del pick → boost
+      const sharpScore = factors.sharp?.score || 0;
+      if (sharpScore > 0.5) score += 2;
+      // Mercados analíticos: boost para diversidad (corners/cards/props) —
+      // si no, h2h domina TODO el pool y las combinadas son siempre 3 h2h.
       if (sel.analytical) score += 3;
       pool.push({ event: a.event, factors: a.factors, sel, score });
     }
@@ -1325,32 +1577,95 @@ app.post('/api/generator', express.json(), async (req, res) => {
     if (excludeSigs.has(sig)) return null;
     excludeSigs.add(sig);
 
+    // Re-evaluar correlación final (puede haber cambiado tras swaps) y aplicar
+    // el evAdjustment al EV bruto. evAdjustment ∈ [-0.40, 0]: cuando hay legs
+    // correlacionadas positivas, la casa infla la cuota — el EV "real" para el
+    // apostador es menor que la suma cruda. Reportamos ambos al cliente para
+    // transparencia (sumEv = bruto, evAdjusted = post-correlación).
+    const finalCorr = analyzeCombo(comboLegs);
+    const sumEv = comboLegs.reduce((a, b) => a + (b.ev || 0), 0);
+    const evAdj = Number(finalCorr.evAdjustment) || 0;
+    const evAdjusted = sumEv * (1 + evAdj);
+
     return {
       legs: comboLegs,
       totalOdd: Number(totalOdd.toFixed(2)),
       avgConfidence: Number((comboLegs.reduce((a, b) => a + (b.confidence || 0), 0) / comboLegs.length).toFixed(3)),
-      sumEv: Number(comboLegs.reduce((a, b) => a + (b.ev || 0), 0).toFixed(2)),
-      correlation: analyzeCombo(comboLegs),
+      sumEv: Number(sumEv.toFixed(2)),
+      evAdjusted: Number(evAdjusted.toFixed(2)),
+      correlation: finalCorr,
       type: targetType,
       legCount: comboLegs.length,
       sportsCount: new Set(comboLegs.map(l => l.sport)).size
     };
   }
 
-  const combos = [];
+  // ── Búsqueda EXHAUSTIVA de combinaciones (v5.5) ────────────────────────
+  // El user fija cuota target + legs + count. El motor genera MUCHOS más
+  // candidatos que los `count` finales y los rankea por score compuesto
+  // (prob real × edge × coherencia entre legs × cumplimiento del target).
+  // El user NUNCA va a ver un combo "primero que cumple" — ve los top-K.
+  const TIME_BUDGET_MS = 9000;     // máx para no exceder el timeout LLM downstream
+  const TARGET_CANDIDATES = Math.max(40, count * 12);  // ej. count=3 → ~36 candidatos
+  const allCandidates = [];
   const seenSigs = new Set();
-  // Generar `count` combos: alternamos targetType (risk + tipo opuesto) para variedad
-  const typeOrder = [risk, risk === 'cons' ? 'eq' : risk === 'eq' ? 'agg' : 'eq', 'eq'];
-  for (let i = 0; i < count * 3 && combos.length < count; i++) {
-    const t = typeOrder[i % typeOrder.length];
-    const combo = buildOneCombo(t, seenSigs, combos.length);
-    if (combo) combos.push(combo);
+  const t0Combo = Date.now();
+  // Alternamos tipo para diversidad — el risk del user es el primary type,
+  // pero rotamos para no devolver siempre el mismo perfil.
+  const typeOrder = [risk, risk === 'cons' ? 'eq' : risk === 'eq' ? 'agg' : 'eq',
+                     'eq', risk === 'agg' ? 'eq' : 'agg', 'cons'];
+  let attempts = 0;
+  while (allCandidates.length < TARGET_CANDIDATES && attempts < TARGET_CANDIDATES * 4) {
+    if (Date.now() - t0Combo > TIME_BUDGET_MS) break;
+    const t = typeOrder[attempts % typeOrder.length];
+    const combo = buildOneCombo(t, seenSigs, allCandidates.length);
+    if (combo) allCandidates.push(combo);
+    attempts++;
   }
 
-  // Si activaron useAiBuilder Y tenemos LLM, pedimos a Groq que ELIJA los
-  // mejores combos del pool con justificación profunda — no solo EV ranking.
+  // Score compuesto por candidato:
+  //   • prob real (producto de avgConfidence × leg confidences) — peso principal
+  //   • edge ajustado por correlación (evAdjusted) — premia value
+  //   • cumplimiento del target_odd si el user lo fijó
+  //   • diversidad de mercados (más mercados distintos = más robusto)
+  //   • bonus por tier alto (top leagues = más data, menos varianza)
+  function scoreCombo(c) {
+    const probReal = c.legs.reduce((a, l) => a * Math.max(0.05, l.confidence || 0.5), 1);
+    const edgeAdj = (c.evAdjusted != null ? c.evAdjusted : c.sumEv) || 0;
+    const diversity = new Set(c.legs.map(l => l.market)).size / c.legs.length;
+    let s = probReal * 100              // prob real total en %
+          + edgeAdj * 0.6                // edge adjusted descontado por correlación
+          + diversity * 5                // diversidad de mercados
+          + (c.sportsCount || 1) * 1.5;  // mixSports bonus suave
+    // Target_odd compliance: si el user lo pidió, penalizar combos lejos del target.
+    if (targetOdd) {
+      const distance = Math.abs(c.totalOdd - targetOdd) / targetOdd;
+      s -= distance * 25;                // 25% de penalización por cada 100% de desvío
+    }
+    // Penalizar correlación positiva fuerte entre legs (book inflando cuota).
+    const maxCorr = c.correlation?.maxPositiveCorrelation || 0;
+    if (maxCorr > 0.30) s -= maxCorr * 20;
+    return s;
+  }
+
+  // Rankear y quedarnos con los top `count`.
+  allCandidates.sort((a, b) => scoreCombo(b) - scoreCombo(a));
+  const combos = allCandidates.slice(0, count);
+  // Anotamos el score en cada combo para debug + UI ("calidad" score)
+  combos.forEach(c => { c.qualityScore = Number(scoreCombo(c).toFixed(2)); });
+  trace.candidatesEvaluated = allCandidates.length;
+  trace.combosTimeBudgetMs = Date.now() - t0Combo;
+
+  // Si activaron useAiBuilder Y tenemos algún LLM, le pedimos al modelo que
+  // ELIJA los mejores combos del pool con justificación profunda — no solo EV
+  // ranking. Antes solo chequeábamos BS_GROQ_API_KEY (filtro estrecho que
+  // dejaba sin IA a setups con sólo Gemini/Claude); ahora cualquier proveedor
+  // activa el path y caemos a una cascada Gemini → Groq.
   let aiNarrative = null;
-  if (useAiBuilder && pool.length >= legs && process.env.BS_GROQ_API_KEY) {
+  let aiProvider = null;
+  const HAS_ANY_LLM = !!(process.env.BS_GEMINI_API_KEY || process.env.GEMINI_API_KEY ||
+                         process.env.BS_GROQ_API_KEY || process.env.GROQ_API_KEY);
+  if (useAiBuilder && pool.length >= legs && HAS_ANY_LLM) {
     try {
       const topPool = pool.slice(0, Math.min(30, pool.length));
       const aiPrompt = `Tenés ${topPool.length} picks candidatos de partidos de hoy. El user quiere ${count} combinada(s) de ${legs} legs cada una.
@@ -1379,7 +1694,27 @@ JSON estricto:
 }`;
 
       const systemPrompt = 'Sos un analista cuantitativo SENIOR construyendo combinadas óptimas. Pensás en correlación, edge estructural, momentum, no solo EV puro. JSON estricto.';
-      const aiResult = await groqJsonGeneric(systemPrompt, aiPrompt, { maxTokens: 2000, temperature: 0.4 });
+      // Cascada GEMINI-FIRST 3-retries — el user pidió Gemini al 100% con
+      // fallbacks. Si Gemini falla 3 veces consecutivas, cae a Groq.
+      let aiResult = null;
+      const aiOpts = { maxTokens: 2000, temperature: 0.4 };
+      if (process.env.BS_GEMINI_API_KEY || process.env.GEMINI_API_KEY) {
+        for (let att = 1; att <= 3 && !aiResult?.combos; att++) {
+          try {
+            aiResult = await geminiJsonGeneric(systemPrompt, aiPrompt, aiOpts);
+            if (aiResult?.combos) aiProvider = 'gemini';
+          } catch (e) {
+            log(`[generator:gemini attempt ${att}] ${e?.message?.slice(0, 120)}`);
+            if (att < 3) await new Promise(r => setTimeout(r, 250 * Math.pow(3, att - 1)));
+          }
+        }
+      }
+      if (!aiResult?.combos && (process.env.BS_GROQ_API_KEY || process.env.GROQ_API_KEY)) {
+        try {
+          aiResult = await groqJsonGeneric(systemPrompt, aiPrompt, aiOpts);
+          if (aiResult?.combos) aiProvider = 'groq';
+        } catch (e) { log(`[generator:groq fallback] ${e?.message?.slice(0, 120)}`); }
+      }
       if (aiResult?.combos) {
         // Reemplazar combos basados en EV con los del LLM
         const aiCombos = [];
@@ -1396,11 +1731,15 @@ JSON estricto:
             rationale: p.sel.rationale, tacticalNotes: p.sel.tacticalNotes
           }));
           const totalOdd = legs.reduce((a, b) => a * b.odd, 1);
+          const corrR = analyzeCombo(legs);
+          const sumEvR = legs.reduce((a, b) => a + (b.ev || 0), 0);
+          const evAdjR = Number(corrR.evAdjustment) || 0;
           aiCombos.push({
             legs, totalOdd: Number(totalOdd.toFixed(2)),
             avgConfidence: Number((legs.reduce((a, b) => a + (b.confidence || 0), 0) / legs.length).toFixed(3)),
-            sumEv: Number(legs.reduce((a, b) => a + (b.ev || 0), 0).toFixed(2)),
-            correlation: analyzeCombo(legs),
+            sumEv: Number(sumEvR.toFixed(2)),
+            evAdjusted: Number((sumEvR * (1 + evAdjR)).toFixed(2)),
+            correlation: corrR,
             type: risk,
             legCount: legs.length,
             sportsCount: new Set(legs.map(l => l.sport)).size,
@@ -1422,6 +1761,14 @@ JSON estricto:
   res.json({
     combos: combos.slice(0, count),
     aiNarrative,
+    aiProvider,                                  // 'gemini' | 'groq' | null
+    aiHealth: aiProvider                         // estado para que el frontend
+              ? 'ok'                              // muestre badge correcto en vez
+              : useAiBuilder && HAS_ANY_LLM      // de hardcodear "groq".
+                ? 'degraded'
+                : useAiBuilder
+                  ? 'no-keys'
+                  : 'disabled',
     meta: {
       analyzed: analyzed.length,
       passing: passing.length,
@@ -2122,11 +2469,27 @@ JSON estricto: { "narrative": "<párrafo>", "headline": "<una frase atractiva>" 
 Le construí esta combinada de ${enrichedLegs.length} partidos con cuota total ${totalOdd.toFixed(2)}:
 ${enrichedLegs.map((l, i) => `${i+1}. ${l.home.name} vs ${l.away.name} | ${l.leagueName} | ${l.label} @ ${l.odd}`).join('\n')}
 Explicá brevemente POR QUÉ esta combinada cumple lo pedido + qué tiene de interesante.`;
+  // Cascada Gemini-first 3-retries — primary del producto. Groq solo fallback.
   let narrative = null;
-  try {
-    narrative = await groqJsonGeneric(narrativeSystem, narrativePrompt, { maxTokens: 500, temperature: 0.5 });
-  } catch (e) {
-    log(`[betsafe-ai] narrative err: ${e?.message?.slice(0, 80)}`);
+  let aiProvider = null;
+  const HAS_GEMINI_LOCAL = !!(process.env.BS_GEMINI_API_KEY || process.env.GEMINI_API_KEY);
+  const HAS_GROQ_LOCAL = !!(process.env.BS_GROQ_API_KEY || process.env.GROQ_API_KEY);
+  if (HAS_GEMINI_LOCAL) {
+    for (let att = 1; att <= 3 && !narrative; att++) {
+      try {
+        narrative = await geminiJsonGeneric(narrativeSystem, narrativePrompt, { maxTokens: 500, temperature: 0.5 });
+        if (narrative) aiProvider = 'gemini';
+      } catch (e) {
+        log(`[betsafe-ai gemini attempt ${att}] ${e?.message?.slice(0, 80)}`);
+        if (att < 3) await new Promise(r => setTimeout(r, 250 * Math.pow(3, att - 1)));
+      }
+    }
+  }
+  if (!narrative && HAS_GROQ_LOCAL) {
+    try {
+      narrative = await groqJsonGeneric(narrativeSystem, narrativePrompt, { maxTokens: 500, temperature: 0.5 });
+      if (narrative) aiProvider = 'groq';
+    } catch (e) { log(`[betsafe-ai groq fallback] ${e?.message?.slice(0, 80)}`); }
   }
 
   res.json({
@@ -2136,6 +2499,8 @@ Explicá brevemente POR QUÉ esta combinada cumple lo pedido + qué tiene de int
     totalOdd: Number(totalOdd.toFixed(2)),
     headline: narrative?.headline || `Combinada de ${enrichedLegs.length} partidos a cuota ${totalOdd.toFixed(2)}`,
     narrative: narrative?.narrative || `Armé esta combinada de ${enrichedLegs.length} partidos basándome en tu pedido. Cada leg fue seleccionada por su edge sobre la casa y consistencia con el resto.`,
+    aiProvider,                                                          // 'gemini' | 'groq' | null
+    aiHealth: aiProvider ? 'ok' : (HAS_GEMINI || HAS_GROQ ? 'degraded' : 'no-keys'),
     avgConfidence: Number((enrichedLegs.reduce((a, l) => a + (l.confidence || 0), 0) / enrichedLegs.length).toFixed(3))
   });
 });

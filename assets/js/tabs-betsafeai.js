@@ -425,7 +425,22 @@
     }
 
     if (!state.result) {
-      host.innerHTML = '';
+      // Empty state que ENSEÑA — en vez de un host vacío, mostramos los 4 pasos
+      // que la IA va a ejecutar y un par de ejemplos para destrabar al usuario.
+      host.innerHTML = `
+        <div class="bs-empty-prem bsai-empty">
+          <div class="bs-empty-prem__ico">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.5 5.5L19 10l-5.5 1.5L12 17l-1.5-5.5L5 10l5.5-1.5L12 3z"/><path d="M19 14l.8 2.7L22 17.5l-2.2.8L19 21l-.8-2.7L16 17.5l2.2-.8L19 14z"/></svg>
+          </div>
+          <strong class="bs-empty-prem__title">Esperá tu primera combinada del Coach</strong>
+          <p class="bs-empty-prem__hint">Decile en lenguaje natural qué querés (cantidad de partidos, liga, cuota target, riesgo). El motor entiende el pedido, busca partidos que lo cumplan, analiza cada uno con IA y encuentra la mejor casa por leg.</p>
+          <div class="bsai-empty-steps">
+            <span><strong>1</strong> Entiende tu pedido</span>
+            <span><strong>2</strong> Encuentra partidos</span>
+            <span><strong>3</strong> Analiza con IA</span>
+            <span><strong>4</strong> Arma la combinada</span>
+          </div>
+        </div>`;
       return;
     }
 
@@ -456,6 +471,11 @@
         <header class="bsai-combo-head">
           <div class="bsai-combo-headline">
             <span class="badge-vip">Coach IA</span>
+            ${r.aiProvider
+              ? `<span class="badge badge-success tiny" style="margin-left:6px" title="Análisis generado con ${BSUI.esc(r.aiProvider)}">IA · ${BSUI.esc(r.aiProvider)}</span>`
+              : r.aiHealth === 'degraded'
+                ? `<span class="badge badge-warning tiny" style="margin-left:6px" title="La IA generativa no está disponible. Te armé la combinada con análisis estadístico. Refrescá en 1 min para que la IA la revise.">⚠ Análisis sin IA</span>`
+                : ''}
             <h3 class="h3" style="margin:4px 0 0">${BSUI.esc(r.headline)}</h3>
           </div>
           <div class="bsai-combo-stats">

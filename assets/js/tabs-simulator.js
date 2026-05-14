@@ -73,8 +73,8 @@
     panel.innerHTML = `
       <div class="row between mb-4">
         <div>
-          <h2 class="h3">Simulador<a class="help-q" tabindex="0" data-tip="Probá la efectividad real de BetSafe con dinero ficticio. Usás las MISMAS combinadas que AI Picks Standard (5 partidos × 3 variantes = 15 picks). Cada apuesta se resuelve con probabilidad implícita real + varianza estocástica. Tu bankroll evoluciona como si fuera plata real."></a></h2>
-          <p class="muted">Dinero ficticio · 5 partidos × 3 combinadas · Misma data que AI Picks Standard</p>
+          <h2 class="h3">Simulador · probá con plata ficticia<a class="help-q" tabindex="0" data-tip="Probá la efectividad real de BetSafe sin arriesgar plata. Usás las MISMAS apuestas que recomienda la IA (5 partidos × 3 variantes = 15 jugadas). Las apuestas se resuelven con probabilidad real, así ves cómo evolucionaría tu banca de verdad."></a></h2>
+          <p class="muted">Plata ficticia · 5 partidos × 3 combinadas · Las mismas apuestas que recomienda la IA</p>
         </div>
         <div class="cluster">
           <button class="btn btn-outline" id="simReset">${BSIcons.svg('refresh',{size:14})} Reiniciar banca</button>
@@ -109,8 +109,8 @@
       <div class="grid grid-2 mb-4">
         <div class="card stack">
           <div class="row between">
-            <strong>Tu próximo stake<a class="help-q" tabindex="0" data-tip="Elegí cuánto querés apostar en el próximo pick. El simulador descuenta el stake del bankroll y devuelve payout = stake × cuota si ganás, 0 si perdés."></a></strong>
-            <span class="muted tiny">% banca: <strong id="simStakePct" class="num">5%</strong></span>
+            <strong>¿Cuánto apostás?<a class="help-q" tabindex="0" data-tip="Elegí cuánto apostar en la próxima jugada. Si ganás, te devolvemos tu apuesta × la cuota. Si perdés, se descuenta de tu banca ficticia."></a></strong>
+            <span class="muted tiny">% de tu plata: <strong id="simStakePct" class="num">5%</strong></span>
           </div>
           <div class="num-stepper" data-stepper="simstake" style="align-self:center">
             <button type="button" class="num-stepper-btn" data-step="-" aria-label="Disminuir"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14"/></svg></button>

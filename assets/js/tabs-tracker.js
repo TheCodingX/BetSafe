@@ -69,7 +69,7 @@
 
     panel.innerHTML = `
       <div class="row between mb-3">
-        <h2 class="h3">Tracker · banca y performance<a class="help-q" tabindex="0" data-tip="Seguimiento serio de tu banca: curva de evolución día a día, win rate, ROI, yield, racha actual y récord histórico, mejor y peor pick, cuota promedio (que indica tu estilo), historial filtrable por fecha/deporte/resultado. Export a CSV. Es la herramienta que separa a un apostador serio de uno recreativo."></a></h2>
+        <h2 class="h3">Tu banca · resultados y evolución<a class="help-q" tabindex="0" data-tip="Llevá tu plata bajo control: gráfico de cómo crece tu banca día a día, % de jugadas ganadas, qué tan rentable sos, racha actual, mejor y peor jugada, qué cuota promedio jugás. Filtrá por fecha/deporte/resultado. Descargá todo en Excel. Esto separa al apostador serio del recreativo."></a></h2>
         <div class="cluster">
           <input class="input input-sm" id="trFrom" type="date" />
           <input class="input input-sm" id="trTo" type="date" />

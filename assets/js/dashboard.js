@@ -5,14 +5,19 @@
   // Primary (always visible, large): orden definido por UX — Inicio primero
   // porque es el punto de entrada natural de un usuario nuevo.
   const TABS_PRIMARY = [
-    { id: 'overview',    label: 'Inicio',       icon: 'home', vipOnly: false, desc: 'Bienvenida y accesos' },
-    { id: 'aigenerator', label: 'Quant IA', icon: 'bolt', vipOnly: true,  desc: 'Combinadas óptimas auto' },
-    { id: 'betsafeai',   label: 'Coach IA',   icon: 'sparkle', vipOnly: true, desc: 'Combinadas a tu medida con IA',
+    { id: 'overview',    label: 'Inicio',         icon: 'home',    vipOnly: false, desc: 'Bienvenida y accesos' },
+    // ── Los 3 motores de IA están ordenados de MENOS a MÁS interacción
+    //    para que el usuario entienda rápido qué tab elegir:
+    //    1) Picks del día: ya están armados → leer y apostar
+    //    2) Constructor Quant: vos configurás filtros → el motor arma
+    //    3) Coach IA: lenguaje natural → la IA conversa y arma
+    { id: 'ai',          label: 'Picks del día',  icon: 'bolt',    vipOnly: false, desc: 'Curados por IA — listos para apostar' },
+    { id: 'aigenerator', label: 'Constructor Quant', icon: 'filter', vipOnly: true,  desc: 'Vos elegís filtros, el motor arma combinadas' },
+    { id: 'betsafeai',   label: 'Coach IA',       icon: 'sparkle', vipOnly: true,  desc: 'Pedí en lenguaje natural lo que querés',
       flagshipVip: true },
-    { id: 'ai',          label: 'AI Picks',     icon: 'bolt', vipOnly: false, desc: 'Picks listos por IA' },
-    { id: 'builder',     label: 'Builder',      icon: 'list', vipOnly: false, desc: 'Armá tu combinada' },
-    { id: 'arbitrage',   label: 'Arbitraje',    icon: 'arb',  vipOnly: true,  desc: 'Ganancia sin riesgo' },
-    { id: 'worldcup',    label: 'Mundial 2026', icon: 'cup',  vipOnly: false, desc: 'Todo el Mundial en un lugar' }
+    { id: 'builder',     label: 'Builder',        icon: 'list',    vipOnly: false, desc: 'Armá manualmente leg por leg' },
+    { id: 'arbitrage',   label: 'Arbitraje',      icon: 'arb',     vipOnly: true,  desc: 'Ganancia matemática sin riesgo' },
+    { id: 'worldcup',    label: 'Mundial 2026',   icon: 'cup',     vipOnly: false, desc: 'Todo el Mundial en un lugar' }
   ];
   // Advanced (collapsible): herramientas secundarias.
   const TABS_ADVANCED = [
@@ -140,6 +145,13 @@
     if (det && inAdvanced && !det.open) { det.open = true; BSStore.set('sidebar.advanced.open', true); }
 
     const host = document.getElementById('tabHost');
+    // Llamar cleanup del tab anterior antes de destruirlo, así los tabs que
+    // registran setInterval/setTimeout/addEventListener pueden liberarlos.
+    // Convención: el renderer setea `panel.__cleanup = () => {...}`.
+    const oldPanel = host.firstElementChild;
+    if (oldPanel && typeof oldPanel.__cleanup === 'function') {
+      try { oldPanel.__cleanup(); } catch (e) { console.warn('[tab cleanup]', e); }
+    }
     host.innerHTML = `<div class="tab-panel active" id="panel-${id}"></div>`;
     const panel = host.firstElementChild;
     const renderer = TAB_RENDERERS[id];

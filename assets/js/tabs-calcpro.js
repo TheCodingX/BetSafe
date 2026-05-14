@@ -55,8 +55,8 @@
     panel.innerHTML = `
       <div class="row between mb-3">
         <div>
-          <h2 class="h3">CalcPro VIP · 24 herramientas profesionales<a class="help-q" tabindex="0" data-tip="Suite completa de cálculo: Kelly Portfolio multi-bet, Crecimiento de banca, Estimador de drawdown con intervalos de confianza, ratios de rendimiento, Monte Carlo 1000+ simulaciones, modelo de goles esperados, EV multi/combinada, CLV agregado, detector de movimientos del mercado y más."></a></h2>
-          <p class="muted">Mesa de trading completa.</p>
+          <h2 class="h3">Herramientas profesionales · 24 calculadoras<a class="help-q" tabindex="0" data-tip="Las herramientas que usan los apostadores serios: cuánto apostar a cada combinada para que tu banca crezca seguro, cuántas veces vas a perder seguido a lo largo del año, simulaciones de 1000+ escenarios, modelo que predice goles, cuánto pagás de más respecto al cierre de mercado, detector de movimientos sospechosos del mercado y más."></a></h2>
+          <p class="muted">Todo lo que usás cuando apostás en serio.</p>
         </div>
       </div>
       <div class="grid grid-auto reveal-stagger">

@@ -968,11 +968,60 @@
    */
   const NO_FAKE_LOGOS = true;   // 🔒 lock: no SVG art recreations allowed
 
+  // Hash determinístico para derivar paleta consistente del nombre del equipo.
+  // Mismo nombre → mismos colores cada vez (no Math.random).
+  function _hashName(name) {
+    const s = String(name || '').toLowerCase();
+    let h = 0;
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+    return Math.abs(h);
+  }
+  // Paletas de fallback (primary, accent) — mismas que se usan para top teams,
+  // garantizan que un equipo random no listado parezca un crest "real".
+  const _FB_PALETTES = [
+    ['#0F3F88', '#FFC72C'],  // azul + amarillo (estilo Boca/Argentina)
+    ['#C62828', '#FFFFFF'],  // rojo + blanco (River/Liverpool)
+    ['#1B5E20', '#FFFFFF'],  // verde + blanco
+    ['#4A148C', '#FFD700'],  // morado + dorado (Real Madrid alterno)
+    ['#0D47A1', '#FFFFFF'],  // azul oscuro + blanco
+    ['#B71C1C', '#000000'],  // rojo + negro (Milán)
+    ['#FF6F00', '#FFFFFF'],  // naranja + blanco (Valencia/Atalanta)
+    ['#1A237E', '#FFC107'],  // azul indigo + amarillo (Boca alt)
+    ['#004D40', '#FFFFFF'],  // verde teal + blanco
+    ['#37474F', '#FF5722']   // gris pizarra + naranja
+  ];
+
   function neutralChip(name, color, size) {
-    const initials = String(name || '?').replace(/[^A-Za-z0-9]/g, '').slice(0, 2).toUpperCase() || '?';
-    return `<svg width="${size}" height="${size}" viewBox="0 0 48 48" role="img" aria-label="${String(name||'').replace(/"/g,'')}" xmlns="http://www.w3.org/2000/svg">
-      <rect width="48" height="48" rx="10" fill="${color || '#e5e7eb'}" opacity=".55"/>
-      <text x="24" y="31" text-anchor="middle" font-family="'Inter',system-ui,sans-serif" font-size="16" font-weight="800" fill="#475569" letter-spacing="-.02em">${initials}</text>
+    // Antes: cuadrado gris triste con iniciales gris-azuladas → impersonal.
+    // Ahora: ESCUDO con paleta determinística por nombre — equipos sin logo
+    // listado quedan visualmente diferenciados y se sienten "reales".
+    // Si recibimos un color explícito (de TEAMS), respetarlo como primary.
+    const initials = String(name || '?').replace(/[^A-Za-z0-9]/g, ' ')
+      .split(/\s+/).filter(Boolean)
+      .map(s => s[0]).slice(0, 2).join('').toUpperCase() || '?';
+    let primary, accent;
+    if (color && /^#[0-9a-f]{3,8}$/i.test(color)) {
+      primary = color;
+      accent = '#FFFFFF';
+    } else {
+      const pal = _FB_PALETTES[_hashName(name) % _FB_PALETTES.length];
+      primary = pal[0];
+      accent = pal[1];
+    }
+    const dark = shade(primary, -25);
+    const safeName = String(name || '').replace(/"/g, '');
+    const uid = _hashName(name).toString(36).slice(0, 6);
+    return `<svg width="${size}" height="${size}" viewBox="0 0 64 64" role="img" aria-label="${safeName}" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="fbc-${uid}" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="${primary}"/>
+          <stop offset="1" stop-color="${dark}"/>
+        </linearGradient>
+      </defs>
+      <path d="M32 4 L56 14 L52 38 C50 50 42 56 32 60 C22 56 14 50 12 38 L8 14 Z" fill="url(#fbc-${uid})"/>
+      <path d="M32 4 L56 14 L52 38 C50 50 42 56 32 60 C22 56 14 50 12 38 L8 14 Z" fill="none" stroke="${accent}" stroke-opacity=".35" stroke-width="1.2"/>
+      <rect x="10" y="28" width="44" height="6" fill="${accent}" opacity=".25"/>
+      <text x="32" y="40" text-anchor="middle" font-family="'Inter',system-ui,sans-serif" font-weight="900" font-size="20" fill="${accent}" letter-spacing="-.04em">${initials}</text>
     </svg>`;
   }
 

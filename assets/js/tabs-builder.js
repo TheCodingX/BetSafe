@@ -291,9 +291,21 @@
       btn.addEventListener('click', () => {
         const sign = btn.dataset.step === '+' ? 1 : -1;
         const cur = Number(String(bStakeEl.value).replace(/[^\d.-]/g, '')) || 0;
-        // Magnitude-aware step: 100 below 5k, 500 below 50k, 1000 above
-        const step = cur >= 50000 ? 1000 : cur >= 5000 ? 500 : 100;
-        const next = Math.max(0, cur + sign * step);
+        // Magnitude-aware step suave: cuando vas a CRUZAR un threshold,
+        // primero te dejamos LANDEAR en el threshold con el step viejo (sin
+        // jump abrupto). Después el próximo click usa el step nuevo.
+        //   Antes: 4900 + → 5000 (step 100) · siguiente click 5000 → 5500
+        //          (jump visible de 100 a 500). Hoy: el primer click te lleva
+        //          al threshold limpio; los siguientes usan el nuevo step.
+        const stepFor = v => v >= 50000 ? 1000 : v >= 5000 ? 500 : 100;
+        const step = stepFor(cur);
+        let next = Math.max(0, cur + sign * step);
+        // Si cruzamos un threshold hacia arriba, snap al threshold exacto
+        // (5000 o 50000) en lugar de sobrepasarlo con un step de magnitud baja.
+        if (sign > 0) {
+          if (cur < 5000 && next > 5000) next = 5000;
+          else if (cur < 50000 && next > 50000) next = 50000;
+        }
         bStakeEl.value = String(next);
         bStakeEl.dispatchEvent(new Event('input', { bubbles: true }));
         // Tactile press animation

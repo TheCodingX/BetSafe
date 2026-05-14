@@ -15,7 +15,7 @@
 
   function render(panel) {
     if (!BSAuth.isVip()) {
-      panel.innerHTML = `<div class="card card-vip card-pad-lg stack"><span class="badge-vip">VIP</span><h2 class="h3">Smart Money Alerts<a class="help-q" tabindex="0" data-tip="Smart Money es el dinero profesional que mueve las cuotas. Detectamos cuando una cuota se mueve 5%+ — eso suele indicar que apostadores grandes tomaron posición. Te avisamos en tiempo real para que sigas el flujo del dinero serio."></a></h2><p class="muted">Detección de movimientos del mercado &gt;5%.</p><a href="pricing.html" class="btn btn-gold">Ver planes</a></div>`;
+      panel.innerHTML = `<div class="card card-vip card-pad-lg stack"><span class="badge-vip">VIP</span><h2 class="h3">Dinero profesional · alertas en vivo<a class="help-q" tabindex="0" data-tip="Cuando una cuota se mueve más de 5%, es porque apostadores grandes (con info o análisis fuerte) tomaron posición en un partido. Te avisamos al instante para que decidas si seguir el dinero serio."></a></h2><p class="muted">Te avisamos cuando una cuota se mueve más de 5%.</p><a href="pricing.html" class="btn btn-gold">Ver planes</a></div>`;
       return;
     }
     const alerts = BSStore.get(BSStore.KEYS.vipAlerts) || [];
@@ -23,8 +23,8 @@
     panel.innerHTML = `
       <div class="row between mb-3">
         <div>
-          <h2 class="h3">Smart Money Alerts<a class="help-q" tabindex="0" data-tip="Smart Money = dinero profesional. Detectamos cuando una cuota se mueve 5%+ — señal de que apostadores grandes tomaron posición."></a></h2>
-          <p class="muted">Flujo real de movimientos del mercado · cruce de casas argentinas · alertas en vivo.</p>
+          <h2 class="h3">Dinero profesional · alertas en vivo<a class="help-q" tabindex="0" data-tip="Cuando una cuota se mueve más de 5%, es porque apostadores grandes tomaron posición en un partido. Te avisamos al instante."></a></h2>
+          <p class="muted">Detectamos cuando la cuota se mueve fuerte · cruzamos las 6 casas argentinas · avisamos al toque.</p>
         </div>
         <button class="btn btn-primary mag" id="newAlert">+ Crear alerta</button>
       </div>

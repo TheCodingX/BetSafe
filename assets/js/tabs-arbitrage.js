@@ -77,13 +77,18 @@
   }
 
   // Decide qué timestamp usar para una surebet.
-  // PRIORIDAD: snapAt (snapshot recibido del backend) — si la surebet está
-  // en la respuesta, está VIVA. El backend solo devuelve surebets en
-  // activeIds. Usar `lastSeenAt` del backend puede dar timestamps "viejos"
-  // si la surebet persiste varios ciclos (es estable), causando que el
-  // filtro de frescura del cliente la descarte injustamente.
+  // PRIORIDAD:
+  //   1) sb.oddsAge: edad real de las CUOTAS subyacentes (calculada por el
+  //      motor a partir de `event.lastUpdate`). Es la frescura más correcta.
+  //   2) snapAt: timestamp del snapshot recibido del backend. Si la surebet
+  //      está en la respuesta, está VIVA aunque sus odds tengan algo de edad.
+  //   3) Date.now(): fallback seguro. NUNCA caemos a sb.lastSeenAt (puede ser
+  //      stale si la surebet persiste varios ciclos) ni a 0 (descarta todo).
   function bestTimestamp(sb, snapAt) {
-    return snapAt || sb?.lastSeenAt || sb?.ts || 0;
+    if (typeof sb?.oddsAge === 'number' && Number.isFinite(sb.oddsAge)) {
+      return Date.now() - sb.oddsAge;
+    }
+    return snapAt || Date.now();
   }
 
   function render(panel) {
@@ -95,7 +100,7 @@
     panel.innerHTML = `
       <div class="row between mb-3">
         <div>
-          <h2 class="h3">Arbitraje en vivo · motor hiper-preciso<a class="help-q" tabindex="0" data-tip="Motor dedicado que escanea las casas argentinas cada 5 segundos. Detecta surebets en Ganador (1X2 y 2 vías), Más/Menos goles (cada línea), Ambos marcan, Hándicap asiático y Doble Vía. Las surebets son matemáticamente seguras — el riesgo principal es que la cuota cambie antes de ejecutar."></a></h2>
+          <h2 class="h3">Ganancia segura · escaneo en vivo<a class="help-q" tabindex="0" data-tip="Encontramos partidos donde distintas casas tienen cuotas tan diferentes que podés apostar a TODOS los resultados posibles y ganar plata sí o sí, gane quien gane. Revisamos las 6 casas argentinas cada 5 segundos. El único riesgo es que la cuota cambie antes de que termines de apostar — por eso te marcamos cuán frescas están."></a></h2>
           <p class="muted">Escaneo cada 5s · Ganador + Más/Menos + Ambos marcan + Hándicap + Doble Vía · monto óptimo con deslizamiento real · 100% datos en vivo</p>
         </div>
         <div class="cluster">
@@ -128,8 +133,8 @@
         <div class="row between"><strong>Filtros profesionales</strong><span class="muted tiny" id="arbFilterCount">—</span></div>
         <div class="row gap-2" style="flex-wrap:wrap;align-items:center">
           <label class="field" style="margin:0;min-width:160px">
-            <span class="field-label">Rentabilidad mín. %</span>
-            <input class="input input-sm" id="arbMinRoi" type="number" step="0.1" min="0" value="0.5">
+            <span class="field-label">Ganancia mín. %</span>
+            <input class="input input-sm" id="arbMinRoi" type="number" step="0.1" min="0" value="0.5" title="Mínimo % de ganancia para mostrar la oportunidad. 0.5% sobre $100.000 = $500 ganados sin riesgo.">
           </label>
           <!-- "Confianza" eliminado: el arbitraje bien calculado es matemáticamente
                seguro. En su lugar, filtramos por frescura de la cuota — surebets
@@ -155,8 +160,8 @@
           </label>
           <label class="cluster" style="cursor:pointer;margin:0">
             <input type="checkbox" id="arbBankrollFit" checked>
-            <span class="tiny">Solo las que entran en mi cuenta</span>
-            <a class="help-q" tabindex="0" data-tip="Descarta surebets donde los montos por casa superan los topes habituales que la casa permite a una cuenta promedio."></a>
+            <span class="tiny">Solo las que se pueden apostar de verdad</span>
+            <a class="help-q" tabindex="0" data-tip="Descarta las apuestas donde el monto sugerido es demasiado alto y la casa probablemente te lo va a limitar."></a>
           </label>
         </div>
       </div>
@@ -237,7 +242,7 @@
           const sb = BSMath.surebet([a, b]); const st = BSMath.surebetStakes([a, b], t);
           host.querySelector('#acOut').innerHTML = sb.isSure
             ? `<div class="card card-tinted mt-3 stack-sm"><strong class="text-success">Surebet ✓ rentabilidad ${sb.roi.toFixed(2)}%</strong><div class="row between"><span>Monto en A</span><span class="num">${BSUI.money(st.stakes[0])}</span></div><div class="row between"><span>Monto en B</span><span class="num">${BSUI.money(st.stakes[1])}</span></div><div class="row between"><span>Ganancia asegurada</span><strong class="text-success num">${BSUI.money(st.profit)}</strong></div></div>`
-            : `<div class="muted tiny mt-3">No es surebet (margen ${(BSMath.overround([a,b])*100).toFixed(2)}%).</div>`;
+            : `<div class="muted tiny mt-3">No es ganancia segura (la combinación de cuotas no garantiza retorno: ${(BSMath.overround([a,b])*100).toFixed(2)}% de margen a favor de la casa).</div>`;
         } else if (w === '3') {
           const a = +host.querySelector('#ac_a').value, b = +host.querySelector('#ac_b').value, c = +host.querySelector('#ac_c').value, t = +host.querySelector('#ac_t').value;
           const sb = BSMath.surebet([a, b, c]); const st = BSMath.surebetStakes([a, b, c], t);
@@ -390,7 +395,33 @@
     function renderSurebets(list, f) {
       const host = panel.querySelector('#arbList');
       if (!list.length) {
-        host.innerHTML = `<div class="empty" style="padding:30px;text-align:center"><strong>No hay surebets activas en este momento</strong><p class="muted tiny">El motor sigue escaneando cada 5s. Las surebets aparecen acá apenas se detectan y se cierran cuando una casa mueve la cuota. Probá bajar la rentabilidad mínima, ampliar el límite de frescura o sacar el filtro de "Solo las que entran en mi cuenta".</p></div>`;
+        host.innerHTML = `
+        <div class="bs-empty-prem">
+          <div class="bs-empty-prem__ico">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.3-4.3"/></svg>
+          </div>
+          <strong class="bs-empty-prem__title">Buscando oportunidades de ganancia segura</strong>
+          <p class="bs-empty-prem__hint">Las ganancias seguras aparecen cuando dos casas tienen cuotas diferentes para el mismo partido. Las apuestas se cierran cuando las casas se igualan. Revisamos las 6 casas legales argentinas cada 5 segundos.</p>
+          <div class="cluster" style="gap:6px;flex-wrap:wrap;justify-content:center;margin-top:6px">
+            <button class="btn btn-outline btn-sm" data-arb-lower-roi>Mostrar también ganancias chicas (desde 0.1%)</button>
+            <button class="btn btn-outline btn-sm" data-arb-relax-age>Incluir cuotas más viejas (10 min)</button>
+            <button class="btn btn-ghost btn-sm" data-arb-clear-fit>Sin límite de monto</button>
+          </div>
+        </div>`;
+        // Bindings de los CTAs del empty state — ayudan al usuario a aflojar
+        // filtros sin que tenga que buscar dónde está cada control.
+        host.querySelector('[data-arb-lower-roi]')?.addEventListener('click', () => {
+          const el = panel.querySelector('#arbMinRoi'); if (!el) return;
+          el.value = '0.1'; refresh();
+        });
+        host.querySelector('[data-arb-relax-age]')?.addEventListener('click', () => {
+          const el = panel.querySelector('#arbMaxAge'); if (!el) return;
+          el.value = '600'; refresh();
+        });
+        host.querySelector('[data-arb-clear-fit]')?.addEventListener('click', () => {
+          const el = panel.querySelector('#arbBankrollFit'); if (!el) return;
+          el.checked = false; refresh();
+        });
         return;
       }
       // Paginación: solo renderizamos las primeras `visibleCount` para que la UI
@@ -479,55 +510,79 @@
 
       // Indicador profesional de estado (reemplaza "Confianza X%"):
       const statusBadge = veryFresh
-        ? `<span class="badge badge-success tiny" title="Cuotas verificadas en los últimos 15s. Surebet matemáticamente sólida — ejecutá rápido."><svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" style="margin-right:3px;vertical-align:-1px"><path d="M13.854 3.146a.5.5 0 010 .708l-7 7a.5.5 0 01-.708 0l-3.5-3.5a.5.5 0 11.708-.708L6.5 9.793l6.646-6.647a.5.5 0 01.708 0z"/></svg>Surebet verificada</span>`
+        ? `<span class="badge badge-success tiny" title="Las cuotas están actualizadas hace menos de 15 segundos. Andá a apostar ya antes que cambien."><svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" style="margin-right:3px;vertical-align:-1px"><path d="M13.854 3.146a.5.5 0 010 .708l-7 7a.5.5 0 01-.708 0l-3.5-3.5a.5.5 0 11.708-.708L6.5 9.793l6.646-6.647a.5.5 0 01.708 0z"/></svg>Lista para apostar</span>`
         : stale
-          ? `<span class="badge badge-warning tiny" title="Datos con más de 30s. Reconfirmá la cuota en la casa antes de apostar.">⚠ Cuotas pueden haber cambiado</span>`
-          : `<span class="badge badge-info tiny" title="Cuotas confirmadas hace ${ageSec}s.">Margen actualizado · hace ${ageSec}s</span>`;
+          ? `<span class="badge badge-warning tiny" title="Las cuotas tienen más de 30 segundos. Verificá en la casa que sigan disponibles antes de apostar.">⚠ Confirmá cuotas en la casa</span>`
+          : `<span class="badge badge-info tiny" title="Cuotas confirmadas hace ${ageSec} segundos.">Cuotas frescas · hace ${ageSec}s</span>`;
 
       // Pct distribución por casa
       const totalStake = stakesByLeg.reduce((s, l) => s + (l.stake || 0), 0) || 1;
 
+      const netRoiPct = (computed.netRoi ?? sb.netRoi) * 100;
+
       return `
-        <div class="card card-tinted card-pad-sm arb-card" data-sb-key="${sb.key}">
-          <div class="row between">
-            <div>
-              <div class="cluster">
-                <strong>${BSUI.esc(sb.event)}</strong>
-                ${statusBadge}
-                ${warnFit ? '<span class="badge badge-warning tiny">⚠ monto &gt; tope típico de cuenta</span>' : ''}
-              </div>
-              <div class="muted tiny">${BSUI.esc(mktLabel)} · ${minLabel}</div>
+        <article class="bs-prem arb-card" data-sb-key="${sb.key}">
+          <header class="bs-prem__head">
+            <strong class="bs-prem__title">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h10l-3-3M17 17H7l3 3M3 12h18"/></svg>
+              ${BSUI.esc(sb.event)}
+            </strong>
+            <div class="bs-prem__chips">
+              ${statusBadge}
+              ${warnFit ? '<span class="badge badge-warning tiny" title="Los montos sugeridos pueden ser muy altos para una cuenta nueva. La casa podría limitarte la apuesta.">⚠ monto alto para cuenta estándar</span>' : ''}
             </div>
-            <div class="text-right">
-              <strong class="badge badge-success num">+${((computed.netRoi ?? sb.netRoi) * 100).toFixed(2)}% neto</strong>
-              <div class="muted tiny">(bruto +${(sb.grossRoi*100).toFixed(2)}% · deslizamiento ${(sb.slippage*100).toFixed(2)}%)</div>
+          </header>
+
+          <div class="bs-prem__hero">
+            <div class="bs-prem__hero-cell">
+              <span class="bs-prem__hero-label" title="Cuánto ganás sí o sí — sin importar el resultado del partido. Ya descontamos el margen de seguridad por si la cuota cambia mientras apostás.">Ganancia segura</span>
+              <span class="bs-prem__edge" style="font-size:1.6rem">+${netRoiPct.toFixed(2)}%</span>
+              <span class="bs-prem__edge-explain">antes de descuentos: +${(sb.grossRoi*100).toFixed(2)}%</span>
+            </div>
+            <div class="bs-prem__hero-cell">
+              <span class="bs-prem__hero-label">Ganancia asegurada con ${BSUI.money(f.bankroll)}</span>
+              <span class="bs-prem__pay">+${BSUI.money(profitARS)}</span>
+              <span class="bs-prem__pay-sub">${BSUI.esc(mktLabel)} · ${minLabel}</span>
+            </div>
+            <div class="bs-prem__hero-cell bs-prem__edge-cell">
+              <span class="bs-prem__hero-label">Empezá por (book más lento)</span>
+              <span style="display:flex;align-items:center;gap:8px;margin-top:4px">
+                ${window.BSLogos ? BSLogos.bookLogo(stakesByLeg[0]?.book, { size: 28 }) : ''}
+                <strong style="font-size:1.05rem">${BSUI.esc(bookName(stakesByLeg[0]?.book))}</strong>
+              </span>
             </div>
           </div>
-          <div class="arb-legs">
-            ${stakesByLeg.map(leg => {
-              const logo = window.BSLogos ? BSLogos.bookLogo(leg.book, { size: 14 }) : '';
+
+          <!-- Plan de ejecución: tabla limpia por casa con stake destacado -->
+          <div class="bs-prem__legs arb-plan">
+            ${stakesByLeg.map((leg, i) => {
+              const logo = window.BSLogos ? BSLogos.bookLogo(leg.book, { size: 24 }) : '';
               const pct = totalStake ? Math.round((leg.stake / totalStake) * 100) : 0;
-              return `<div class="arb-leg">
-                <div class="cluster" style="gap:6px">${logo}<strong class="tiny">${BSUI.esc(bookName(leg.book))}</strong></div>
-                <div class="muted tiny">${BSUI.esc(outcomeLabel(leg.outcome))}</div>
-                <div><span class="num">${(leg.odd || 0).toFixed(2)}</span></div>
-                <div><strong class="num text-brand">${BSUI.money(leg.stake)}</strong> <span class="muted tiny">(${pct}%)</span></div>
+              return `<div class="bs-prem__leg arb-plan__row">
+                <div class="bs-prem__leg-info">
+                  <div class="bs-prem__leg-teams">
+                    <span class="arb-plan__rank">${i+1}</span>
+                    ${logo}
+                    <strong>${BSUI.esc(bookName(leg.book))}</strong>
+                  </div>
+                  <div class="bs-prem__leg-meta">
+                    <span class="bs-prem__leg-mkt">${BSUI.esc(outcomeLabel(leg.outcome))}</span>
+                    <span>cuota <strong class="num">${(leg.odd || 0).toFixed(2)}</strong></span>
+                    <span class="muted tiny">${pct}% del banco</span>
+                  </div>
+                </div>
+                <strong class="bs-prem__leg-odd" style="color:var(--brand-700)">${BSUI.money(leg.stake)}</strong>
               </div>`;
             }).join('')}
           </div>
-          <div class="row between" style="border-top:1px solid var(--border);padding-top:6px;margin-top:4px">
-            <div class="muted tiny">Ganancia asegurada con ${BSUI.money(f.bankroll)}</div>
-            <strong class="num text-success">+${BSUI.money(profitARS)}</strong>
-          </div>
-          <div class="row between" style="margin-top:4px">
-            <div class="cluster" style="gap:4px">
-              <button class="btn btn-ghost btn-sm" data-copy-sb="${sb.key}">📋 Copiar instrucciones</button>
-              <button class="btn btn-ghost btn-sm" data-explain-sb="${sb.key}" title="Análisis con IA: por qué existe esta surebet + orden óptimo de ejecución">${BSIcons.svg('bolt', { size: 12 })} Analizar con IA</button>
-            </div>
-            <span class="muted tiny" data-freshness="${sb.key}" data-ts="${sbTs}">${freshnessLabel(sbTs)} · arrancá por ${BSUI.esc(bookName(stakesByLeg[0]?.book))}</span>
-          </div>
-          <div class="ai-explain" data-explain-host="${sb.key}" style="display:none;margin-top:8px"></div>
-        </div>
+
+          <footer class="bs-prem__actions">
+            <button class="btn btn-primary" data-copy-sb="${sb.key}" title="Copia un plan paso a paso listo para apostar">${BSIcons.svg('copy', { size: 14 })} Copiar plan de apuesta</button>
+            <button class="btn btn-outline btn-sm" data-explain-sb="${sb.key}" title="Análisis con IA: por qué existe esta surebet + orden óptimo de ejecución">${BSIcons.svg('bolt', { size: 14 })} Analizar con IA</button>
+            <span class="muted tiny" data-freshness="${sb.key}" data-ts="${sbTs}" style="margin-left:auto;align-self:center">${freshnessLabel(sbTs)}</span>
+          </footer>
+          <div class="ai-explain" data-explain-host="${sb.key}"></div>
+        </article>
       `;
     }
 

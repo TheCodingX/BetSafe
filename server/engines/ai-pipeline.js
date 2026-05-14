@@ -65,30 +65,40 @@ function isPremiumMatch(event, factors) {
   return false;
 }
 
-const SYSTEM_PROMPT = `Sos un analista senior de apuestas argentinas en tiempo real.
+const SYSTEM_PROMPT = `Sos un analista senior cuantitativo de apuestas argentinas, nivel sportbook research.
 
-Generá 3 picks (cons/eq/agg) coherentes:
-- cons: seguro (DC 1X/X2 o under si juego cerrado) — prob alta
-- eq: principal (h2h favorito) — riesgo medio
-- agg: combinada multi-leg del MISMO partido (h2h+over+BTTS) — riesgo alto
+Generá 3 picks (cons/eq/agg) DENSOS y aplicables:
+- cons: seguro (DC 1X/X2, under si juego cerrado, AH±0.5 favorito sólido) — prob > 70%
+- eq: principal (h2h favorito firme, totals 2.5/3.0, AH leve) — prob 50-70%, EV+ alto
+- agg: combinada multi-leg del MISMO partido (favorito + over + BTTS, o equivalente coherente) — prob 30-50% pero pago alto
 
-REGLAS:
-1) NO inventes datos.
-2) Rationale 2-4 frases cada uno. Lenguaje natural argentino. NUNCA "Poisson", "Elo", "Shin", "lambda", "ensemble" — usá "goles esperados", "forma reciente", "valor vs cuota".
-3) Synthesis OBLIGATORIA: 60-80 palabras leyendo el partido.
-4) KeyFactor + marketEdge: 1 frase cada uno.
+REGLAS DE RATIONALE (CRÍTICAS):
+1) NO inventes datos. Si un factor llega como "unavailable", "null" o "{}", IGNORALO — NO digas "no hay clima" ni "no hay datos de lesiones".
+2) Cada rationale: 3-5 frases DENSAS en español argentino. Mencioná SIEMPRE los factors REALES que tenés (en orden de prioridad si están):
+   • Forma reciente (puntos/partido, W-D-L) → "viene de X racha"
+   • H2H histórico → "en sus últimos N choques, X% favoreció a..."
+   • Lesiones reportadas (si severityScore > 0.3 home o away) → "X tiene baja por lesiones clave"
+   • Clima si goalsMultiplier ≠ 1 (significativo) → "lluvia/calor baja goles"
+   • Movimiento sharp (steam moves) si la cuota se movió >5% → "el mercado pro empujó hacia..."
+   • Lineups confirmados si hay → "X confirmó titular a Y"
+   • Tier de liga (1 mundial, 2 regional, 3 secundaria) → contextualizá el peso del partido
+3) Lenguaje NATURAL — NUNCA mencionés "Poisson", "Elo", "Shin", "lambda", "ensemble", "K-factor", "Bayesian", "modelo cuantitativo". Reemplazá por: "goles esperados", "forma reciente", "valor vs cuota", "tendencia del mercado".
+4) NUNCA digas "tomá riesgo controlado", "apostá con cabeza", o avisos genéricos.
+5) Synthesis OBLIGATORIA: 80-140 palabras leyendo el partido como en una nota de prensa — citá los factors clave, contextualizá la liga, terminá con la conclusión accionable.
+6) keyFactor: la 1 cosa que más cambia el resultado de este partido específico (no genérica).
+7) marketEdge: dónde el modelo ve la mayor diferencia vs la cuota ofrecida.
 
 JSON estricto (sin markdown, sin prefijos):
 {
   "selections": [
-    {"type":"cons","market":"dc"|"totals","outcome":"home_or_draw"|"draw_or_away"|"under","line":null|número,"modelProb":0..1,"rationale":"...","confidence":0..1},
-    {"type":"eq","market":"h2h","outcome":"home"|"draw"|"away","modelProb":0..1,"rationale":"...","confidence":0..1},
-    {"type":"agg","market":"h2h"|"totals"|"btts","outcome":"...","modelProb":0..1,"rationale":"...","confidence":0..1}
+    {"type":"cons","market":"dc"|"totals"|"ah","outcome":"home_or_draw"|"draw_or_away"|"under"|"home_minus"|"away_plus","line":null|número,"modelProb":0..1,"rationale":"...","confidence":0..1},
+    {"type":"eq","market":"h2h"|"totals"|"ah","outcome":"home"|"draw"|"away"|"over"|"under"|"home_minus"|"away_plus","line":null|número,"modelProb":0..1,"rationale":"...","confidence":0..1},
+    {"type":"agg","market":"h2h"|"totals"|"btts"|"combo","outcome":"...","modelProb":0..1,"rationale":"...","confidence":0..1}
   ],
-  "synthesis":"<80-140 palabras de lectura del partido en lenguaje natural>",
-  "keyFactor":"<una frase: factor más importante de este partido>",
-  "marketEdge":"<una frase: dónde está el valor en la cuota>",
-  "modelConsensus":"<una frase: nivel de convicción del análisis>"
+  "synthesis":"<80-140 palabras de lectura del partido en lenguaje natural, citando factors reales>",
+  "keyFactor":"<una frase específica: el factor más decisivo para ESTE partido (no genérico)>",
+  "marketEdge":"<una frase: dónde el modelo encuentra más valor vs la cuota actual>",
+  "modelConsensus":"<una frase: nivel de convicción y por qué (qué factors apoyan el call)>"
 }`;
 
 /** Pipeline principal para un partido. */
@@ -401,28 +411,42 @@ async function llmStructured(factors, poisson, elo) {
     rendimientoForma: elo,
     analisisCuotas: factors.quantitative
   });
-  // ── Prompt PRO: tres picks coherentes + análisis profundo de TODOS los
-  // mercados disponibles (h2h, dc, totals, btts, ah). Forzamos consideración
-  // del hándicap asiático para encontrar valor estructural.
+  // ── Mercados disponibles ──────────────────────────────────────────────
+  // Tradicionales (scrapeados directo de casas) — el LLM puede asumir cuota
+  // real y casa real cuando elige estos.
   const availableMarkets = [];
-  if (factors.market?.h2h) availableMarkets.push('h2h (Ganador)');
-  if (factors.market?.dc) availableMarkets.push('dc (Doble Oportunidad)');
+  if (factors.market?.h2h) availableMarkets.push('match-winner (Ganador 1X2)');
+  if (factors.market?.dc) availableMarkets.push('double-chance (Doble Oportunidad 1X/X2/12)');
   if (factors.market?.totals) availableMarkets.push('totals (Más/Menos goles)');
-  if (factors.market?.btts) availableMarkets.push('btts (Ambos marcan)');
-  if (factors.market?.ah) availableMarkets.push('ah (Hándicap Asiático)');
+  if (factors.market?.btts) availableMarkets.push('btts (Ambos equipos marcan)');
+  if (factors.market?.ah) availableMarkets.push('ah-asian (Hándicap Asiático)');
+
+  // Catálogo COMPLETO de 140+ mercados (single source of truth en lib/marketCatalog).
+  // Filtramos por deporte. NO filtramos por book acá — el LLM ve TODOS los
+  // disponibles para el deporte; después la capa de matching valida que la
+  // selection corresponda a una casa marcada por el user.
+  const { describeForPrompt } = require('../lib/marketCatalog');
+  const extendedCatalog = describeForPrompt(sport, null);
 
   // Prompt OPTIMIZADO — corto y directo para que el JSON output entre en
   // maxOutputTokens. Cada rationale max 80 palabras (~120 tokens). 3 picks
   // × 120 tokens + sintaxis = ~450 tokens output. Con maxOutputTokens=6000
   // tenemos margen MASIVO.
   const tierLabel = tier >= 8 ? 'top mundial' : tier >= 6 ? 'regional' : tier >= 4 ? 'secundaria' : 'menor';
-  const prompt = `Generá 3 picks (cons/eq/agg) para este partido. Mercados disponibles: ${availableMarkets.join(', ')}. Liga ${tierLabel}.
+  const prompt = `Generá 3 picks (cons/eq/agg) para este partido. Liga ${tierLabel}.
+
+MERCADOS CON CUOTA REAL DE CASA (úsalos si hay edge claro):
+${availableMarkets.map(m => '  • ' + m).join('\n')}
+
+CATÁLOGO COMPLETO de mercados disponibles para este deporte (140+ tipos, usá cualquiera si los modelos dan ≥60% conf):
+${extendedCatalog}
 
 REGLAS:
-- cons: cuota baja, prob alta. Doble oportunidad o favorito sólido.
-- eq: cuota media, EV+. Favorito directo, AH leve, totals.
-- agg: combinada multi-leg del MISMO partido (favorito + over/under + BTTS según señales).
+- cons: PROB ≥ 70%, prefiere DC, AH±0.5 favorito, under si el partido es cerrado, o totals-ht under.
+- eq: PROB 50-70%, EV+. h2h favorito directo, AH leve, totals 2.5, BTTS si ataques fuertes.
+- agg: PROB 30-50% pero pago alto. Combinada multi-leg del MISMO partido (favorito + over/under + BTTS o corners + tarjetas o goleador), o un mercado analítico de alto valor (corners, cards, player props).
 - AH si favorito >65% (paga mejor cuota); AH+ si underdog 35-45%.
+- Si elegís un mercado ANALÍTICO, especificá "outcome" con su valor (ej. over/under, home_more, yes/no) y "line" con la línea (ej. 9.5 corners, 3.5 cards).
 - Rationale max 80 palabras, español argentino, NO digas "Poisson"/"Elo"/"lambda" — usá "goles esperados", "forma reciente", "valor vs cuota".
 
 Devolvés JSON exacto:
