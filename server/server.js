@@ -2237,12 +2237,71 @@ DETECCIÓN DE MERCADOS — IMPORTANTE:
   }
 
   if (!candidates.length) {
+    // ── Búsqueda ALTERNATIVA: si no hay para timeWindow pedido, probamos
+    // ampliando a week/any para sugerir cuándo sí hay partidos de esa liga.
+    // Sin esto, el user recibe "no-events" mudo sin saber que River juega el sábado.
+    let suggested = null;
+    if (filters.timeWindow !== 'any') {
+      const wideRange = [now, now + 14 * 24 * 3600 * 1000];
+      let wide = orchestrator.events({ sport: filters.sport === 'all' ? 'all' : filters.sport })
+        .filter(e => Number.isFinite(e.start) && e.start >= wideRange[0] && e.start <= wideRange[1]);
+      if (filters.leagues.length) {
+        const LEAGUE_PATTERNS_W = {
+          'premier-league': /premier\s*league|premiership\b|english.*premier|epl/i,
+          'la-liga':        /la\s*liga|laliga|primera\s*divisi[óo]n\s*esp|liga\s*espa[ñn]ola/i,
+          'serie-a':        /serie\s*a\b/i,
+          'bundesliga':     /bundesliga/i,
+          'ligue-1':        /ligue\s*[1u]|ligue1/i,
+          'ucl':            /champions\s*league|uefa\s*champions|^ucl\b/i,
+          'uel':            /europa\s*league|^uel\b/i,
+          'libertadores':   /libertadores/i,
+          'sudamericana':   /sudamericana/i,
+          'lpf':            /(?:liga\s*profesional\s*de\s*f[úu]tbol|liga\s*profesional\s*argentina|liga\s*argentina|primera\s*argentina|primera\s*divisi[óo]n\s*argentin|\blpf\b|apertura\s*argentin|clausura\s*argentin)/i,
+          'copa-argentina': /copa\s*argentina/i,
+          'brasileirao':    /brasileir[ãa]o|brasil\s*serie/i,
+          'liga-mx':        /liga\s*mx|liga\s*mexicana/i,
+          'mls':            /\bmls\b|major\s*league\s*soccer/i,
+          'nba':            /\bnba\b/i,
+          'ufc':            /\bufc\b/i,
+          'primera-nacional': /primera\s*nacional|nacional\s*b\b/i,
+          'copa-mundial':   /copa\s*mundial|mundial\s*fifa|world\s*cup/i
+        };
+        const matchersW = filters.leagues.map(slug => LEAGUE_PATTERNS_W[slug] || new RegExp(slug.replace(/-/g, '[\\s-]?'), 'i'));
+        wide = wide.filter(e => matchersW.some(re => re.test(String(e.leagueName || ''))));
+      }
+      if (wide.length) {
+        wide.sort((a, b) => a.start - b.start);
+        const nextEv = wide[0];
+        const nextDate = new Date(nextEv.start);
+        const days = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+        const dow = days[nextDate.getDay()];
+        const dd = nextDate.getDate();
+        const months = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+        const mm = months[nextDate.getMonth()];
+        suggested = {
+          window: filters.timeWindow === 'today' ? 'esta semana' : 'próximas 2 semanas',
+          count: wide.length,
+          nextDate: `${dow} ${dd} de ${mm}`,
+          examples: wide.slice(0, 3).map(e => ({
+            home: e.home?.name || e.home,
+            away: e.away?.name || e.away,
+            league: e.leagueName || e.league,
+            start: e.start
+          }))
+        };
+      }
+    }
     const bookList = filters.books.length ? ` en ${filters.books.join('/')}` : '';
+    const baseMsg = `No hay partidos${bookList} que cumplan tus filtros para ${filters.timeWindow === 'today' ? 'hoy' : filters.timeWindow === 'tomorrow' ? 'mañana' : 'esa fecha'}.`;
+    const suggestMsg = suggested
+      ? ` El próximo partido es el ${suggested.nextDate} (${suggested.examples.map(e => `${e.home} vs ${e.away}`).join(', ')}). Pedime la combinada para "esta semana" o "el finde".`
+      : ' Probá ampliar las ligas, el periodo o no especificar una casa.';
     return res.json({
       ok: false,
       reason: 'no-events',
-      message: `No encontramos partidos${bookList} que cumplan tus filtros en la ventana de tiempo pedida. Probá ampliar las ligas, el periodo o no especificar una casa.`,
-      filters
+      message: baseMsg + suggestMsg,
+      filters,
+      suggested
     });
   }
 
