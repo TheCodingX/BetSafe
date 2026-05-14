@@ -30,6 +30,7 @@ const { LRUCache } = require('lru-cache');
 const { log } = require('../lib');
 const { buildFactors } = require('../factors');
 const { shinNoVig } = require('../factors');
+const { predictExtendedMarkets } = require('../factors/extendedMarkets');
 const brierTracker = require('./brier-tracker');
 
 const cache = new LRUCache({ max: 200, ttl: 5 * 60 * 1000 });
@@ -111,11 +112,19 @@ async function analyzeMatch(event, ctx = {}) {
   const poisson = poissonModel(factors);
   const eloAdj = eloAdjustment(factors);
 
+  // 2.5) Mercados extendidos (predicciones analíticas: córners, tarjetas, goleadores)
+  let extendedMarkets = null;
+  try {
+    extendedMarkets = await predictExtendedMarkets(event, { factors, poisson, elo: eloAdj });
+  } catch (e) {
+    log(`[ai] extendedMarkets err: ${e?.message?.slice(0, 80)}`);
+  }
+
   // 3) LLM analysis
   const llm = await llmStructured(factors, poisson, eloAdj);
 
   // 4) Consenso entre modelos
-  const selections = mergeSelections(event, factors, quant, poisson, eloAdj, llm);
+  const selections = mergeSelections(event, factors, quant, poisson, eloAdj, llm, extendedMarkets);
 
   // 5) Enriquecer cada selection con métricas avanzadas para el frontend
   for (const s of selections) {
@@ -754,7 +763,7 @@ async function openrouterJson(system, user) {
  *     + BTTS) en favor del favorito. Cuota más alta NO viene de elegir el
  *     outcome opuesto — viene de SUMAR legs justificadas.
  */
-function mergeSelections(event, factors, quant, poisson, elo, llm) {
+function mergeSelections(event, factors, quant, poisson, elo, llm, extendedMarkets) {
   const h2h = factors.market.h2h;
   if (!h2h) return [];
 
@@ -1168,6 +1177,41 @@ function mergeSelections(event, factors, quant, poisson, elo, llm) {
           });
         }
       }
+    }
+  }
+
+  // ── PASO 3d: PICKS ANALÍTICOS EXTENDIDOS (córners, tarjetas, goleadores) ──
+  // No tenemos cuotas reales scrapeadas para estos mercados todavía. Emitimos
+  // picks con `analytical: true` para que la UI los muestre con badge
+  // distintivo ("verificá disponibilidad en tu casa"). La cuota es nuestra
+  // fair estimación basada en el modelo Poisson + contexto.
+  if (extendedMarkets) {
+    const allExt = [
+      ...(extendedMarkets.corners?.picks || []),
+      ...(extendedMarkets.cards?.picks || []),
+      ...(extendedMarkets.goalScorers || [])
+    ];
+    for (const p of allExt) {
+      // Solo emitir si la prob es realmente alta (>=60% para over/under, >=35% goleador)
+      const minProb = p.market === 'goalscorer-anytime' ? 0.35 : 0.60;
+      if (!p.analyticalProb || p.analyticalProb < minProb) continue;
+      out.push({
+        type: 'extended',           // categoría distinta (no cons/eq/agg)
+        market: p.market,
+        outcome: p.outcome,
+        line: p.line || null,
+        player: p.player || null,
+        team: p.team || null,
+        label: p.label,
+        odd: p.fairOdd,             // estimación nuestra
+        book: null,                 // no asignado a casa específica
+        consensusProb: p.analyticalProb,
+        confidence: Math.min(0.85, p.analyticalProb * 0.9 + 0.05),
+        rationale: p.rationale,
+        analytical: true,           // FLAG IMPORTANTE
+        analyticalDisclaimer: 'Pick basado en análisis interno de BetSafe IA. Verificá disponibilidad y cuota real en tu casa de apuestas.',
+        factors: buildFactorList({ outcome: 'home' }, factors)
+      });
     }
   }
 

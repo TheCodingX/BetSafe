@@ -368,8 +368,21 @@ ${legsText}
       const awayLogo = window.BSLogos?.teamCrest ? BSLogos.teamCrest(away.id, { size: 22, name: l.away, sport: l.sport }) : BSIcons.teamLogo(away, { size: 22, sport: l.sport });
       const bookLogo = window.BSLogos && l.book ? BSLogos.bookLogo(l.book, { size: 14 }) : '';
       const evClass = (l.ev || 0) > 0 ? 'text-success' : 'muted';
+      // Detectar picks analíticos (córners, tarjetas, goleadores) que vienen
+      // de nuestro motor interno sin cuota real de casa.
+      const isAnalytical = !!l.analytical || ['corners','cards','goalscorer-anytime'].includes(l.market);
+      const marketLabel = {
+        'corners': 'Córners',
+        'cards': 'Tarjetas',
+        'goalscorer-anytime': 'Goleador',
+        'h2h': 'Ganador',
+        'totals': 'Más/Menos',
+        'btts': 'Ambos marcan',
+        'ah': 'Hándicap asiático',
+        'dc': 'Doble oportunidad'
+      }[l.market] || l.market || '';
       return `
-        <div class="ai-combo-leg" style="display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:10px 12px;background:rgba(255,255,255,0.02);border-radius:8px;border-left:3px solid ${riskColor}">
+        <div class="ai-combo-leg" style="display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:10px 12px;background:rgba(255,255,255,0.02);border-radius:8px;border-left:3px solid ${isAnalytical ? '#9b59b6' : riskColor}">
           <div style="display:flex;align-items:center;gap:6px;min-width:0">
             <span style="font-weight:700;font-size:.72rem;color:var(--muted);min-width:14px">${i+1}.</span>
             ${homeLogo}
@@ -379,14 +392,14 @@ ${legsText}
             ${awayLogo}
           </div>
           <div style="display:flex;flex-direction:column;min-width:0;gap:2px">
-            <span class="tiny" style="font-weight:600">${BSUI.esc(l.label)}</span>
-            <span class="muted" style="font-size:.7rem">${BSUI.esc(l.league || '')} · ${l.start ? BSUI.dt(l.start) : ''}</span>
+            <span class="tiny" style="font-weight:600">${BSUI.esc(l.label)}${isAnalytical ? ' <span class="badge tiny" style="background:#9b59b6;color:white;padding:1px 5px;margin-left:4px;font-size:.6rem;letter-spacing:.04em">ANÁLISIS IA</span>' : ''}</span>
+            <span class="muted" style="font-size:.7rem">${marketLabel ? marketLabel + ' · ' : ''}${BSUI.esc(l.league || '')}${l.start ? ' · ' + BSUI.dt(l.start) : ''}</span>
           </div>
           <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;min-width:80px">
-            <strong class="num text-brand" style="font-size:1.05rem">${l.odd.toFixed(2)}</strong>
-            <div class="cluster" style="gap:3px;font-size:.65rem">
-              ${bookLogo}<span class="muted">${BSUI.esc(bookName(l.book))}</span>
-            </div>
+            <strong class="num text-brand" style="font-size:1.05rem">${l.odd ? l.odd.toFixed(2) : '—'}</strong>
+            ${isAnalytical
+              ? `<span class="muted" style="font-size:.6rem;font-style:italic">cuota estimada</span>`
+              : `<div class="cluster" style="gap:3px;font-size:.65rem">${bookLogo}<span class="muted">${BSUI.esc(bookName(l.book))}</span></div>`}
             ${l.ev != null ? `<span class="${evClass}" style="font-size:.65rem">EV ${l.ev > 0 ? '+' : ''}${l.ev.toFixed(1)}%</span>` : ''}
           </div>
         </div>`;

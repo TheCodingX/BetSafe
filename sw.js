@@ -1,5 +1,5 @@
 // BetSafe Service Worker — cache strategy: cache-first for assets, network-first for HTML/data
-const VERSION = 'betsafe-v4.9.1';   // PLAN A: prompt LLM expandido + AH boost en eq picks + cache clear endpoint + banner roadmap mercados
+const VERSION = 'betsafe-v5.0.0';   // MERCADOS EXTENDIDOS: córners + tarjetas + goleadores como análisis interno (Poisson + Elo + historial). Picks marcados "ANÁLISIS IA" con badge violeta. Fair odd estimada con margen casa típico.
 const STATIC_CACHE = `${VERSION}-static`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 
