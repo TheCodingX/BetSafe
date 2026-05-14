@@ -76,7 +76,8 @@ function normalizeSport(handle) {
 }
 
 const LEAGUE_MAP = [
-  { re: /liga profesional|primera divisi[oó]n.*argentina|copa argentina|primera nacional/i, key: 'lpf' },
+  // STRICT: solo Liga Profesional ARGENTINA
+  { re: /liga\s*profesional\s*(?:de\s*f[úu]tbol|argentina)|primera\s*divisi[óo]n.*argentina|copa\s*argentina|primera\s*nacional|argentina.*primera\s*divisi|\bafa\b/i, key: 'lpf' },
   { re: /premier league/i,                key: 'epl' },
   { re: /primera divisi[oó]n.*espa|\bla ?liga\b/i, key: 'laliga' },
   { re: /serie a/i,                       key: 'seriea' },

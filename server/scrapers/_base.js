@@ -125,7 +125,8 @@ function buildEvent({ home, away, start, league, leagueName, sport = 'soccer', h
 /* Mapea nombres de competición que vienen del scraper a las keys internas
  * que usa el frontend (LEAGUES de data.js). Coincidencia laxa. */
 const LEAGUE_KEY_MAP = [
-  { match: /liga profesional|primera division|copa de la liga|copa argentina/i, key: 'lpf', name: 'Liga Profesional Argentina' },
+  // STRICT: solo Liga Profesional ARGENTINA (no Saudí, Bolivia, etc).
+  { match: /liga\s*profesional\s*(?:de\s*f[úu]tbol|argentina)|copa\s*argentina|copa\s*de\s*la\s*liga|argentina.*primera\s*divisi|\bafa\b/i, key: 'lpf', name: 'Liga Profesional Argentina' },
   { match: /premier league/i,                key: 'epl',         name: 'Premier League' },
   { match: /laliga|la liga|primera espa/i,   key: 'laliga',      name: 'La Liga' },
   { match: /serie a/i,                       key: 'seriea',      name: 'Serie A' },
