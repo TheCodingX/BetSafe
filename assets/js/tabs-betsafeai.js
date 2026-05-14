@@ -512,15 +512,6 @@
     host.querySelector('#bsaiHealthRetry')?.addEventListener('click', () => {
       if (state.lastPrompt) buildCombo(panel, state.lastPrompt);
     });
-    // v5.9 — "Reformular" del banner parserPartialAI: llevar al textarea
-    host.querySelector('#bsaiReformulatePartial')?.addEventListener('click', () => {
-      const ta = panel.querySelector('#bsaiPrompt');
-      if (ta) {
-        ta.value = state.lastPrompt || '';
-        ta.focus();
-        ta.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
-    });
   }
 
   function renderCombo(r) {
@@ -541,26 +532,13 @@
         })
       : '';
 
-    // v5.9 — Warning específico cuando el LLM entendió SOLO parte del prompt
-    // y los regex complementarios rellenaron huecos (ej: "casinos" no detectado
-    // por la IA pero detectado por palabra clave). El user sabe que algunos
-    // filtros se infirieron y puede reformular.
-    const partialAiBanner = r.parserPartialAI
-      ? `<div class="bs-ai-banner bs-ai-banner--warn" role="status" aria-live="polite" style="margin-bottom:14px">
-          <span class="bs-ai-banner__icon" aria-hidden="true">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-          </span>
-          <div class="bs-ai-banner__body">
-            <strong>Entendí lo básico pero la IA no aplicó todos los filtros que pediste <span class="muted tiny">· Coach IA</span></strong>
-            <p>${BSUI.esc(r.parserPartialReason || 'Algunos filtros se infirieron por palabras clave del prompt.')} Si la combinada no respeta lo que querías, probá reformular más explícito (ej: "en Betano, Premier League, cuota total 5x").</p>
-          </div>
-          <button class="btn btn-outline btn-sm bs-ai-banner__retry" id="bsaiReformulatePartial" type="button">Reformular</button>
-        </div>`
-      : '';
+    // v5.10 — Eliminado el banner parserPartialAI: con la cascada 100% LLM
+    // (Gemini → Claude → Groq → OpenRouter), si algún proveedor responde con
+    // JSON válido entonces TODOS los filtros vienen del LLM. Si todos fallan,
+    // el backend devuelve 503 y se muestra el banner aiHealth=degraded arriba.
 
     return `
       ${aiBannerHtml}
-      ${partialAiBanner}
       <article class="bsai-combo-card">
         <header class="bsai-combo-head">
           <div class="bsai-combo-headline">

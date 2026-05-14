@@ -862,6 +862,55 @@ async function openrouterJson(system, user) {
   return safeJsonParse(data.choices?.[0]?.message?.content);
 }
 
+/* Versión genérica de anthropicJson con opts (maxTokens, temperature).
+ * Para usar en parsers/explainers/etc, no solo análisis de picks. */
+async function anthropicJsonGeneric(systemPrompt, userPrompt, opts = {}) {
+  if (!ANTHROPIC_KEY) throw new Error('no-key');
+  const res = await fetchWithTimeout('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': ANTHROPIC_KEY,
+      'anthropic-version': '2023-06-01'
+    },
+    body: JSON.stringify({
+      model: ANTHROPIC_MODEL,
+      max_tokens: opts.maxTokens || 2000,
+      temperature: opts.temperature ?? 0.3,
+      system: systemPrompt + '\n\nIMPORTANTE: respondé ÚNICAMENTE el JSON estricto, sin texto antes ni después, sin markdown ni ```json wrapper.',
+      messages: [{ role: 'user', content: userPrompt }]
+    })
+  });
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '');
+    throw new Error(`HTTP ${res.status}: ${txt.slice(0, 120)}`);
+  }
+  const data = await res.json();
+  return safeJsonParse(data.content?.[0]?.text);
+}
+
+/* Versión genérica de openrouterJson con opts. */
+async function openrouterJsonGeneric(systemPrompt, userPrompt, opts = {}) {
+  if (!OPENROUTER_KEY) throw new Error('no-key');
+  const res = await fetchWithTimeout('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${OPENROUTER_KEY}` },
+    body: JSON.stringify({
+      model: opts.model || 'meta-llama/llama-3.3-70b-instruct:free',
+      messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
+      temperature: opts.temperature ?? 0.3,
+      max_tokens: opts.maxTokens || 2000,
+      response_format: { type: 'json_object' }
+    })
+  });
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '');
+    throw new Error(`HTTP ${res.status}: ${txt.slice(0, 120)}`);
+  }
+  const data = await res.json();
+  return safeJsonParse(data.choices?.[0]?.message?.content);
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // Merge LLM + Quant + Poisson + Elo → selections finales con confidence
 // ─────────────────────────────────────────────────────────────────────────
@@ -1548,4 +1597,4 @@ function buildTextSummary({ event, tier, homeAdv, weather, injuries, historical,
   return lines.join('\n');
 }
 
-module.exports = { analyzeMatch, groqJsonGeneric, geminiJsonGeneric };
+module.exports = { analyzeMatch, groqJsonGeneric, geminiJsonGeneric, anthropicJsonGeneric, openrouterJsonGeneric };
