@@ -76,11 +76,14 @@
     return `actualizado hace ${min}m`;
   }
 
-  // Decide qué timestamp usar para una surebet: prefiere `lastSeenAt`
-  // (backend lo updatea cada ciclo), después `ts`, y como último recurso
-  // el timestamp del snapshot global.
+  // Decide qué timestamp usar para una surebet.
+  // PRIORIDAD: snapAt (snapshot recibido del backend) — si la surebet está
+  // en la respuesta, está VIVA. El backend solo devuelve surebets en
+  // activeIds. Usar `lastSeenAt` del backend puede dar timestamps "viejos"
+  // si la surebet persiste varios ciclos (es estable), causando que el
+  // filtro de frescura del cliente la descarte injustamente.
   function bestTimestamp(sb, snapAt) {
-    return sb?.lastSeenAt || sb?.ts || snapAt || 0;
+    return snapAt || sb?.lastSeenAt || sb?.ts || 0;
   }
 
   function render(panel) {
@@ -133,7 +136,7 @@
                con datos viejos pueden cerrarse antes de poder ejecutarlas. -->
           <label class="field" style="margin:0;min-width:160px">
             <span class="field-label">Frescura máx. (segundos)</span>
-            <input class="input input-sm" id="arbMaxAge" type="number" step="5" min="5" max="120" value="60">
+            <input class="input input-sm" id="arbMaxAge" type="number" step="30" min="30" max="600" value="300">
           </label>
           <label class="field" style="margin:0;min-width:160px">
             <span class="field-label">Deporte</span>
@@ -279,7 +282,7 @@
     function getFilters() {
       return {
         minRoi:        Number(panel.querySelector('#arbMinRoi').value) || 0,
-        maxAgeSec:     Number(panel.querySelector('#arbMaxAge').value) || 60,
+        maxAgeSec:     Number(panel.querySelector('#arbMaxAge').value) || 300,
         sport:         panel.querySelector('#arbSport').value || '',
         market:        panel.querySelector('#arbMarket').value || 'all',
         bankrollFit:   panel.querySelector('#arbBankrollFit').checked,
