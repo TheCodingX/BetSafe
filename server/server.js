@@ -2301,19 +2301,24 @@ DETECCIÓN DE MERCADOS — IMPORTANTE:
     const wantType = filters.risk;
 
     // ── Si el user pidió MERCADOS específicos (córners, tarjetas, goleadores,
-    // etc.), buscamos selections de ESOS mercados. Sino, usamos el sel por type.
+    // etc.), buscamos selections de ESOS mercados. Sino, agregamos TODAS las
+    // selections del partido — h2h, totals, btts, corners-total, cards-total,
+    // goalscorers, etc. — para que el motor de selección final (más abajo)
+    // pueda armar combinadas DIVERSAS, no 3 h2h iguales.
     const candidateSels = [];
     if (filters.markets.length) {
-      // Modo "mercados específicos": tomar TODAS las selections que matcheen
-      // alguno de los mercados pedidos (puede ser tradicional o analítico).
       for (const s of (a.selections || [])) {
         if (filters.markets.includes(s.market)) candidateSels.push(s);
       }
     } else {
-      // Modo clásico: pick por type (cons/eq/agg)
-      const sel = (a.selections || []).find(s => s.type === wantType) ||
-                  a.selections?.[0];
-      if (sel) candidateSels.push(sel);
+      // Antes: solo 1 sel por partido (típicamente h2h). Esto causaba que
+      // todas las combinadas fueran 3 h2h. Ahora: TODAS las selections van
+      // al pool. Si un partido tiene 1 h2h + 1 corners + 1 cards, los 3
+      // van al pool y el algoritmo de leg selection elige los mejores
+      // bonificando diversidad de mercados.
+      for (const s of (a.selections || [])) {
+        if (s && s.odd) candidateSels.push(s);
+      }
     }
 
     for (let sel of candidateSels) {
@@ -2380,7 +2385,36 @@ DETECCIÓN DE MERCADOS — IMPORTANTE:
     return ev + conf * 25 + isTop * 8 + hasLeague * 10;
   }
   const sortedPool = pool.slice().sort((a, b) => legScore(b) - legScore(a));
-  let chosen = sortedPool.slice(0, filters.legs);
+
+  // Greedy SELECTION CON BONUS DE DIVERSIDAD: elegimos legs una por una,
+  // penalizando markets que ya están en chosen. Antes la combinada era
+  // siempre "3 picks tipo h2h del top scoring". Ahora si el #1 es h2h, el
+  // #2 prefiere otro mercado (corners/cards/totals) si el score no cae
+  // mucho. Resultado: combinadas con MEZCLA real de mercados, no 3 h2h.
+  function pickWithDiversity(maxLegs) {
+    const out = [];
+    const usedEvents = new Set();
+    const marketCount = new Map();
+    while (out.length < maxLegs) {
+      // Re-rankear cada vez basado en lo que ya elegimos
+      const remaining = sortedPool.filter(p => !out.includes(p) && !usedEvents.has(p.event.id));
+      if (!remaining.length) break;
+      let best = remaining[0];
+      let bestScore = -Infinity;
+      for (const p of remaining) {
+        const baseScore = legScore(p);
+        // Penalizar markets repetidos: -10 por cada ocurrencia previa
+        const repeatPenalty = (marketCount.get(p.sel.market) || 0) * 10;
+        const adjusted = baseScore - repeatPenalty;
+        if (adjusted > bestScore) { bestScore = adjusted; best = p; }
+      }
+      out.push(best);
+      usedEvents.add(best.event.id);
+      marketCount.set(best.sel.market, (marketCount.get(best.sel.market) || 0) + 1);
+    }
+    return out;
+  }
+  let chosen = pickWithDiversity(filters.legs);
 
   if (filters.targetOdd) {
     // ── Optimization híbrida: greedy + random sampling para targetOdd ──
