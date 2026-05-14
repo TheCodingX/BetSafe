@@ -1,5 +1,5 @@
 // BetSafe Service Worker — cache strategy: cache-first for assets, network-first for HTML/data
-const VERSION = 'betsafe-v5.2.1';   // FIX URGENTE: JSON truncation Gemini (maxOutputTokens 1600→6000) + safeJsonParse con recovery de JSON truncado (repair + extractPartial) + frontend timeouts 60s→180s + prompt analyzeMatch reducido para evitar overflow.
+const VERSION = 'betsafe-v5.2.2';   // FIX BUGS REPORTADOS: (1) BetSafe AI parser confundía "Liga Argentina" con "la-liga" — ahora forzado lpf si menciona Argentina. (2) Generator priorizaba h2h sobre analíticos → score boost +3 a analíticos. (3) Synthesis venía null → SYSTEM_PROMPT reducido y alineado con user prompt + recovery rescata synthesis del JSON truncado.
 const STATIC_CACHE = `${VERSION}-static`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 

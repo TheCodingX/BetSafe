@@ -1153,12 +1153,13 @@ app.post('/api/generator', express.json(), async (req, res) => {
       // Analytical picks NO se filtran por casa (no tienen book asignado)
       .filter(s => s.analytical || !wantedBooks.length || wantedBooks.includes(s.book));
     for (const sel of evSelections) {
-      pool.push({
-        event: a.event,
-        factors: a.factors,
-        sel,
-        score: (sel.consensusEv || 0) + (sel.confidence || 0) * 5
-      });
+      // Score base: EV + confianza
+      let score = (sel.consensusEv || 0) + (sel.confidence || 0) * 5;
+      // BOOST a los mercados analíticos: tienen prob alta por construcción y
+      // los necesitamos para diversidad. Si no boosteamos, los h2h con EV alto
+      // dominan TODO el ranking y las combinadas terminan siendo 3 h2h.
+      if (sel.analytical) score += 3;
+      pool.push({ event: a.event, factors: a.factors, sel, score });
     }
   }
   pool.sort((a, b) => b.score - a.score);
@@ -1561,6 +1562,23 @@ REGLAS IMPORTANTES:
 - Si dice "segura" / "tranqui" → risk: "cons".
 - Si NO menciona cantidad de legs → "legs": null (la decide la IA después).
 
+DETECCIÓN DE LIGAS — CRÍTICO no confundir:
+- "Liga Argentina" / "Liga Profesional Argentina" / "fútbol argentino" → leagues: ["lpf"] (NUNCA agregues "la-liga")
+- "La Liga" / "La Liga española" / "fútbol español" / "primera división española" → leagues: ["la-liga"]
+- "Liga MX" / "fútbol mexicano" → leagues: ["liga-mx"]
+- "Premier League" / "EPL" / "fútbol inglés" → leagues: ["premier-league"]
+- "Serie A" / "calcio italiano" → leagues: ["serie-a"]
+- "Bundesliga" → leagues: ["bundesliga"]
+- "Ligue 1" / "fútbol francés" → leagues: ["ligue-1"]
+- "Champions" / "Champions League" / "UCL" → leagues: ["ucl"]
+- "Europa League" / "UEL" → leagues: ["uel"]
+- "Libertadores" → leagues: ["libertadores"]
+- "Sudamericana" → leagues: ["sudamericana"]
+- "Brasileirao" / "Brasil" → leagues: ["brasileirao"]
+- "NBA" → leagues: ["nba"]
+- "UFC" / "MMA" → leagues: ["ufc"]
+NUNCA mezcles "la-liga" con "lpf" — son ligas distintas en países distintos.
+
 DETECCIÓN DE MERCADOS — IMPORTANTE:
 - Si dice "córners" / "tiros de esquina" / "corners" → markets: ["corners-total"]
 - Si dice "tarjetas" / "amonestaciones" → markets: ["cards-total"]
@@ -1683,30 +1701,52 @@ DETECCIÓN DE MERCADOS — IMPORTANTE:
   // Default 3 si nada se detectó
   if (filters.legs == null) filters.legs = 3;
 
+  // ── CRITICAL FIX: el LLM a veces confunde "Liga Argentina" con "la-liga".
+  // Si el prompt contiene CLARAMENTE "argentina"/"argentino" → forzar lpf
+  // y borrar la-liga si fue agregada incorrectamente.
+  const promptLower = prompt.toLowerCase();
+  const mentionsArg = /\bargentin[ao]\b|liga\s*argentina|liga\s*profesional|\blpf\b|primera\s*nacional/i.test(promptLower);
+  const mentionsEsp = /espa[ñn]ol|laliga|la\s*liga\s*espa|primera\s*divisi[óo]n\s*esp/i.test(promptLower);
+  if (mentionsArg && !mentionsEsp) {
+    // El usuario QUIERE Liga Argentina. Si el LLM agregó la-liga, sacarla.
+    filters.leagues = filters.leagues.filter(l => l !== 'la-liga');
+    if (!filters.leagues.includes('lpf')) filters.leagues.push('lpf');
+  }
+  if (mentionsEsp && !mentionsArg) {
+    filters.leagues = filters.leagues.filter(l => l !== 'lpf');
+    if (!filters.leagues.includes('la-liga')) filters.leagues.push('la-liga');
+  }
+
   // ── REGEX FALLBACK: si el LLM no extrajo leagues, hacemos detection manual
   // por keywords en el prompt. Esto es CRÍTICO porque a veces el parser falla
   // y el resultado son partidos random.
   if (!filters.leagues.length) {
     const p = prompt.toLowerCase();
-    const KW = {
-      'premier-league': /(premier\s*league|premier(?:\s+inglesa)?|epl)/i,
-      'la-liga':        /(la\s*liga|laliga|primera\s*divisi[óo]n\s*esp|liga\s*espa[ñn]ola)/i,
-      'serie-a':        /(serie\s*a|seriea|italia(?:no)?\s*serie)/i,
-      'bundesliga':     /(bundesliga|alemana)/i,
-      'ligue-1':        /(ligue\s*[1u]|ligue1|francesa)/i,
-      'ucl':            /(champions(?:\s*league)?|ucl|uefa\s*champions)/i,
-      'uel':            /(europa\s*league|uel)/i,
-      'libertadores':   /(libertadores|copa\s*libertadores)/i,
-      'sudamericana':   /(sudamericana|copa\s*sudamericana)/i,
-      'lpf':            /(liga\s*profesional|lpf|liga\s*argentina|primera\s*argentina)/i,
-      'copa-argentina': /(copa\s*argentina)/i,
-      'brasileirao':    /(brasileir[ãa]o|brasil(?:e[ñn]o)?)/i,
-      'liga-mx':        /(liga\s*mx|liga\s*mexicana)/i,
-      'mls':            /(\bmls\b|major\s*league\s*soccer)/i,
-      'nba':            /(\bnba\b|baloncesto\s*nba)/i,
-      'ufc':            /(\bufc\b|mma)/i
-    };
-    for (const [key, re] of Object.entries(KW)) {
+    // ORDEN IMPORTANTE: chequear "Liga Argentina"/lpf ANTES que "la-liga"
+    // (porque ambas contienen "liga"). Las regex de lpf son más específicas.
+    const KW_ORDERED = [
+      ['lpf',            /(liga\s*argentina|liga\s*profesional|primera\s*argentina|\blpf\b)/i],
+      ['copa-argentina', /(copa\s*argentina)/i],
+      ['primera-nacional', /(primera\s*nacional)/i],
+      ['premier-league', /(premier\s*league|premier(?:\s+inglesa)?|\bepl\b)/i],
+      ['la-liga',        /(la\s*liga\s*(?:espa)?|laliga|primera\s*divisi[óo]n\s*esp|liga\s*espa[ñn]ola)/i],
+      ['serie-a',        /(serie\s*a|seriea|italia(?:no)?\s*serie)/i],
+      ['bundesliga',     /(bundesliga|alemana)/i],
+      ['ligue-1',        /(ligue\s*[1u]|ligue1|francesa)/i],
+      ['ucl',            /(champions(?:\s*league)?|\bucl\b|uefa\s*champions)/i],
+      ['uel',            /(europa\s*league|\buel\b)/i],
+      ['libertadores',   /(libertadores|copa\s*libertadores)/i],
+      ['sudamericana',   /(sudamericana|copa\s*sudamericana)/i],
+      ['brasileirao',    /(brasileir[ãa]o|brasil(?:e[ñn]o)?)/i],
+      ['liga-mx',        /(liga\s*mx|liga\s*mexicana)/i],
+      ['mls',            /(\bmls\b|major\s*league\s*soccer)/i],
+      ['nba',            /(\bnba\b|baloncesto\s*nba)/i],
+      ['nfl',            /(\bnfl\b)/i],
+      ['nhl',            /(\bnhl\b)/i],
+      ['mlb',            /(\bmlb\b|major\s*league\s*baseball)/i],
+      ['ufc',            /(\bufc\b|mma)/i]
+    ];
+    for (const [key, re] of KW_ORDERED) {
       if (re.test(p)) filters.leagues.push(key);
     }
   }

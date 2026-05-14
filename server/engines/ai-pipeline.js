@@ -65,24 +65,18 @@ function isPremiumMatch(event, factors) {
   return false;
 }
 
-const SYSTEM_PROMPT = `Sos un analista senior de apuestas deportivas con datos reales en tiempo real.
-Tu rol: leer el partido EN PROFUNDIDAD y dar 3 picks claros al usuario.
+const SYSTEM_PROMPT = `Sos un analista senior de apuestas argentinas en tiempo real.
 
-Generá 3 picks coherentes (cons/eq/agg) favoreciendo la MISMA dirección:
-- cons: pick seguro (doble oportunidad 1X o X2, o menos goles si juego cerrado) — alta probabilidad
-- eq: pick principal (ganador del partido) — riesgo medio
-- agg: combinada de varias apuestas del MISMO partido (ganador + más/menos + ambos marcan) — riesgo alto
+Generá 3 picks (cons/eq/agg) coherentes:
+- cons: seguro (DC 1X/X2 o under si juego cerrado) — prob alta
+- eq: principal (h2h favorito) — riesgo medio
+- agg: combinada multi-leg del MISMO partido (h2h+over+BTTS) — riesgo alto
 
-Reglas IMPORTANTES de redacción:
-1) NO inventes datos: solo lo del input.
-2) Cada rationale: 3-5 frases. Análisis táctico + razones específicas + contexto del partido.
-3) Si ves algo que la matemática no — destacalo (motivación, fixture, importancia del partido).
-4) LENGUAJE NATURAL — hablá como un experto en apuestas argentino con el usuario. NUNCA menciones
-   nombres técnicos de modelos como "Poisson", "Elo", "Shin no-vig", "modelo cuantitativo",
-   "ensemble", "milliunits", "fair odds", etc. Usá: "goles esperados", "forma reciente",
-   "movimiento del mercado", "ventaja de local", "valor en la cuota", "edge sobre la casa".
-5) Synthesis: párrafo 80-140 palabras leyendo el partido. NO uses jerga técnica — leelo
-   como si fueras un comentarista profesional explicando el partido a un apostador.
+REGLAS:
+1) NO inventes datos.
+2) Rationale 2-4 frases cada uno. Lenguaje natural argentino. NUNCA "Poisson", "Elo", "Shin", "lambda", "ensemble" — usá "goles esperados", "forma reciente", "valor vs cuota".
+3) Synthesis OBLIGATORIA: 60-80 palabras leyendo el partido.
+4) KeyFactor + marketEdge: 1 frase cada uno.
 
 JSON estricto (sin markdown, sin prefijos):
 {
@@ -591,37 +585,49 @@ function repairTruncatedJson(text) {
 }
 
 /* Último recurso: extrae las selections que parsearon completas del JSON
- * truncado. Si Gemini cortó después del 2do pick, salvamos los 2 primeros. */
+ * truncado. Si Gemini cortó después del 2do pick, salvamos los 2 primeros.
+ * También intenta rescatar synthesis/keyFactor/marketEdge si están en el texto. */
 function extractPartialSelections(text) {
-  // Buscamos cada objeto "{...}" individual dentro del array de selections
+  const out = {};
+  // Synthesis: buscar "synthesis":"..." aún si está al final truncada
+  const synthMatch = text.match(/"synthesis"\s*:\s*"([^"]{20,500})"/);
+  if (synthMatch) out.synthesis = synthMatch[1];
+  const keyMatch = text.match(/"keyFactor"\s*:\s*"([^"]{10,300})"/);
+  if (keyMatch) out.keyFactor = keyMatch[1];
+  const edgeMatch = text.match(/"marketEdge"\s*:\s*"([^"]{10,250})"/);
+  if (edgeMatch) out.marketEdge = edgeMatch[1];
+
+  // Selections: parsear cada objeto individualmente
   const selectionsMatch = text.match(/"selections"\s*:\s*\[([\s\S]+)/);
-  if (!selectionsMatch) return null;
-  const arrayContent = selectionsMatch[1];
-  const items = [];
-  let depth = 0;
-  let inString = false;
-  let escape = false;
-  let start = -1;
-  for (let i = 0; i < arrayContent.length; i++) {
-    const c = arrayContent[i];
-    if (escape) { escape = false; continue; }
-    if (c === '\\') { escape = true; continue; }
-    if (c === '"') { inString = !inString; continue; }
-    if (inString) continue;
-    if (c === '{') { if (depth === 0) start = i; depth++; }
-    else if (c === '}') {
-      depth--;
-      if (depth === 0 && start >= 0) {
-        try {
-          const item = JSON.parse(arrayContent.slice(start, i + 1));
-          items.push(item);
-        } catch (_) {}
-        start = -1;
+  if (!selectionsMatch && !out.synthesis) return null;
+  if (selectionsMatch) {
+    const arrayContent = selectionsMatch[1];
+    const items = [];
+    let depth = 0;
+    let inString = false;
+    let escape = false;
+    let start = -1;
+    for (let i = 0; i < arrayContent.length; i++) {
+      const c = arrayContent[i];
+      if (escape) { escape = false; continue; }
+      if (c === '\\') { escape = true; continue; }
+      if (c === '"') { inString = !inString; continue; }
+      if (inString) continue;
+      if (c === '{') { if (depth === 0) start = i; depth++; }
+      else if (c === '}') {
+        depth--;
+        if (depth === 0 && start >= 0) {
+          try {
+            const item = JSON.parse(arrayContent.slice(start, i + 1));
+            items.push(item);
+          } catch (_) {}
+          start = -1;
+        }
       }
     }
+    out.selections = items;
   }
-  if (!items.length) return null;
-  return { selections: items };
+  return out;
 }
 
 /* Valida + sanea la salida del LLM contra el schema esperado:
