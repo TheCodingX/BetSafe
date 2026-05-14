@@ -825,7 +825,75 @@ Generá las ${count} mejores combinadas posibles. Usá los índices del pool. Re
     log(`[curated] AI err: ${e?.message?.slice(0, 100)}`);
   }
 
-  const aiCombos = Array.isArray(aiResp?.combos) ? aiResp.combos : [];
+  let aiCombos = Array.isArray(aiResp?.combos) ? aiResp.combos : [];
+
+  // FALLBACK ALGORÍTMICO: si el LLM curator devolvió vacío pero tenemos
+  // 4+ picks en el pool, generamos combos por score con diversidad de riesgo.
+  // El usuario merece ver combos en lugar de pantalla vacía.
+  if (!aiCombos.length && topPool.length >= 4) {
+    log(`[curated] LLM curator vacío — generando algorítmicamente desde pool de ${topPool.length}`);
+    const ranked = topPool.slice().sort((a, b) => b.score - a.score);
+
+    // Generamos hasta `count` combos:
+    // 1) Seguro: top 2-3 picks (cuota total más baja)
+    // 2) Equilibrado: top 3 distintos (cuota media)
+    // 3) Agresivo: top 4 con cuotas medias-altas
+    const usedIndices = new Set();
+    function pickIndices(n, startIdx, preferLowOdd) {
+      const picked = [];
+      const seenEvents = new Set();
+      const candidates = preferLowOdd
+        ? ranked.slice().sort((a, b) => a.sel.odd - b.sel.odd)
+        : ranked;
+      for (let i = startIdx; i < candidates.length && picked.length < n; i++) {
+        const p = candidates[i];
+        if (seenEvents.has(p.event.id)) continue;
+        const originalIdx = topPool.indexOf(p);
+        if (originalIdx < 0) continue;
+        picked.push(originalIdx);
+        seenEvents.add(p.event.id);
+      }
+      return picked;
+    }
+
+    const fallbackCombos = [];
+    // Seguro: 2 legs cuota más baja
+    if (topPool.length >= 2) {
+      const idx = pickIndices(2, 0, true);
+      if (idx.length === 2) {
+        fallbackCombos.push({
+          legs: idx,
+          risk: 'seguro',
+          narrative: 'Combinada conservadora con los dos picks de mejor relación valor/cuota del día. Ambos partidos con señales claras de los modelos cuantitativos.',
+          edge: 'EV positivo en cada leg, cuota total accesible.',
+          keyFactor: 'Verificar alineaciones 30 min antes del kickoff.'
+        });
+      }
+    }
+    // Equilibrado: 3 legs top
+    if (topPool.length >= 3) {
+      fallbackCombos.push({
+        legs: pickIndices(3, 0, false),
+        risk: 'equilibrado',
+        narrative: 'Combinada equilibrada que aprovecha los 3 mejores picks del día por score compuesto (EV + confianza + tier de liga).',
+        edge: 'Combinación de valor del mercado con consistencia de modelo.',
+        keyFactor: 'Lesiones de último momento.'
+      });
+    }
+    // Agresivo: 4 legs si hay
+    if (topPool.length >= 4 && fallbackCombos.length < count) {
+      fallbackCombos.push({
+        legs: pickIndices(4, 1, false),
+        risk: 'agresivo',
+        narrative: 'Combinada agresiva que multiplica valor combinando 4 picks con edge positivo. Mayor cuota pero exige acierto en todos los partidos.',
+        edge: 'EV acumulado alto si la correlación entre legs es baja.',
+        keyFactor: 'Es 4 legs — un solo fallo cae todo. Stake recomendado: 1-2% de banca.'
+      });
+    }
+
+    aiCombos = fallbackCombos.slice(0, count);
+  }
+
   if (!aiCombos.length) {
     return res.json({
       combos: [],
@@ -833,7 +901,9 @@ Generá las ${count} mejores combinadas posibles. Usá los índices del pool. Re
         reason: 'ai-empty',
         analyzed: analyzed.length,
         poolSize: pool.length,
-        message: 'La IA no pudo armar combinadas con confianza suficiente del pool actual.'
+        message: pool.length < 4
+          ? `Solo encontramos ${pool.length} picks con valor positivo. Necesitamos al menos 4 para armar combinadas de calidad. Probá ampliar el deporte o esperá unos minutos a que el motor analice más partidos.`
+          : 'La IA no pudo armar combinadas con confianza suficiente del pool actual.'
       }
     });
   }

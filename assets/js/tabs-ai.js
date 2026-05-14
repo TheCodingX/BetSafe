@@ -84,23 +84,48 @@
         </div>
       </div>
 
-      <!-- Roadmap: nuevos mercados próximamente -->
+      <!-- Mercados que la IA analiza -->
       <details class="card card-tinted card-pad-sm mb-3" style="border-left:3px solid var(--brand-500);background:rgba(30,75,200,0.04)">
         <summary style="cursor:pointer;display:flex;align-items:center;gap:8px;font-weight:600;font-size:.88rem">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-          Mercados próximamente — la IA va a poder analizar mucho más
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+          La IA analiza 140+ mercados por deporte
         </summary>
-        <div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.06)">
-          <p class="tiny muted" style="margin-bottom:8px">Hoy la IA analiza <strong>ganador, doble oportunidad, más/menos goles, ambos marcan</strong> y <strong>hándicap asiático</strong> en las 6 casas oficiales argentinas. Próximos mercados en construcción:</p>
-          <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;font-size:.78rem">
-            <div style="display:flex;align-items:center;gap:6px"><span class="badge badge-warning tiny" style="padding:2px 6px">v5.0</span> Goleadores · Anota cualquier momento</div>
-            <div style="display:flex;align-items:center;gap:6px"><span class="badge badge-warning tiny" style="padding:2px 6px">v5.0</span> Córners totales / por equipo</div>
-            <div style="display:flex;align-items:center;gap:6px"><span class="badge badge-warning tiny" style="padding:2px 6px">v5.0</span> Tarjetas totales / por equipo</div>
-            <div style="display:flex;align-items:center;gap:6px"><span class="badge badge-warning tiny" style="padding:2px 6px">v5.1</span> Tiros / Remates por jugador</div>
-            <div style="display:flex;align-items:center;gap:6px"><span class="badge badge-warning tiny" style="padding:2px 6px">v5.1</span> Asistencias · Pases · Faltas</div>
-            <div style="display:flex;align-items:center;gap:6px"><span class="badge badge-warning tiny" style="padding:2px 6px">v5.1</span> Hándicap Europeo (3 vías)</div>
+        <div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.06);font-size:.78rem">
+          <p class="tiny muted" style="margin-bottom:10px">Algunos picks vienen <strong>directos de las 6 casas oficiales</strong> (cuota real). Otros marcados <span class="badge tiny" style="background:#9b59b6;color:white;padding:2px 6px;font-size:.65rem">ANÁLISIS IA</span> son <strong>análisis interno cuantitativo</strong> — verificá disponibilidad en tu casa.</p>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px">
+            <div>
+              <strong style="display:block;margin-bottom:4px;color:#3a6cd6">⚽ Fútbol (40+ mercados)</strong>
+              <p class="muted" style="line-height:1.5;font-size:.72rem">1X2, DC, DNB, goles, BTTS, hándicap, marcador exacto, HT/FT, córners (total + 1T + equipo), tarjetas, rojas, penales, faltas, tiros, goleador anytime, primer goleador.</p>
+            </div>
+            <div>
+              <strong style="display:block;margin-bottom:4px;color:#e67e22">🏀 Básquet (22+ mercados)</strong>
+              <p class="muted" style="line-height:1.5;font-size:.72rem">ML, spread, totales por cuarto/mitad, prórroga, jugador: pts/reb/ast/3pt/blk/stl/dbl-dbl/triple-doble/PRA.</p>
+            </div>
+            <div>
+              <strong style="display:block;margin-bottom:4px;color:#27ae60">🎾 Tenis (15)</strong>
+              <p class="muted" style="line-height:1.5;font-size:.72rem">Ganador, sets, games totales, hándicap, tiebreaks, aces, doble faltas.</p>
+            </div>
+            <div>
+              <strong style="display:block;margin-bottom:4px;color:#9b59b6">🎮 eSports (15)</strong>
+              <p class="muted" style="line-height:1.5;font-size:.72rem">Mapas, hándicap, kills, primera sangre, primera torre, duración mapa, pistol rounds.</p>
+            </div>
+            <div>
+              <strong style="display:block;margin-bottom:4px;color:#e74c3c">🏈 NFL (16)</strong>
+              <p class="muted" style="line-height:1.5;font-size:.72rem">Spread, totales, 1H, TD anytime/first, yds pase/run/rec por jugador, OT.</p>
+            </div>
+            <div>
+              <strong style="display:block;margin-bottom:4px;color:#3498db">🏒 NHL (12)</strong>
+              <p class="muted" style="line-height:1.5;font-size:.72rem">ML+OT, regular, puck line, goles totales, 1er período, tiros/puntos jugador.</p>
+            </div>
+            <div>
+              <strong style="display:block;margin-bottom:4px;color:#f39c12">⚾ MLB (15)</strong>
+              <p class="muted" style="line-height:1.5;font-size:.72rem">ML, run line, F5, YRFI, hits, HR jugador, bases, RBI, K por lanzador.</p>
+            </div>
+            <div>
+              <strong style="display:block;margin-bottom:4px;color:#c0392b">🥊 MMA / UFC (8)</strong>
+              <p class="muted" style="line-height:1.5;font-size:.72rem">Ganador, método de victoria, rounds, completa los rounds, 1er minuto, decisión.</p>
+            </div>
           </div>
-          <p class="tiny muted" style="margin-top:8px;line-height:1.5">Cada nuevo mercado requiere scraping específico por casa (cada una expone los datos distinto). Lo armamos por fases para garantizar calidad — preferimos 5 mercados <em>perfectos</em> que 15 mediocres.</p>
         </div>
       </details>
 
@@ -368,18 +393,61 @@ ${legsText}
       const awayLogo = window.BSLogos?.teamCrest ? BSLogos.teamCrest(away.id, { size: 22, name: l.away, sport: l.sport }) : BSIcons.teamLogo(away, { size: 22, sport: l.sport });
       const bookLogo = window.BSLogos && l.book ? BSLogos.bookLogo(l.book, { size: 14 }) : '';
       const evClass = (l.ev || 0) > 0 ? 'text-success' : 'muted';
-      // Detectar picks analíticos (córners, tarjetas, goleadores) que vienen
-      // de nuestro motor interno sin cuota real de casa.
-      const isAnalytical = !!l.analytical || ['corners','cards','goalscorer-anytime'].includes(l.market);
+      // Detectar picks analíticos del motor multi-mercado (córners, tarjetas,
+      // goleadores, marcador exacto, props de jugador, etc.)
+      const ANALYTICAL_MARKETS = new Set([
+        'corners-total', 'corners-ht', 'corners-team', 'cards-total',
+        'goalscorer-anytime', 'first-goalscorer',
+        'exact-score', 'ht-result', 'totals-ht', 'dnb',
+        'result-btts', 'first-team-score',
+        'red-card', 'penalty', 'fouls-total', 'shots-on-target-total',
+        'totals-points', 'totals-points-team', 'totals-q1', 'overtime',
+        'player-points', 'player-rebounds', 'player-assists',
+        'tennis-totals-games', 'tennis-tiebreak', 'tennis-aces-total',
+        'nfl-totals', 'nfl-overtime',
+        'hockey-totals', 'hockey-totals-p1',
+        'mlb-totals', 'mlb-yrfi',
+        'mma-rounds', 'mma-method', 'mma-first-minute',
+        'esports-maps-total', 'esports-rounds-total', 'esports-kills-total',
+        // legacy
+        'corners', 'cards'
+      ]);
+      const isAnalytical = !!l.analytical || ANALYTICAL_MARKETS.has(l.market);
+      // Mapa amplio de labels por market
       const marketLabel = {
-        'corners': 'Córners',
-        'cards': 'Tarjetas',
-        'goalscorer-anytime': 'Goleador',
-        'h2h': 'Ganador',
-        'totals': 'Más/Menos',
-        'btts': 'Ambos marcan',
-        'ah': 'Hándicap asiático',
-        'dc': 'Doble oportunidad'
+        // Fútbol
+        'h2h': 'Ganador', 'totals': 'Más/Menos goles', 'btts': 'Ambos marcan',
+        'ah': 'Hándicap asiático', 'dc': 'Doble oportunidad',
+        'corners-total': 'Córners totales', 'corners-ht': 'Córners 1T',
+        'corners-team': 'Córners por equipo',
+        'cards-total': 'Tarjetas', 'red-card': 'Tarjeta roja', 'penalty': 'Penal',
+        'fouls-total': 'Faltas totales', 'shots-on-target-total': 'Tiros al arco',
+        'goalscorer-anytime': 'Goleador anytime', 'first-goalscorer': 'Primer goleador',
+        'exact-score': 'Marcador exacto', 'ht-result': 'Resultado 1T',
+        'totals-ht': 'Goles 1T', 'dnb': 'Empate no apuesta',
+        'result-btts': '1X2 + ambos marcan', 'first-team-score': '1er gol',
+        // Básquet
+        'totals-points': 'Total puntos', 'totals-points-team': 'Puntos por equipo',
+        'totals-q1': 'Total 1Q', 'overtime': 'Prórroga',
+        'player-points': 'Puntos jugador', 'player-rebounds': 'Rebotes jugador',
+        'player-assists': 'Asistencias jugador',
+        // Tenis
+        'tennis-totals-games': 'Total games', 'tennis-tiebreak': 'Tiebreak',
+        'tennis-aces-total': 'Aces totales',
+        // NFL
+        'nfl-totals': 'Total puntos NFL', 'nfl-overtime': 'OT NFL',
+        // NHL
+        'hockey-totals': 'Total goles', 'hockey-totals-p1': 'Goles 1P',
+        // MLB
+        'mlb-totals': 'Total carreras', 'mlb-yrfi': '1ra entrada',
+        // MMA
+        'mma-rounds': 'Total rounds', 'mma-method': 'Método',
+        'mma-first-minute': '1er minuto',
+        // eSports
+        'esports-maps-total': 'Total mapas', 'esports-rounds-total': 'Total rondas',
+        'esports-kills-total': 'Total kills',
+        // legacy
+        'corners': 'Córners', 'cards': 'Tarjetas'
       }[l.market] || l.market || '';
       return `
         <div class="ai-combo-leg" style="display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:10px 12px;background:rgba(255,255,255,0.02);border-radius:8px;border-left:3px solid ${isAnalytical ? '#9b59b6' : riskColor}">

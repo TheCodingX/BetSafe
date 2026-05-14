@@ -1,5 +1,5 @@
 // BetSafe Service Worker — cache strategy: cache-first for assets, network-first for HTML/data
-const VERSION = 'betsafe-v5.0.0';   // MERCADOS EXTENDIDOS: córners + tarjetas + goleadores como análisis interno (Poisson + Elo + historial). Picks marcados "ANÁLISIS IA" con badge violeta. Fair odd estimada con margen casa típico.
+const VERSION = 'betsafe-v5.1.0';   // MOTOR MULTI-MERCADO: 143+ mercados predichos por la IA (fútbol 40+, básquet 22+, tenis 15, NFL 16, NHL 12, MLB 15, MMA 8, eSports 15). Marcador exacto, HT/FT, córners por equipo, tarjetas, rojas, penales, faltas, tiros, jugador goles/pts/reb/ast/3pt, aces, tiebreaks, kills, primera sangre, yardas QB, HR, YRFI, métodos UFC, etc.
 const STATIC_CACHE = `${VERSION}-static`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 

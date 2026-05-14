@@ -169,6 +169,60 @@ function selsToMarket(sels, type, handicap, home, away, sport) {
       if (!ho || !ao) return null;
       return { kind: 'ah', value: { line: handicap, home_minus: ho, away_plus: ao } };
     }
+    /* CÓRNERS — Total córners Más/Menos
+     * Kaizen Gaming usa típicamente: CRNR, CORN, FCRN (full corners)
+     * También puede aparecer como market name "Córners" + tipo total */
+    case 'CRNR':
+    case 'CORN':
+    case 'FCRN':
+    case 'TCRN': {
+      if (!Number.isFinite(handicap)) return null;
+      const over = parsePrice(byCol(0)?.price) ?? parsePrice(byName(/^m[áa]s|over/i)?.price);
+      const under = parsePrice(byCol(1)?.price) ?? parsePrice(byName(/^menos|under/i)?.price);
+      if (!over || !under) return null;
+      return { kind: 'corners_candidate', value: { line: handicap, over, under } };
+    }
+    /* TARJETAS — Total tarjetas Más/Menos
+     * Kaizen: CARD, TBOOK, BOOK (booking points) */
+    case 'CARD':
+    case 'CARDS':
+    case 'BOOK':
+    case 'TBOOK':
+    case 'FBOOK': {
+      if (!Number.isFinite(handicap)) return null;
+      const over = parsePrice(byCol(0)?.price) ?? parsePrice(byName(/^m[áa]s|over/i)?.price);
+      const under = parsePrice(byCol(1)?.price) ?? parsePrice(byName(/^menos|under/i)?.price);
+      if (!over || !under) return null;
+      return { kind: 'cards_candidate', value: { line: handicap, over, under } };
+    }
+    /* HÁNDICAP EUROPEO (3-way) — ganador con hándicap entero, permite empate
+     * Kaizen: HHC3, EHCP, EHCAP */
+    case 'HHC3':
+    case 'EHCP':
+    case 'EHCAP': {
+      if (!Number.isFinite(handicap)) return null;
+      const ho = parsePrice(byCol(0)?.price);
+      const dr = parsePrice(byCol(1)?.price);
+      const ao = parsePrice(byCol(2)?.price);
+      if (!ho || !ao) return null;
+      return { kind: 'eh', value: { line: handicap, home: ho, draw: dr, away: ao } };
+    }
+    /* GOLEADOR — Anota cualquier momento
+     * Kaizen: GLAT, GSAT, ANYG, ATGS */
+    case 'GLAT':
+    case 'GSAT':
+    case 'ANYG':
+    case 'ATGS': {
+      // Returns multiple selections, una por jugador. El caller debe iterar.
+      const players = sels
+        .map(s => ({
+          name: s.name,
+          price: parsePrice(s.price)
+        }))
+        .filter(p => p.name && p.price);
+      if (!players.length) return null;
+      return { kind: 'goalscorer_candidate', value: { players } };
+    }
     default:
       return null;
   }

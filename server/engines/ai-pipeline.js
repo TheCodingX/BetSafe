@@ -1180,20 +1180,17 @@ function mergeSelections(event, factors, quant, poisson, elo, llm, extendedMarke
     }
   }
 
-  // ── PASO 3d: PICKS ANALÍTICOS EXTENDIDOS (córners, tarjetas, goleadores) ──
-  // No tenemos cuotas reales scrapeadas para estos mercados todavía. Emitimos
-  // picks con `analytical: true` para que la UI los muestre con badge
-  // distintivo ("verificá disponibilidad en tu casa"). La cuota es nuestra
-  // fair estimación basada en el modelo Poisson + contexto.
+  // ── PASO 3d: PICKS ANALÍTICOS EXTENDIDOS (multi-sport, multi-market) ──
+  // El motor unificado predice ~143 mercados distintos según deporte:
+  // fútbol: 40+, básquet: 22+, tenis: 15, NFL: 16, NHL: 12, MLB: 15, MMA: 8,
+  // eSports: 15. Cada pick con flag `analytical: true` + disclaimer.
   if (extendedMarkets) {
-    const allExt = [
-      ...(extendedMarkets.corners?.picks || []),
-      ...(extendedMarkets.cards?.picks || []),
-      ...(extendedMarkets.goalScorers || [])
-    ];
+    const allExt = extendedMarkets.picks
+      || [...(extendedMarkets.corners?.picks || []), ...(extendedMarkets.cards?.picks || []), ...(extendedMarkets.goalScorers || [])];
     for (const p of allExt) {
-      // Solo emitir si la prob es realmente alta (>=60% para over/under, >=35% goleador)
-      const minProb = p.market === 'goalscorer-anytime' ? 0.35 : 0.60;
+      // Threshold: 35% para player props (goleadores, anytime), 58% para over/under
+      const isPlayerProp = ['goalscorer-anytime', 'first-goalscorer', 'player-points', 'player-rebounds', 'player-assists'].includes(p.market);
+      const minProb = isPlayerProp ? 0.30 : 0.58;
       if (!p.analyticalProb || p.analyticalProb < minProb) continue;
       out.push({
         type: 'extended',           // categoría distinta (no cons/eq/agg)
