@@ -1192,20 +1192,20 @@ app.post('/api/generator', express.json(), async (req, res) => {
     const chosen = [];
     const usedByEvent = new Map();   // eventId → count
     const usedSports = new Set();
-    const usedMarkets = new Map();   // market → count (DIVERSITY)
-    // Diversity threshold: ningún market puede ocupar > 50% de las legs si hay 3+ legs
-    const maxLegsPerMarket = legs >= 3 ? Math.ceil(legs / 2) : legs;
+    const usedMarkets = new Map();   // market → count
+    // Diversity threshold ESTRICTO: ningún mercado puede repetirse en 2+ legs
+    // si hay >=2 legs. Esto fuerza variedad real (h2h + corners + cards + ...).
+    const maxLegsPerMarket = legs >= 2 ? 1 : legs;
 
+    // PASADA 1: STRICT — ningún mercado repetido. Si no logramos completar
+    // las N legs, hacemos una pasada 2 relajada.
     for (const p of candidates) {
       const evId = p.event.id;
       const cur = usedByEvent.get(evId) || 0;
       if (cur >= legsPerMatch) continue;
-      // Diversidad de mercado: skip si ya tenemos demasiados del mismo
       const mktCount = usedMarkets.get(p.sel.market) || 0;
-      if (legs >= 3 && mktCount >= maxLegsPerMarket && candidates.some(c => (usedMarkets.get(c.sel.market) || 0) < maxLegsPerMarket && !usedByEvent.has(c.event.id))) {
-        continue;
-      }
-      if (mixSports && usedSports.has(p.event.sport) && chosen.length < legs && candidates.some(c => !usedSports.has(c.event.sport))) {
+      if (mktCount >= maxLegsPerMarket) continue;  // STRICT: no repetimos mercado
+      if (mixSports && usedSports.has(p.event.sport) && chosen.length < legs && candidates.some(c => !usedSports.has(c.event.sport) && !chosen.includes(c))) {
         continue;
       }
       chosen.push(p);
@@ -1214,11 +1214,29 @@ app.post('/api/generator', express.json(), async (req, res) => {
       usedMarkets.set(p.sel.market, mktCount + 1);
       if (chosen.length >= legs) break;
     }
-    // Segunda pasada: si quedaron slots vacíos y NO conseguimos diversidad,
-    // los llenamos con lo mejor disponible (sin importar deporte).
+
+    // PASADA 2: relajar diversidad — si no completamos N legs, permitimos
+    // 2 del mismo mercado (pero nunca 3+). Mejor combinada un poco más
+    // monocromática que devolver menos legs.
+    if (chosen.length < legs) {
+      const relaxedMax = 2;
+      for (const p of candidates) {
+        if (chosen.includes(p)) continue;
+        const evId = p.event.id;
+        const cur = usedByEvent.get(evId) || 0;
+        if (cur >= legsPerMatch) continue;
+        const mktCount = usedMarkets.get(p.sel.market) || 0;
+        if (mktCount >= relaxedMax) continue;
+        chosen.push(p);
+        usedByEvent.set(evId, cur + 1);
+        usedMarkets.set(p.sel.market, mktCount + 1);
+        if (chosen.length >= legs) break;
+      }
+    }
+    // PASADA 3 (último recurso): si igual no llegamos, llenamos sin restricciones
     if (chosen.length < legs) {
       for (const p of candidates) {
-        if (chosen.some(c => c.sel === p.sel)) continue;
+        if (chosen.includes(p)) continue;
         const evId = p.event.id;
         const cur = usedByEvent.get(evId) || 0;
         if (cur >= legsPerMatch) continue;
@@ -1725,7 +1743,7 @@ DETECCIÓN DE MERCADOS — IMPORTANTE:
     // ORDEN IMPORTANTE: chequear "Liga Argentina"/lpf ANTES que "la-liga"
     // (porque ambas contienen "liga"). Las regex de lpf son más específicas.
     const KW_ORDERED = [
-      ['lpf',            /(liga\s*argentina|liga\s*profesional|primera\s*argentina|\blpf\b)/i],
+      ['lpf',            /(liga\s*argentina|liga\s*profesional\s*argentina|primera\s*argentina|\blpf\b|liga\s*profesional\s*de\s*f[úu]tbol)/i],
       ['copa-argentina', /(copa\s*argentina)/i],
       ['primera-nacional', /(primera\s*nacional)/i],
       ['premier-league', /(premier\s*league|premier(?:\s+inglesa)?|\bepl\b)/i],
@@ -1786,7 +1804,8 @@ DETECCIÓN DE MERCADOS — IMPORTANTE:
       'uel':            /europa\s*league|^uel\b/i,
       'libertadores':   /libertadores/i,
       'sudamericana':   /sudamericana/i,
-      'lpf':            /liga\s*profesional|liga\s*argentina|primera\s*argentina|^lpf\b/i,
+      // STRICT: requiere "argentina" o LPF explícito — sin esto "Liga Profesional Saudí" matcheaba.
+      'lpf':            /(?:liga\s*profesional\s*de\s*f[úu]tbol|liga\s*profesional\s*argentina|liga\s*argentina|primera\s*argentina|primera\s*divisi[óo]n\s*argentin|\blpf\b|apertura\s*argentin|clausura\s*argentin)/i,
       'copa-argentina': /copa\s*argentina/i,
       'brasileirao':    /brasileir[ãa]o|brasil\s*serie/i,
       'liga-mx':        /liga\s*mx|liga\s*mexicana/i,
