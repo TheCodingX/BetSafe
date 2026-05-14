@@ -2048,19 +2048,50 @@ DETECCIÓN DE MERCADOS — IMPORTANTE:
   }
 
   // ── REGEX FALLBACK para targetOdd (cuota TOTAL) — CRÍTICO ──
-  // Sin esto, "cuota total cerca de 4" se ignoraba y el motor devolvía cuotas
-  // de 20+. Capturamos varias frases comunes en castellano rioplatense.
+  // Capturamos las formas más comunes en castellano rioplatense:
+  //   "cuota total 15" / "cuota cerca de 15" / "cuota final 15"
+  //   "que pague 15" / "que pague x15" / "x15" / "15x" / "por 15"
+  //   "pagar X15" / "queremos 15" / "combinada de cuota 15"
   if (filters.targetOdd == null) {
     const patterns = [
-      /cuota\s+total\s+(?:de|cerca\s+de|alrededor\s+de|aprox(?:imada)?|sobre)\s+(\d+(?:[.,]\d+)?)/i,
+      /cuota\s+total\s+(?:de|cerca\s+de|alrededor\s+de|aprox(?:imada)?|sobre)?\s*(\d+(?:[.,]\d+)?)/i,
       /cuota\s+(?:cerca\s+de|alrededor\s+de|aprox(?:imada)?|sobre)\s+(\d+(?:[.,]\d+)?)/i,
-      /cuota\s+(?:final|combinada|target|objetivo)\s+(?:de\s+)?(\d+(?:[.,]\d+)?)/i,
-      /pague?n?\s+(?:cerca\s+de\s+)?(\d+(?:[.,]\d+)?)\s*x/i,
-      /(?:cuota|paga|x)\s+(\d+(?:[.,]\d+)?)\s*(?:total|combinada|final)/i
+      /cuota\s+(?:final|combinada|target|objetivo|de)\s+(?:de\s+)?(\d+(?:[.,]\d+)?)/i,
+      // "que pague x15" / "que pague 15" / "pague 15x"
+      /pa(?:gar|gue)n?\s+(?:x\s*)?(?:cerca\s+de\s+)?(\d+(?:[.,]\d+)?)\s*x?/i,
+      // "x15" o "x 15" o "15x" pegado a "pague/cuota/multiplicador"
+      /(?:^|\s)x\s*(\d+(?:[.,]\d+)?)\b/i,
+      /\b(\d+(?:[.,]\d+)?)\s*x(?:\s|$)/i,
+      /(?:cuota|paga|x|multiplicador|por)\s+(\d+(?:[.,]\d+)?)\s*(?:total|combinada|final)/i,
+      // "multiplique por 15" / "que multiplique 15"
+      /multiplicar?\s+(?:por\s+)?(\d+(?:[.,]\d+)?)/i
     ];
     for (const re of patterns) {
       const m = prompt.match(re);
-      if (m) { filters.targetOdd = Number(m[1].replace(',', '.')); break; }
+      if (m) {
+        const v = Number(m[1].replace(',', '.'));
+        // Solo aceptar valores razonables (1.5 a 100) para evitar matches falsos
+        if (v >= 1.5 && v <= 100) { filters.targetOdd = v; break; }
+      }
+    }
+  }
+
+  // ── REGEX FALLBACK para timeWindow ──
+  // "hoy" / "para hoy" → today
+  // "mañana" / "para mañana" → tomorrow
+  // "fin de semana" / "este finde" → weekend
+  // "esta semana" → week
+  // Sin esto, "para hoy" se ignoraba y el motor devolvía partidos de TODA la semana.
+  if (parsed?.timeWindow == null) {
+    const p = prompt.toLowerCase();
+    if (/\b(hoy|esta\s*noche|esta\s*tarde|en\s*el\s*d[íi]a|para\s*el\s*d[íi]a\s+de\s+hoy)\b/i.test(p)) {
+      filters.timeWindow = 'today';
+    } else if (/\b(ma[ñn]ana|para\s*ma[ñn]ana)\b/i.test(p)) {
+      filters.timeWindow = 'tomorrow';
+    } else if (/\b(este\s*finde|fin\s*de\s*semana|s[áa]bado|domingo|este\s*s[áa]bado|este\s*domingo)\b/i.test(p)) {
+      filters.timeWindow = 'weekend';
+    } else if (/\b(esta\s*semana|los\s*pr[óo]ximos?\s*d[íi]as)\b/i.test(p)) {
+      filters.timeWindow = 'week';
     }
   }
 
@@ -2080,9 +2111,10 @@ DETECCIÓN DE MERCADOS — IMPORTANTE:
   // ── CRITICAL FIX: el LLM a veces confunde "Liga Argentina" con "la-liga".
   // Si el prompt contiene CLARAMENTE "argentina"/"argentino" → forzar lpf
   // y borrar la-liga si fue agregada incorrectamente.
+  // Tolerante a typos comunes: "argentn[ao]" (sin 'i'), "argentín[ao]" (con tilde)
   const promptLower = prompt.toLowerCase();
-  const mentionsArg = /\bargentin[ao]\b|liga\s*argentina|liga\s*profesional|\blpf\b|primera\s*nacional/i.test(promptLower);
-  const mentionsEsp = /espa[ñn]ol|laliga|la\s*liga\s*espa|primera\s*divisi[óo]n\s*esp/i.test(promptLower);
+  const mentionsArg = /\bargen?t[ií]?n?[ao]?\b|liga\s*arg|liga\s*profesional|\blpf\b|primera\s*nacional|\bafa\b|river|boca|racing|independiente|san\s*lorenzo|estudiantes|v[ée]lez/i.test(promptLower);
+  const mentionsEsp = /espa[ñn]ol|laliga|la\s*liga\s*espa|primera\s*divisi[óo]n\s*esp|real\s*madrid|barcelon|atl[ée]tico\s*madrid/i.test(promptLower);
   if (mentionsArg && !mentionsEsp) {
     // El usuario QUIERE Liga Argentina. Si el LLM agregó la-liga, sacarla.
     filters.leagues = filters.leagues.filter(l => l !== 'la-liga');
