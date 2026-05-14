@@ -1418,13 +1418,41 @@ REGLAS IMPORTANTES:
     }
   }
 
-  // ── REGEX FALLBACK para minOddPerLeg ──
+  // ── REGEX FALLBACK para minOddPerLeg (NO confundir con cuota total) ──
+  // Solo si la frase contiene "cuota por leg" / "cada leg" / "mín por leg"
   if (filters.minOddPerLeg == null) {
-    const m = prompt.match(/cuota\s*(?:mayor|m[áa]s)?\s*(?:de|a|que)?\s*(\d+(?:[.,]\d+)?)/i);
+    const m = prompt.match(/cuota\s+(?:mayor|m[áa]s)\s+(?:de|a|que)\s+(\d+(?:[.,]\d+)?)\s+(?:por|cada)\s+leg/i);
     if (m) filters.minOddPerLeg = Number(m[1].replace(',', '.'));
   }
 
-  // legs: si la IA no lo seteó, default 3 pero permitir que adapte abajo.
+  // ── REGEX FALLBACK para targetOdd (cuota TOTAL) — CRÍTICO ──
+  // Sin esto, "cuota total cerca de 4" se ignoraba y el motor devolvía cuotas
+  // de 20+. Capturamos varias frases comunes en castellano rioplatense.
+  if (filters.targetOdd == null) {
+    const patterns = [
+      /cuota\s+total\s+(?:de|cerca\s+de|alrededor\s+de|aprox(?:imada)?|sobre)\s+(\d+(?:[.,]\d+)?)/i,
+      /cuota\s+(?:cerca\s+de|alrededor\s+de|aprox(?:imada)?|sobre)\s+(\d+(?:[.,]\d+)?)/i,
+      /cuota\s+(?:final|combinada|target|objetivo)\s+(?:de\s+)?(\d+(?:[.,]\d+)?)/i,
+      /pague?n?\s+(?:cerca\s+de\s+)?(\d+(?:[.,]\d+)?)\s*x/i,
+      /(?:cuota|paga|x)\s+(\d+(?:[.,]\d+)?)\s*(?:total|combinada|final)/i
+    ];
+    for (const re of patterns) {
+      const m = prompt.match(re);
+      if (m) { filters.targetOdd = Number(m[1].replace(',', '.')); break; }
+    }
+  }
+
+  // ── REGEX FALLBACK para legs si el LLM no lo extrajo ──
+  // Capturamos "5 partidos" / "5 legs" / "combinada de 5"
+  if (filters.legs == null) {
+    const m = prompt.match(/\b(\d+)\s*(?:partidos?|legs?|equipos?)\b/i) ||
+              prompt.match(/combinada\s+de\s+(\d+)/i);
+    if (m) {
+      const n = Number(m[1]);
+      if (n >= 2 && n <= 8) filters.legs = n;
+    }
+  }
+  // Default 3 si nada se detectó
   if (filters.legs == null) filters.legs = 3;
 
   // ── REGEX FALLBACK: si el LLM no extrajo leagues, hacemos detection manual
@@ -1475,10 +1503,39 @@ REGLAS IMPORTANTES:
   let candidates = orchestrator.events({ sport: filters.sport === 'all' ? 'all' : filters.sport });
   // Filtro de tiempo
   candidates = candidates.filter(e => Number.isFinite(e.start) && e.start >= timeRange[0] && e.start <= timeRange[1]);
-  // Filtro de liga (matching flexible: nombre, slug, alias)
+  // ── Filtro de liga ROBUSTO ──
+  // Antes, el slug 'lpf' no matcheaba leagueName "Liga Profesional de Fútbol"
+  // porque buscaba literal "lpf". Ahora usamos un mapa de slug → patterns
+  // que cubre los nombres reales en español + inglés.
   if (filters.leagues.length) {
-    const leagueRegex = new RegExp(filters.leagues.map(l => l.replace(/-/g, '[\\s-]?')).join('|'), 'i');
-    candidates = candidates.filter(e => leagueRegex.test(e.leagueName || '') || filters.leagues.includes(e.league));
+    const LEAGUE_PATTERNS = {
+      'premier-league': /premier\s*league|premiership\b|english.*premier|epl/i,
+      'la-liga':        /la\s*liga|laliga|primera\s*divisi[óo]n\s*esp|liga\s*espa[ñn]ola/i,
+      'serie-a':        /serie\s*a\b/i,
+      'bundesliga':     /bundesliga/i,
+      'ligue-1':        /ligue\s*[1u]|ligue1/i,
+      'ucl':            /champions\s*league|uefa\s*champions|^ucl\b/i,
+      'uel':            /europa\s*league|^uel\b/i,
+      'libertadores':   /libertadores/i,
+      'sudamericana':   /sudamericana/i,
+      'lpf':            /liga\s*profesional|liga\s*argentina|primera\s*argentina|^lpf\b/i,
+      'copa-argentina': /copa\s*argentina/i,
+      'brasileirao':    /brasileir[ãa]o|brasil\s*serie/i,
+      'liga-mx':        /liga\s*mx|liga\s*mexicana/i,
+      'mls':            /\bmls\b|major\s*league\s*soccer/i,
+      'nba':            /\bnba\b/i,
+      'ufc':            /\bufc\b/i,
+      'primera-nacional': /primera\s*nacional|nacional\s*b\b/i,
+      'copa-mundial':   /copa\s*mundial|mundial\s*fifa|world\s*cup/i
+    };
+    const matchers = filters.leagues
+      .map(slug => LEAGUE_PATTERNS[slug] || new RegExp(slug.replace(/-/g, '[\\s-]?'), 'i'));
+    candidates = candidates.filter(e => {
+      const name = String(e.leagueName || '');
+      const slug = String(e.league || '');
+      return matchers.some(re => re.test(name)) || filters.leagues.includes(slug);
+    });
+    log(`[betsafe-ai] league filter ${filters.leagues.join(',')}: ${candidates.length} candidates`);
   }
   // Filtro: top teams (si el user pide "no tan riesgosa" implícitamente quiere top teams)
   if (filters.preferTopTeams && filters.risk === 'cons') {
@@ -1578,24 +1635,34 @@ REGLAS IMPORTANTES:
     pool.push({ event: a.event, factors: a.factors, sel, llmKey: a.llmKeyFactor, llmSynth: a.llmSynthesis });
   }
 
+  // ── MODO STRICT: si el usuario pidió liga específica + cantidad específica,
+  // NO adaptamos silenciosamente. Es preferible fallar honestamente que
+  // entregar Liga MX cuando el usuario pidió Liga AR.
+  // Solo "adaptamos" cuando NO hay criterios duros (ej: usuario no especificó liga).
+  const userSpecifiedLeague = filters.leagues.length > 0;
+  const userSpecifiedLegs = !!parsed?.legs;   // si el LLM lo extrajo del prompt
+  const userSpecifiedTargetOdd = filters.targetOdd != null;
+  const STRICT = userSpecifiedLeague || userSpecifiedTargetOdd;
+
   if (pool.length < filters.legs) {
-    // ── ADAPTACIÓN: si la IA pidió N legs pero solo conseguimos M < N picks
-    // válidos, devolvemos la combinada con M legs (no es generic, es "lo que
-    // hay disponible cumpliendo los criterios").
-    // Si M >= 2, hacemos la combinada con M en lugar de fallar.
-    if (pool.length >= 2) {
-      log(`[betsafe-ai] adaptando: pediste ${filters.legs} legs, devolvemos ${pool.length}`);
-      filters.legs = pool.length;
-      filters._adapted = true;
-    } else {
+    if (STRICT || pool.length < 2) {
       const bookHint = filters.books.length ? ` en ${filters.books.join('/')}` : '';
-      const oddHint = filters.minOddPerLeg ? ` con cuota ≥ ${filters.minOddPerLeg}` : '';
+      const oddHint = filters.minOddPerLeg ? ` con cuota mínima por leg ${filters.minOddPerLeg}` : '';
+      const targetHint = filters.targetOdd ? ` con cuota total cerca de ${filters.targetOdd}` : '';
+      const leagueHint = filters.leagues.length
+        ? ` en ${filters.leagues.join(' / ').replace(/-/g, ' ')}`
+        : '';
       return res.json({
         ok: false,
         reason: 'insufficient-pool',
-        message: `Buscamos partidos${bookHint}${oddHint} pero solo encontramos ${pool.length} picks que cumplan los criterios. Probá relajar la cuota mínima, agregar más casas o ampliar el rango de tiempo.`,
+        message: `Buscamos ${filters.legs} partidos${leagueHint}${bookHint}${oddHint}${targetHint} pero solo encontramos ${pool.length} picks que cumplan tus criterios. NO te armé una combinada distinta a propósito — preferimos ser honestos y avisarte. Probá ampliar las ligas, reducir la cantidad de legs o ampliar el rango de tiempo.`,
         filters, foundPicks: pool.length
       });
+    } else {
+      // Sin liga/cuota específica → degradamos a la cantidad que hay
+      log(`[betsafe-ai] adaptando legs: pediste ${filters.legs}, devolvemos ${pool.length} (no se especificó liga/cuota)`);
+      filters.legs = pool.length;
+      filters._adapted = true;
     }
   }
 
