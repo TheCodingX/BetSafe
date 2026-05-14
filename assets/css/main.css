@@ -1,7 +1,4 @@
-/* =====================================================================
-   BetSafe — Design System
-   Light mode default · Dark mode opt-in · Tokens · Components · Motion
-   ===================================================================== */
+
 
 /* ---------- Reset ---------- */
 *, *::before, *::after { box-sizing: border-box; }
@@ -198,10 +195,8 @@ body {
 
 /* ---------- Layout ---------- */
 .container { max-width: var(--container); margin-inline: auto; padding-inline: var(--s-5); }
-.container-wide { max-width: var(--container-wide); margin-inline: auto; padding-inline: var(--s-5); }
 .section { padding-block: clamp(var(--s-12), 6vw, var(--s-24)); }
 .row { display: flex; flex-wrap: wrap; gap: var(--s-4); align-items: center; }
-.row-end { display: flex; gap: var(--s-3); align-items: center; justify-content: flex-end; }
 .stack { display: flex; flex-direction: column; gap: var(--s-4); }
 .stack-sm { display: flex; flex-direction: column; gap: var(--s-2); }
 .stack-lg { display: flex; flex-direction: column; gap: var(--s-6); }
@@ -287,8 +282,6 @@ body {
 .btn-gold:hover { box-shadow: 0 10px 30px rgba(212,160,23,.5); }
 
 .btn-danger { --bg: var(--danger); --fg: #fff; --bd: var(--danger); }
-.btn-success { --bg: var(--success); --fg: #fff; --bd: var(--success); }
-
 .btn-sm { padding: 6px 12px; min-height: 32px; font-size: .825rem; }
 .btn-lg { padding: 14px 22px; min-height: 48px; font-size: 1rem; }
 .btn-icon { padding: 8px; min-height: 36px; min-width: 36px; }
@@ -308,7 +301,6 @@ body {
 .card-elev { box-shadow: var(--shadow-md); }
 .card-pad-lg { padding: var(--s-8); }
 .card-pad-sm { padding: var(--s-4); }
-.card-flat { box-shadow: none; }
 .card-tinted { background: var(--surface-2); }
 .card-vip { background: linear-gradient(135deg, #fff8e0 0%, #fffefb 60%); border-color: #f1d27a; position: relative; overflow: hidden; }
 [data-theme="dark"] .card-vip { background: linear-gradient(135deg, #1f1a0b 0%, #16140d 60%); border-color: #4a3a14; }
@@ -384,8 +376,6 @@ body {
 .slider::-moz-range-thumb { width: 18px; height: 18px; border-radius: 50%; background: var(--brand-600); border: 2px solid #fff; box-shadow: var(--shadow-md); cursor: pointer; }
 
 /* Risk slider colored track */
-.slider-risk { background: linear-gradient(90deg, #16a34a 0%, #84cc16 25%, #eab308 50%, #f97316 75%, #dc2626 100%); height: 8px; }
-
 /* ---------- Tables ---------- */
 .table-wrap { overflow-x: auto; border-radius: var(--r-lg); border: 1px solid var(--border); background: var(--surface); }
 .table { width: 100%; font-size: .9rem; border-collapse: collapse; }
@@ -408,7 +398,6 @@ body {
 .kpi { display: flex; flex-direction: column; gap: 6px; padding: var(--s-4); background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); }
 .kpi-label { font-size: .78rem; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
 .kpi-value { font-size: 1.6rem; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
-.kpi-delta { font-size: .82rem; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; }
 .kpi-delta.up { color: var(--success); }
 .kpi-delta.down { color: var(--danger); }
 
@@ -498,10 +487,6 @@ body {
 }
 
 /* Count-up flash */
-.flash-up { animation: flash-up .8s var(--ease-out); }
-.flash-down { animation: flash-down .8s var(--ease-out); }
-@keyframes flash-up { 0% { background: rgba(34,197,94,.18); } 100% { background: transparent; } }
-@keyframes flash-down { 0% { background: rgba(239,68,68,.18); } 100% { background: transparent; } }
 
 /* Shimmer */
 .shimmer { position: relative; overflow: hidden; }
@@ -510,8 +495,6 @@ body {
 @keyframes shimmer { to { transform: translateX(100%); } }
 
 /* Loading skeleton */
-.skel { background: linear-gradient(90deg, var(--surface-2), var(--surface-3), var(--surface-2)); background-size: 200% 100%; animation: skel 1.4s ease-in-out infinite; border-radius: 6px; }
-@keyframes skel { 0% { background-position: 0% 50%; } 100% { background-position: -200% 50%; } }
 
 /* ---------- Hero ---------- */
 .hero { position: relative; padding-block: clamp(var(--s-12), 8vw, var(--s-24)); overflow: hidden; }
@@ -519,7 +502,7 @@ body {
   radial-gradient(600px 600px at 15% 20%, color-mix(in srgb, var(--brand-500) 18%, transparent), transparent 70%),
   radial-gradient(500px 500px at 85% 70%, color-mix(in srgb, var(--brand-700) 12%, transparent), transparent 70%);
   pointer-events: none; z-index: 0;
-  /* Blur menor + GPU compositing (will-change + translate3d) para evitar tartamudeo en scroll */
+  
   filter: blur(28px);
   animation: float-bg 24s ease-in-out infinite alternate;
   will-change: transform;
@@ -590,19 +573,10 @@ body {
 .bar-chart .bar:hover { background: var(--brand-700); }
 
 /* Circular progress */
-.ring-progress { --p: 0; --size: 80px; width: var(--size); height: var(--size); border-radius: 50%; background: conic-gradient(var(--brand-600) calc(var(--p) * 1%), var(--surface-3) 0); display: grid; place-items: center; transition: background .8s var(--ease-out); }
-.ring-progress::before { content: ''; position: absolute; width: calc(var(--size) - 16px); height: calc(var(--size) - 16px); background: var(--surface); border-radius: 50%; }
-.ring-progress span { position: relative; font-weight: 700; font-size: .95rem; }
-
 /* Equity curve container */
-.chart-box { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); padding: var(--s-4); }
-
 /* ---------- Logos / Pills ---------- */
 .book-logo { width: 22px; height: 22px; border-radius: 5px; display: inline-grid; place-items: center; background: var(--surface-2); font-size: .7rem; font-weight: 700; color: var(--text-secondary); flex-shrink: 0; overflow: hidden; }
 .book-logo svg { width: 100%; height: 100%; }
-.team-logo { width: 28px; height: 28px; border-radius: 50%; background: var(--surface-2); display: inline-grid; place-items: center; flex-shrink: 0; overflow: hidden; }
-.team-logo svg { width: 100%; height: 100%; }
-
 /* Match card */
 .match { display: flex; gap: var(--s-3); align-items: center; padding: var(--s-3); border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); transition: transform var(--d-base), box-shadow var(--d-base); }
 .match:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
@@ -644,7 +618,14 @@ body {
 /* ---------- Dashboard layout ---------- */
 .app-shell { display: grid; grid-template-columns: 260px 1fr; gap: 0; min-height: calc(100dvh - var(--header-h)); }
 @media (max-width: 1100px) { .app-shell { grid-template-columns: 1fr; } }
-.sidebar { border-right: 1px solid var(--border); background: var(--surface); padding: var(--s-4); height: calc(100dvh - var(--header-h)); position: sticky; top: var(--header-h); overflow-y: auto; }
+/* FIX (v5.8): el sidebar TENÍA `position: sticky; overflow-y: auto` lo que crea
+ * un nuevo stacking context y rompe el sticky del header en algunas vistas
+ * (logo desaparecía al scrollear el sidebar). Solución:
+ *  1) z-index explícito menor que el header (header tiene z-index:100 en .site-header)
+ *  2) Mantener sticky + overflow-y (necesario para sidebars largos) pero asegurarnos
+ *     que el header está SIEMPRE por encima vía z-index.
+ *  3) `isolation: isolate` no se usa para evitar crear otro stacking context. */
+.sidebar { border-right: 1px solid var(--border); background: var(--surface); padding: var(--s-4); height: calc(100dvh - var(--header-h)); position: sticky; top: var(--header-h); overflow-y: auto; z-index: 1; }
 @media (max-width: 1100px) { .sidebar { display: none; } }
 .sidebar nav button { display: flex; gap: 10px; align-items: center; width: 100%; padding: 10px 12px; border-radius: var(--r-md); color: var(--text-secondary); font-weight: 500; font-size: .9rem; transition: all var(--d-base); text-align: left; }
 .sidebar nav button:hover { background: var(--surface-2); color: var(--text-primary); }
@@ -660,8 +641,6 @@ body {
 @keyframes panel-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
 /* ---------- Page transitions ---------- */
-.page-enter { opacity: 0; transform: translateY(8px); animation: page-enter .4s var(--ease-out) forwards; }
-@keyframes page-enter { to { opacity: 1; transform: translateY(0); } }
 
 /* ---------- Magnetic / shimmer button helpers ---------- */
 .mag { will-change: transform; transition: transform .15s var(--ease-out); }
@@ -713,17 +692,12 @@ body {
 }
 
 /* ---------- Mundial 2026 hero ---------- */
-.wc-hero { background: linear-gradient(135deg, #0b6b3a 0%, #075a30 35%, #0a3d6b 100%); color: #fff; border-radius: var(--r-xl); padding: var(--s-8); position: relative; overflow: hidden; }
-.wc-hero::before { content: ''; position: absolute; inset: 0; background: radial-gradient(420px 420px at 80% 20%, rgba(255,255,255,.16), transparent 70%), radial-gradient(280px 280px at 20% 80%, rgba(255,255,255,.08), transparent 70%); pointer-events: none; }
-.wc-hero > * { position: relative; }
 .countdown { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--s-3); max-width: 520px; }
 .countdown .cu { background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.18); border-radius: var(--r-md); padding: var(--s-3); text-align: center; backdrop-filter: blur(8px); }
 .countdown .cu strong { display: block; font-size: 2rem; font-weight: 800; font-variant-numeric: tabular-nums; }
 .countdown .cu span { font-size: .76rem; opacity: .8; text-transform: uppercase; letter-spacing: .08em; }
 
 /* ---------- Tilt warning ---------- */
-.tilt-banner { background: var(--warning-bg); border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent); border-radius: var(--r-md); padding: var(--s-3); color: var(--warning); display: flex; gap: var(--s-2); align-items: center; }
-
 /* ---------- Reduced motion ---------- */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
@@ -739,36 +713,27 @@ body {
 
 /* ---------- Utilities ---------- */
 .truncate { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .text-success { color: var(--success); }
 .text-danger { color: var(--danger); }
 .text-warning { color: var(--warning); }
-.text-info { color: var(--info); }
 .text-brand { color: var(--brand-600); }
 .text-gold { color: var(--gold-600); }
-.bg-success { background: var(--success-bg); color: var(--success); }
-.bg-danger { background: var(--danger-bg); color: var(--danger); }
-.bg-warning { background: var(--warning-bg); color: var(--warning); }
 .text-center { text-align: center; }
 .text-right { text-align: right; }
 .w-full { width: 100%; }
 .fw-700 { font-weight: 700; }
 .fw-600 { font-weight: 600; }
-.fw-500 { font-weight: 500; }
 .gap-2 { gap: var(--s-2); }
 .gap-3 { gap: var(--s-3); }
 .gap-4 { gap: var(--s-4); }
-.gap-6 { gap: var(--s-6); }
 .mt-2 { margin-top: var(--s-2); }
 .mt-3 { margin-top: var(--s-3); }
 .mt-4 { margin-top: var(--s-4); }
 .mt-6 { margin-top: var(--s-6); }
-.mt-8 { margin-top: var(--s-8); }
 .mb-2 { margin-bottom: var(--s-2); }
 .mb-3 { margin-bottom: var(--s-3); }
 .mb-4 { margin-bottom: var(--s-4); }
 .mb-6 { margin-bottom: var(--s-6); }
-.mb-8 { margin-bottom: var(--s-8); }
 .relative { position: relative; }
 
 /* Scrollbar */
@@ -777,41 +742,10 @@ body {
 ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 999px; border: 3px solid var(--bg-1); }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-tertiary); }
 
-/* =====================================================================
- * BetSafe v2 — Animation overhaul: gradient mesh, 3D tilt, gold particles,
- * magnetic, parallax, custom cursor for VIP, scroll-driven, stagger-in,
- * ticker shimmer, brand-mark idle pulse, premium hover sweeps.
- * GPU-only (transform + opacity). Honors prefers-reduced-motion.
- * ===================================================================*/
-
 /* -------- 3D card tilt (set on .tilt elements via JS data attributes) */
 .tilt { transform-style: preserve-3d; transition: transform .25s cubic-bezier(.2,.7,.2,1); will-change: transform; }
 .tilt > * { transform: translateZ(0); }
-.tilt-glow {
-  position: relative; isolation: isolate;
-}
-.tilt-glow::before {
-  content: ''; position: absolute; inset: -1px; border-radius: inherit; pointer-events: none; z-index: -1;
-  background: radial-gradient(220px circle at var(--mx,50%) var(--my,50%), color-mix(in srgb, var(--brand) 25%, transparent) 0%, transparent 60%);
-  opacity: 0; transition: opacity .25s ease;
-}
-.tilt-glow:hover::before { opacity: 1; }
-
 /* -------- Gradient mesh (hero, feature sections) */
-.mesh-bg {
-  position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: -1; border-radius: inherit;
-}
-.mesh-bg::before, .mesh-bg::after {
-  content: ''; position: absolute; width: 60vmax; height: 60vmax; border-radius: 50%; filter: blur(70px); opacity: .55; mix-blend-mode: screen;
-  background: radial-gradient(closest-side, color-mix(in srgb, var(--brand) 70%, transparent), transparent 70%);
-  animation: mesh-drift 22s ease-in-out infinite alternate;
-}
-.mesh-bg::after {
-  background: radial-gradient(closest-side, color-mix(in srgb, var(--accent, #34d399) 60%, transparent), transparent 70%);
-  animation-duration: 28s; animation-direction: alternate-reverse;
-  left: auto; right: -10vmax; top: -10vmax;
-}
-[data-theme=dark] .mesh-bg::before, [data-theme=dark] .mesh-bg::after { opacity: .35; }
 @keyframes mesh-drift {
   0%   { transform: translate(-15vmax, -10vmax) scale(1) rotate(0deg); }
   50%  { transform: translate(0, 5vmax) scale(1.15) rotate(20deg); }
@@ -831,7 +765,6 @@ body {
 @keyframes vip-rotate { to { --ang: 360deg; } }
 @property --ang { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
 
-.vip-glow { box-shadow: 0 8px 28px -12px rgba(212, 162, 74, .55), inset 0 1px 0 rgba(255, 224, 122, .35); }
 .vip-text {
   background: linear-gradient(120deg, #FFE07A 0%, #FFFFFF 35%, #D4A24A 70%, #FFE07A 100%);
   background-size: 200% 100%;
@@ -883,12 +816,7 @@ body {
 }
 
 /* -------- Number flash (used by JS counter or CSS class) */
-@keyframes num-flash {
-  0%   { color: var(--text-primary); transform: translateY(0); }
-  35%  { color: var(--brand); transform: translateY(-1px); }
-  100% { color: var(--text-primary); transform: translateY(0); }
-}
-.num-flash { animation: num-flash .55s cubic-bezier(.2,.7,.2,1); }
+
 @keyframes odd-up   { 0% { color: var(--success); transform: scale(1.1); } 100% { transform: none; } }
 @keyframes odd-down { 0% { color: var(--danger);  transform: scale(.92); } 100% { transform: none; } }
 .odd-up   { animation: odd-up .5s cubic-bezier(.2,.7,.2,1); }
@@ -915,13 +843,9 @@ body {
   position: relative; overflow: hidden; mask-image: linear-gradient(90deg, transparent 0, #000 6%, #000 94%, transparent 100%);
   -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 6%, #000 94%, transparent 100%);
 }
-.ticker__track { display: inline-flex; gap: 2.4rem; padding-block: .9rem; animation: ticker-scroll 38s linear infinite; will-change: transform; }
 .ticker:hover .ticker__track { animation-play-state: paused; }
-.ticker__item { display: inline-flex; align-items: center; gap: .55rem; font-variant-numeric: tabular-nums; font-weight: 600; }
-@keyframes ticker-scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 
 /* -------- Sparkline draw on enter */
-.spark-path { stroke-dasharray: 240; stroke-dashoffset: 240; transition: stroke-dashoffset 1.5s cubic-bezier(.2,.7,.2,1); }
 .spark-path.is-in { stroke-dashoffset: 0; }
 
 /* -------- Magnetic button (transform set by JS) */
@@ -972,13 +896,6 @@ body.vip-cursor *, body.vip-cursor *::before, body.vip-cursor *::after { cursor:
 }
 
 /* -------- Skeleton shimmer */
-.skel { position: relative; overflow: hidden; background: var(--bg-2); border-radius: 8px; min-height: 14px; }
-.skel::after {
-  content: ''; position: absolute; inset: 0;
-  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--text-primary) 8%, transparent), transparent);
-  transform: translateX(-100%); animation: skel-shimmer 1.4s infinite;
-}
-@keyframes skel-shimmer { to { transform: translateX(100%); } }
 
 /* -------- Confetti (used on VIP unlock + winning bet) */
 .confetti { position: fixed; inset: 0; pointer-events: none; z-index: 9000; overflow: hidden; }
@@ -1010,10 +927,6 @@ body.vip-cursor *, body.vip-cursor *::before, body.vip-cursor *::after { cursor:
 }
 
 /* -------- Glass card hover */
-.card-hov { transition: transform .35s cubic-bezier(.2,.7,.2,1), box-shadow .35s, border-color .25s; }
-.card-hov:hover { transform: translateY(-4px); box-shadow: 0 24px 48px -22px rgba(0,0,0,.18); border-color: color-mix(in srgb, var(--brand) 40%, var(--border)); }
-[data-theme=dark] .card-hov:hover { box-shadow: 0 28px 60px -28px rgba(0,0,0,.85); }
-
 /* -------- Logo strip (book/team) */
 .logo-strip {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(70px, 1fr)); gap: .9rem; padding: 1rem;
@@ -1028,29 +941,8 @@ body.vip-cursor *, body.vip-cursor *::before, body.vip-cursor *::after { cursor:
 .logo-strip__item svg { width: 38px; height: 38px; }
 
 /* -------- Country / nation chip */
-.nation-chip {
-  display: inline-flex; align-items: center; gap: .5rem; padding: .35rem .6rem; border-radius: 8px;
-  background: var(--bg-2); border: 1px solid var(--border); font-size: .8rem; font-weight: 600;
-  transition: transform .18s ease, border-color .18s ease;
-}
-.nation-chip:hover { transform: translateY(-1px); border-color: color-mix(in srgb, var(--brand) 50%, var(--border)); }
-.nation-chip svg { width: 22px; height: 16px; border-radius: 2px; box-shadow: 0 0 0 1px rgba(0,0,0,.06); }
-
 /* -------- Confederation banner */
-.confed-banner {
-  display: inline-flex; align-items: center; gap: .55rem; padding: .4rem .8rem;
-  background: var(--bg-2); border: 1px solid var(--border); border-radius: 999px; font-weight: 700; font-size: .85rem;
-}
-.confed-banner svg { width: 22px; height: 22px; }
-
 /* -------- WC2026 hero countdown */
-.wc-hero {
-  position: relative; padding: 3rem 2rem; border-radius: 22px; overflow: hidden;
-  background: linear-gradient(135deg, #0a1d6b 0%, #1a3a8e 60%, #d4a24a 200%);
-  color: #fff; box-shadow: 0 30px 70px -28px rgba(10, 29, 107, .55);
-}
-.wc-hero h2 { color: #fff; font-size: clamp(1.6rem, 3.6vw, 2.6rem); margin: 0; line-height: 1.05; letter-spacing: -.02em; }
-.wc-hero p { color: rgba(255, 255, 255, .8); }
 .wc-hero .countdown {
   display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .8rem; margin-top: 1.2rem;
 }
@@ -1066,8 +958,7 @@ body.vip-cursor *, body.vip-cursor *::before, body.vip-cursor *::after { cursor:
   .mesh-bg::before, .mesh-bg::after, .hero-orbs span, .vip-aura::before, .ticker__track,
   .vip-particles span, .logo-mark--anim, .vip-text { animation: none !important; }
   .reveal, .reveal-x, .stagger > * { opacity: 1 !important; transform: none !important; }
-  .spark-path { stroke-dashoffset: 0 !important; }
-}
+  }
 
 /* -------- Print: hide non-essential animated bits */
 @media print {
@@ -1153,7 +1044,6 @@ body.vip-cursor *, body.vip-cursor *::before, body.vip-cursor *::after { cursor:
   50%      { box-shadow: 0 0 0 6px transparent; }
 }
 
-/* ---- Hero accent recolor (gradient now uses brand green + accent blue, not gold) ---- */
 .hero h1 .grad {
   background: linear-gradient(120deg, var(--brand-600), var(--accent-700) 70%);
   -webkit-background-clip: text; background-clip: text; color: transparent;
@@ -1161,7 +1051,6 @@ body.vip-cursor *, body.vip-cursor *::before, body.vip-cursor *::after { cursor:
 }
 @keyframes grad-pan { 0%,100% { background-position: 0 0; } 50% { background-position: 100% 0; } }
 
-/* ---- Animated brand wordmark: green→accent-blue, NOT gold (only gold when explicitly vip) ---- */
 .brand-wm-text:not(.gold) {
   background: linear-gradient(90deg, var(--brand-700), var(--accent-700)) !important;
   -webkit-background-clip: text !important; background-clip: text !important;
@@ -1275,7 +1164,7 @@ body.vip-cursor *, body.vip-cursor *::before, body.vip-cursor *::after { cursor:
 @media (prefers-reduced-motion: reduce) { .help-q { transition: none !important; } }
 
 /* ---- AI Picks: fix overflow + responsive grid ---- */
-/* (Override viejo desactivado — ahora aiPicks es flex-column, ver más abajo) */
+
 #aiPicks:not([data-legacy]) { grid-template-columns: unset; }
 #aiPicks .card { overflow: hidden; min-width: 0; }
 #aiPicks .grid.grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
@@ -1296,7 +1185,6 @@ body.vip-cursor *, body.vip-cursor *::before, body.vip-cursor *::after { cursor:
 .risk-pill.mid  { background: color-mix(in srgb, var(--warning) 18%, var(--bg-1)); color: var(--warning); }
 .risk-pill.high { background: var(--danger-bg); color: var(--danger); }
 
-/* ---- Logo strip with real CDN logos: container with white bg in dark, light bg in light ---- */
 .logo-strip { background: var(--bg-1) !important; }
 [data-theme=dark] .logo-strip { background: rgba(255,255,255,.02) !important; }
 .logo-strip__item .logo-img img { background: #fff; padding: 4px; border-radius: 6px; }
@@ -1359,19 +1247,7 @@ body.vip-cursor *, body.vip-cursor *::before, body.vip-cursor *::after { cursor:
 .section-head h2 { display: flex; align-items: center; }
 
 /* ---- Floating CTA shimmer for VIP unlock ---- */
-.vip-unlock-card {
-  position: relative; padding: 1.5rem; border-radius: 18px; overflow: hidden;
-  background: linear-gradient(135deg, #fffaeb 0%, #fff5d6 100%);
-  border: 1px solid #f1d77a;
-}
-.vip-unlock-card::before {
-  content: ''; position: absolute; inset: 0; pointer-events: none;
-  background: radial-gradient(280px circle at var(--mx,50%) var(--my,30%), rgba(255,224,122,.45), transparent 60%);
-  transition: background .25s;
-}
-[data-theme=dark] .vip-unlock-card { background: linear-gradient(135deg, rgba(212,162,74,.10), rgba(212,162,74,.02)); }
 
-/* ---- Force buttons NOT gold by default (only btn-premium and btn-gold are gold) ---- */
 .btn-primary, .btn.btn-primary {
   background: var(--brand-600) !important; color: #fff !important; border-color: var(--brand-600) !important;
 }
@@ -1390,8 +1266,6 @@ body.vip-cursor *, body.vip-cursor *::before, body.vip-cursor *::after { cursor:
 }
 
 /* ---- Surebet dot in hero remains gold (it IS a VIP element) ---- */
-.surebet-dot { background: linear-gradient(135deg, #FFE07A, #D4A24A); border-radius: 50%; width: 8px; height: 8px; box-shadow: 0 0 0 3px color-mix(in srgb, #D4A24A 25%, transparent); animation: pulse-gold 2s ease-in-out infinite; }
-@keyframes pulse-gold { 50% { box-shadow: 0 0 0 6px transparent; } }
 
 /* ---- Marketing trust strip ---- */
 .trust-row {
@@ -1413,15 +1287,11 @@ body.vip-cursor *, body.vip-cursor *::before, body.vip-cursor *::after { cursor:
 .cta-arrow:hover .arrow { transform: translateX(2px); }
 
 /* ---- Floating elements (parallax decoration) ---- */
-.float-deco { position: absolute; pointer-events: none; opacity: .15; filter: blur(.5px); }
 .float-deco.f1 { top: 10%; left: 5%; animation: f-drift 18s ease-in-out infinite alternate; }
-.float-deco.f2 { bottom: 10%; right: 8%; animation: f-drift 22s ease-in-out infinite alternate-reverse; }
 @keyframes f-drift {
   0% { transform: translate(0, 0) rotate(0); }
   100% { transform: translate(20px, -15px) rotate(8deg); }
 }
-@media (prefers-reduced-motion: reduce) { .float-deco { animation: none !important; } }
-
 
 /* =====================================================================
  * v4 — Hot fixes per user feedback
@@ -1431,7 +1301,6 @@ body.vip-cursor *, body.vip-cursor *::before, body.vip-cursor *::after { cursor:
  * 4) Logo strip cleaner background + spacing
  * ===================================================================*/
 
-/* 1) Remove white background on logos — keep them transparent against parent */
 .logo-strip__item .logo-img img,
 .logo-strip__item .flag-img img,
 .tk .logo-img img,
@@ -1452,54 +1321,12 @@ body.vip-cursor *, body.vip-cursor *::before, body.vip-cursor *::after { cursor:
 .tk .logo-img { padding: 0 !important; }
 
 /* 2) Risk slider — proper layout, labels don't wrap awkwardly */
-.risk-slider-container {
-  display: grid;
-  grid-template-columns: 1fr 3fr auto;
-  gap: 16px;
-  align-items: center;
-  width: 100%;
-}
-.risk-slider-container > .risk-slider-label { font-weight: 700; }
-.risk-slider-track {
-  position: relative; display: flex; align-items: center; gap: 10px;
-}
 .risk-slider-track .min, .risk-slider-track .max {
   font-family: var(--font-mono); font-size: .78rem; font-weight: 700;
   color: var(--text-tertiary); flex-shrink: 0;
 }
-.risk-slider-track input[type=range] { flex: 1; }
-.risk-slider-current {
-  font-family: var(--font-mono); font-size: 1rem; font-weight: 800;
-  color: var(--accent-700); min-width: 56px; text-align: right;
-  font-feature-settings: 'tnum';
-}
-[data-theme=dark] .risk-slider-current { color: var(--accent-300); }
-@media (max-width: 720px) {
-  .risk-slider-container { grid-template-columns: 1fr; gap: 8px; }
-}
 
 /* Better range slider visuals */
-.slider-risk {
-  -webkit-appearance: none; appearance: none;
-  height: 8px; border-radius: 999px; outline: none;
-  background: linear-gradient(90deg, #16a34a 0%, #facc15 50%, #ef4444 100%);
-}
-.slider-risk::-webkit-slider-thumb {
-  -webkit-appearance: none; appearance: none;
-  width: 22px; height: 22px; border-radius: 50%;
-  background: #fff;
-  border: 3px solid var(--accent-700);
-  box-shadow: 0 4px 12px rgba(0,0,0,.18);
-  cursor: grab; transition: transform .15s, box-shadow .15s;
-}
-.slider-risk::-webkit-slider-thumb:active { cursor: grabbing; transform: scale(1.1); }
-.slider-risk::-moz-range-thumb {
-  width: 22px; height: 22px; border-radius: 50%;
-  background: #fff; border: 3px solid var(--accent-700);
-  box-shadow: 0 4px 12px rgba(0,0,0,.18); cursor: grab;
-}
-[data-theme=dark] .slider-risk::-webkit-slider-thumb { border-color: var(--accent-300); }
-
 /* 3) Dark mode fix for translucent inner cards (used in VIP upsell) */
 [data-theme=dark] .card[style*="rgba(255,255,255,.6)"],
 [data-theme=dark] .card[style*="rgba(255, 255, 255, 0.6)"] {
@@ -1528,7 +1355,6 @@ body.vip-cursor *, body.vip-cursor *::before, body.vip-cursor *::after { cursor:
 .logo-strip__item { padding: .75rem .25rem; }
 .logo-strip__item svg, .logo-strip__item .logo-img { width: 48px !important; height: 48px !important; }
 .logo-strip__item .logo-img img { max-width: 100%; max-height: 100%; }
-
 
 /* =====================================================================
  * v5 — Pro fixes per user feedback
@@ -1627,22 +1453,6 @@ body.vip-cursor *, body.vip-cursor *::before, body.vip-cursor *::after { cursor:
 .tracker-kpi .delta.down { color: var(--danger); }
 
 /* ---- 3) WC2026 OFFICIAL COLORS ---- */
-.wc-hero {
-  background: linear-gradient(135deg,
-    #00205B 0%,    /* USA navy */
-    #006847 35%,   /* MEX green */
-    #C8102E 70%,   /* CAN/MEX red */
-    #FFD700 100%   /* gold trophy */
-  ) !important;
-  color: #fff !important; border-radius: 22px; position: relative; overflow: hidden;
-}
-.wc-hero::before {
-  content: ''; position: absolute; inset: 0; pointer-events: none;
-  background: 
-    radial-gradient(420px 420px at 80% 20%, rgba(255, 215, 0, .25), transparent 60%),
-    radial-gradient(280px 280px at 20% 80%, rgba(255, 255, 255, .15), transparent 70%),
-    repeating-linear-gradient(45deg, transparent 0px, transparent 80px, rgba(255,255,255,.04) 80px, rgba(255,255,255,.04) 81px);
-}
 .wc-hero h1, .wc-hero h2, .wc-hero .lead { color: #fff !important; }
 .wc-hero .countdown b {
   background: rgba(255, 255, 255, .12);
@@ -1687,8 +1497,6 @@ body.vip-cursor *, body.vip-cursor *::before, body.vip-cursor *::after { cursor:
 .league-chip img, .league-chip .logo-img { width: 18px; height: 18px; flex-shrink: 0; }
 .league-chip .logo-img img { width: 100%; height: 100%; object-fit: contain; }
 
-/* eSports chip: estilo neon/gaming distintivo para que el usuario distinga
- * inmediatamente que NO es un deporte tradicional. */
 .league-chip.is-esports {
   background: linear-gradient(135deg, rgba(120,0,255,0.08), rgba(0,200,255,0.08));
   border: 1px solid rgba(120,0,255,0.35);
@@ -1715,73 +1523,12 @@ body.vip-cursor *, body.vip-cursor *::before, body.vip-cursor *::after { cursor:
 .league-chip.is-esports svg { color: currentColor; }
 
 /* Style native select with image-text — fallback for old browsers */
-.select-with-logo {
-  display: inline-grid; grid-template-columns: auto 1fr;
-  gap: 8px; align-items: center; padding: 8px 12px;
-  background: var(--surface); border: 1px solid var(--border-strong); border-radius: 10px;
-  cursor: pointer; transition: border-color .2s;
-}
-.select-with-logo:hover { border-color: var(--accent-600); }
 
-
-/* =====================================================================
- * v6 — WC2026 official brand colors enhanced
- * Three host nations: USA navy + Mexico green + Canada red + FIFA gold
- * ===================================================================*/
-.wc-hero {
-  position: relative; isolation: isolate;
-  padding: 3rem 2.5rem;
-  background:
-    radial-gradient(1200px 380px at 100% 0%, rgba(255, 215, 0, .35), transparent 60%),
-    radial-gradient(900px 320px at 0% 100%, rgba(0, 32, 91, .55), transparent 60%),
-    linear-gradient(135deg,
-      #00205B 0%,    /* USA navy */
-      #1a3a8e 22%,   /* deep blue bridge */
-      #006847 48%,   /* MEX green */
-      #C8102E 78%,   /* CAN/MEX red */
-      #FFD700 100%   /* gold trophy */
-    ) !important;
-  color: #fff !important; border-radius: 22px;
-  overflow: hidden;
-  box-shadow: 0 30px 80px -30px rgba(0, 32, 91, .55);
-  border: 1px solid rgba(255, 215, 0, .18);
-}
 /* Diagonal stripe overlay (host country flag-stripe motif) */
-.wc-hero::before {
-  content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 0;
-  background:
-    radial-gradient(420px 420px at 80% 20%, rgba(255, 215, 0, .25), transparent 60%),
-    radial-gradient(280px 280px at 20% 80%, rgba(255, 255, 255, .15), transparent 70%),
-    repeating-linear-gradient(135deg, transparent 0 90px, rgba(255,255,255,.04) 90px 91px);
-}
 /* Animated gold ring around the hero */
-.wc-hero::after {
-  content: ''; position: absolute; inset: -1px; padding: 1px;
-  border-radius: inherit; pointer-events: none; z-index: 0;
-  background: conic-gradient(from var(--ang-wc, 0deg),
-    rgba(255, 215, 0, .0) 0deg,
-    rgba(255, 215, 0, .85) 60deg,
-    rgba(255, 255, 255, .5) 130deg,
-    rgba(200, 16, 46, .8) 200deg,
-    rgba(0, 104, 71, .8) 270deg,
-    rgba(0, 32, 91, .8) 340deg,
-    rgba(255, 215, 0, .0) 360deg);
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-          mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor; mask-composite: exclude;
-  animation: wc-ring 14s linear infinite;
-}
 @keyframes wc-ring { to { --ang-wc: 360deg; } }
 @property --ang-wc { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
 
-.wc-hero > * { position: relative; z-index: 1; }
-.wc-hero h1, .wc-hero h2 {
-  color: #fff !important;
-  text-shadow: 0 2px 18px rgba(0, 32, 91, .5);
-  font-size: clamp(2rem, 4.5vw, 3.4rem);
-  letter-spacing: -.03em;
-  line-height: 1.04;
-}
 .wc-hero .lead { color: rgba(255, 255, 255, .85) !important; }
 
 /* Countdown blocks with 2026 brand glow */
@@ -1885,13 +1632,6 @@ body.vip-cursor *, body.vip-cursor *::before, body.vip-cursor *::after { cursor:
 #wcTrends .row { padding: 8px 0; border-bottom: 1px dashed var(--border); }
 #wcTrends .row:last-child { border-bottom: 0; }
 
-
-/* =====================================================================
- * v7 — Aesthetic background: animated aurora mesh + subtle dot grid
- * Inspired by Linear / Vercel / Stripe premium fintech UI
- * Layered, GPU-only (transform + opacity), respects reduced-motion
- * ===================================================================*/
-
 /* Aurora mesh: 3 large blurred orbs drifting */
 body {
   position: relative;
@@ -1928,9 +1668,6 @@ body::after {
           mask-image: radial-gradient(ellipse 75% 55% at 50% 40%, #000 25%, transparent 80%);
   opacity: .55;
 }
-
-/* aurora-drift: dos overrides antiguas borradas; la definición canónica
- * está más abajo en este archivo (líneas ~2150). Mantener esa única. */
 
 /* Dark mode: deeper aurora with cooler tones */
 [data-theme=dark] body {
@@ -1971,8 +1708,6 @@ body::after {
 .hero.spotlight::before { background: transparent !important; backdrop-filter: none !important; }
 .hero.spotlight .ring { box-shadow: none !important; }
 
-/* Section "ribbons" — every other section gets a barely-there tint to create
-   a rhythm without harsh dividers */
 main > .section:nth-of-type(even),
 main > section.section:nth-of-type(even) {
   position: relative;
@@ -2015,14 +1750,6 @@ main > section.section:nth-of-type(even)::before {
   .eyebrow-elegant::after { animation: none !important; }
 }
 
-
-/* =====================================================================
- * v8 — Stronger, more visible aurora animation
- * Faster drift, larger amplitude, secondary breathing layer, hero shimmer
- * ===================================================================*/
-
-/* Override v7 eliminado — la definición canónica de aurora-drift está
- * más abajo (~línea 2150). Mantenemos solo el binding al body::before. */
 body::before {
   animation: aurora-drift 22s ease-in-out infinite alternate !important;
 }
@@ -2049,7 +1776,6 @@ html::before {
     radial-gradient(720px 560px at 20% 90%, rgba(56, 122, 230, .06), transparent 70%);
 }
 
-/* Animated gradient line under each .h1 / .h2 / .h3 inside .hero — adds rhythm */
 .hero h1::after {
   content: '';
   display: block;
@@ -2114,8 +1840,6 @@ html::before {
   filter: blur(80px) !important; opacity: .75 !important;
   animation: orb-float-3 26s ease-in-out infinite !important;
 }
-/* orb-float-1/2/3: definiciones tempranas eliminadas. La versión canónica
- * (con movimientos más amplios) está más abajo (~línea 2226). */
 
 /* prefers-reduced-motion: kill these */
 @media (prefers-reduced-motion: reduce) {
@@ -2125,13 +1849,6 @@ html::before {
   .hero .hero-orbs::before,
   .hero .hero-orbs::after { animation: none !important; }
 }
-
-
-/* =====================================================================
- * v9 — ULTRA visible animated background
- * Larger more saturated orbs, horizontal gradient sweep, wave SVG lines
- * Animations are now obvious to the human eye
- * ===================================================================*/
 
 /* Base body keeps soft off-white but with visible mesh */
 body {
@@ -2257,35 +1974,12 @@ body > .aurora-waves,
   .hero-orbs span { animation: none !important; }
 }
 
-
-/* =====================================================================
- * v10 — Pro live comparator demo + particle background
- * ===================================================================*/
-
 /* --- Live comparator demo card --- */
 .cmp-demo { padding: 14px 14px 12px !important; }
-.cmp-demo-grid { gap: 8px !important; }
-.cmp-cell { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-
-.odd-pro {
-  position: relative;
-  width: 100%; min-height: 60px;
-  display: grid; grid-template-rows: auto auto auto; gap: 4px;
-  padding: 8px 10px; border-radius: 12px;
-  background: var(--surface); border: 1px solid var(--border);
-  cursor: pointer; transition: transform .2s, box-shadow .2s, border-color .2s;
-  text-align: left; font-family: inherit;
-}
-.odd-pro:hover { transform: translateY(-2px); box-shadow: 0 8px 18px -8px rgba(15,42,79,.18); border-color: var(--accent-300); }
 .odd-pro.best {
   border-color: var(--brand-500);
   background: linear-gradient(135deg, var(--brand-50), var(--surface));
   box-shadow: 0 0 0 1px var(--brand-500), 0 6px 14px -8px color-mix(in srgb, var(--brand-600) 35%, transparent);
-}
-.odd-pro .cmp-book {
-  display: inline-flex; align-items: center; gap: 6px;
-  font-size: .72rem; color: var(--text-secondary); font-weight: 700;
-  min-width: 0;
 }
 .odd-pro .book-logo {
   width: 18px; height: 18px; flex-shrink: 0;
@@ -2295,22 +1989,7 @@ body > .aurora-waves,
 }
 .odd-pro .book-logo img,
 .odd-pro .book-logo svg { width: 100%; height: 100%; object-fit: contain; }
-.odd-pro .cmp-book-name {
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  font-size: .72rem; max-width: 80px;
-}
-.odd-pro .cmp-odd {
-  font-size: 1.1rem; font-weight: 900; letter-spacing: -.02em;
-  color: var(--text-primary); font-feature-settings: 'tnum';
-}
 .odd-pro.best .cmp-odd { color: var(--brand-700); }
-.odd-pro .cmp-tag {
-  position: absolute; top: 6px; right: 6px;
-  font-size: .56rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
-  padding: 2px 6px; border-radius: 999px;
-  background: var(--brand-600); color: #fff;
-  animation: tag-pulse 2.4s ease-in-out infinite;
-}
 @keyframes tag-pulse {
   0%, 100% { transform: scale(1);    opacity: 1;   }
   50%      { transform: scale(1.06); opacity: .85; }
@@ -2355,9 +2034,7 @@ html::before { display: none !important; }
 
 @media (prefers-reduced-motion: reduce) {
   .bs-particles canvas { display: none; }
-  .odd-pro .cmp-tag { animation: none !important; }
-}
-
+  }
 
 /* =====================================================================
  * v11 — Dark mode background fix
@@ -2405,36 +2082,17 @@ html[data-theme=dark] .hero-orbs span:nth-child(3) {
   opacity: 1 !important;
 }
 
-
-/* =====================================================================
- * v12 — Dark mode for live comparator demo cards (cmp-demo)
- * The .odd-pro buttons used --brand-50 (light green) which renders muddy
- * grey in dark mode. Force proper dark surfaces and brand-tinted border.
- * ===================================================================*/
-
 [data-theme=dark] .cmp-demo {
   background: rgba(255,255,255,.03) !important;
   border-color: rgba(255,255,255,.10) !important;
 }
 
-[data-theme=dark] .odd-pro {
-  background: rgba(255,255,255,.04);
-  border-color: rgba(255,255,255,.10);
-  color: var(--text-primary);
-}
-[data-theme=dark] .odd-pro:hover {
-  background: rgba(255,255,255,.08);
-  border-color: rgba(74, 222, 128, .35);
-  box-shadow: 0 8px 18px -8px rgba(0,0,0,.45);
-}
 [data-theme=dark] .odd-pro.best {
   background: linear-gradient(135deg, rgba(34,197,94,.22), rgba(34,197,94,.06)) !important;
   border-color: rgba(74, 222, 128, .55) !important;
   box-shadow: 0 0 0 1px rgba(74,222,128,.45), 0 6px 16px -8px rgba(34,197,94,.4);
 }
 [data-theme=dark] .odd-pro.best .cmp-odd { color: #4ade80; }
-[data-theme=dark] .odd-pro .cmp-book { color: rgba(255,255,255,.78); }
-[data-theme=dark] .odd-pro .cmp-odd { color: #f1f5f9; }
 [data-theme=dark] .odd-pro .book-logo {
   background: rgba(255,255,255,.08);
   box-shadow: 0 0 0 1px rgba(255,255,255,.05);
@@ -2446,11 +2104,6 @@ html[data-theme=dark] .hero-orbs span:nth-child(3) {
 [data-theme=dark] .cmp-meta-item .text-success { color: #4ade80 !important; }
 
 /* The "MEJOR" tag pulse — better contrast in dark */
-[data-theme=dark] .odd-pro .cmp-tag {
-  background: linear-gradient(135deg, #22c55e, #16a34a);
-  box-shadow: 0 0 12px rgba(34,197,94,.5);
-}
-
 /* Also fix the team-logo small wrapper inside dark cmp */
 [data-theme=dark] .cmp-demo .team-logo,
 [data-theme=dark] .cmp-demo .book-logo { background: transparent; }
@@ -2468,14 +2121,6 @@ html[data-theme=dark] .hero-orbs span:nth-child(3) {
   border-color: rgba(255,255,255,.10) !important;
   color: rgba(255,255,255,.92);
 }
-
-
-/* =====================================================================
- * v13 — Professional minimal background
- * Single brand accent, slow drifting spotlight, subtle dot grid
- * Inspired by Stripe / Linear / Mercury fintech aesthetic
- * Removes the multi-color "estelas" the user disliked
- * ===================================================================*/
 
 /* Reset prior bg layers */
 html[data-theme=light] body,
@@ -2552,11 +2197,6 @@ html[data-theme=dark] .hero-orbs span:nth-child(1) {
   .hero-orbs span { animation: none !important; }
 }
 
-
-/* =====================================================================
- * v14 — Onboarding stepper component
- * Numbered circles, animated progress rail, icon → check transition
- * ===================================================================*/
 .ob-stepper {
   position: relative; padding: 8px 4px 4px;
   display: flex; flex-direction: column; align-items: stretch;
@@ -2685,14 +2325,6 @@ html[data-theme=dark] .hero-orbs span:nth-child(1) {
   .ob-step.is-active .ob-step-circle { animation: none !important; }
   .ob-rail-fill, .ob-step-circle, .ob-icon, .ob-step-check { transition: none !important; }
 }
-
-
-/* =====================================================================
- * v15 — Custom form controls (zero native UI)
- * - .num-stepper: stake +/- replacement (Builder, anywhere with numbers)
- * - .risk-card:   card-radio replacement (Onboarding step 3)
- * - .check polish: ensure sports/books boxes are 100% styled
- * ===================================================================*/
 
 /* ──────── .num-stepper ──────── */
 .num-stepper {
@@ -2840,10 +2472,6 @@ html[data-theme=dark] .hero-orbs span:nth-child(1) {
   animation: tick-pop .35s cubic-bezier(.2,.8,.2,1);
 }
 
-/* ============================================================================
- * v42 — Risk cards: variantes por tono (cons / eq / agg)
- * Gradientes suaves, glass effect, hint adicional. Sin colores sólidos toscos.
- * ============================================================================ */
 .risk-card-hint {
   font-size: .72rem;
   color: var(--text-tertiary);
@@ -2862,21 +2490,6 @@ html[data-theme=dark] .hero-orbs span:nth-child(1) {
   transition: opacity .3s var(--ease, ease);
   pointer-events: none;
   z-index: -1;
-}
-.risk-card--cons::before {
-  background: linear-gradient(135deg,
-    color-mix(in srgb, #16a34a 16%, transparent),
-    color-mix(in srgb, #16a34a 2%, transparent) 70%);
-}
-.risk-card--eq::before {
-  background: linear-gradient(135deg,
-    color-mix(in srgb, var(--brand-500) 16%, transparent),
-    color-mix(in srgb, var(--brand-500) 2%, transparent) 70%);
-}
-.risk-card--agg::before {
-  background: linear-gradient(135deg,
-    color-mix(in srgb, #f97316 18%, transparent),
-    color-mix(in srgb, #ef4444 6%, transparent) 70%);
 }
 .risk-card:hover::before { opacity: .6; }
 .risk-card.is-selected::before { opacity: 1; }
@@ -2980,9 +2593,6 @@ html[data-theme=dark] .hero-orbs span:nth-child(1) {
 .risk-card--eq.is-selected   .risk-card-tick { background: var(--brand-500) !important; border-color: var(--brand-500) !important; }
 .risk-card--agg.is-selected  .risk-card-tick { background: #f97316 !important; border-color: #f97316 !important; }
 
-/* ============================================================================
- * v42 — Filtros avanzados: mercados agrupados por categoría + toggle grid
- * ============================================================================ */
 .ag-advanced-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -3087,15 +2697,6 @@ html[data-theme=dark] .hero-orbs span:nth-child(1) {
   border-color: color-mix(in srgb, var(--brand-500) 45%, transparent);
   color: var(--brand-700);
 }
-.ag-mkt-chip--book .ag-mkt-chip-logo {
-  width: 16px; height: 16px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-.ag-mkt-chip--book .ag-mkt-chip-logo svg,
-.ag-mkt-chip--book .ag-mkt-chip-logo img { width: 100%; height: 100%; object-fit: contain; }
-
 .ag-toggle-grid {
   grid-column: 1 / -1;
   display: grid;
@@ -3183,16 +2784,6 @@ html[data-theme=dark] .hero-orbs span:nth-child(1) {
   border-color: rgba(74,222,128,.55);
 }
 
-
-/* =====================================================================
- * v16 — FINAL minimal background (Stripe/Linear-grade)
- * Zero particles. Zero connecting lines. Pure gradient mesh.
- * - ONE soft drifting radial spotlight (brand green only)
- * - ONE counter-rotating accent (subtle gold, 2% opacity)
- * - Dot grid static, fades to edges
- * - GPU-only, animations imperceptible at first glance, premium feel
- * ===================================================================*/
-
 /* Hide the particle canvas entirely — pure CSS bg only now */
 .bs-particles canvas { display: none !important; }
 .bs-particles {
@@ -3233,9 +2824,6 @@ html[data-theme=dark] body::before {
                     rgba(74, 144, 226, .06), transparent 65%) !important;
 }
 
-/* Renombrado de mesh-drift → mesh-drift-vars para evitar colisión con la
- * definición en línea ~790 que es transform-based. Esta variante anima
- * CSS custom properties (--mx, --my, etc) y solo se usa en body::before. */
 @keyframes mesh-drift-vars {
   0%   { --mx: 30%; --my: 25%; --nx: 75%; --ny: 70%; }
   25%  { --mx: 55%; --my: 40%; --nx: 30%; --ny: 80%; }
@@ -3308,12 +2896,10 @@ html[data-theme=dark] .hero-orbs span:nth-child(1) {
   body::before, html::before, .hero-orbs span { animation: none !important; }
 }
 
-
 /* =====================================================================
  * v17 — Fixes: Builder chips, Risk slider, WC button, dark mode polish
  * ===================================================================*/
 
-/* ──────── 1) Builder league chips — proper pill layout, no oval+wrap ──────── */
 #bLeagueFilter {
   display: flex !important;          /* override .seg grid behaviour */
   flex-wrap: wrap;
@@ -3447,7 +3033,6 @@ html[data-theme=dark] .hero-orbs span:nth-child(1) {
   object-fit: contain;
 }
 
-
 /* =====================================================================
  * v18 — Risk slider definitive fix (matches actual DOM structure)
  * Outer:  .row.between with flex-wrap:wrap (label · slider-row)
@@ -3512,58 +3097,13 @@ html[data-theme=dark] .hero-orbs span:nth-child(1) {
   }
 }
 
-
-/* =====================================================================
- * v19 — CLEAN risk slider (new HTML) + odd buttons with book logo
- * ===================================================================*/
-
 /* Reset previous over-broad risk slider rules so the new structure wins */
 .card .row.between:has(#cRisk),
 .card .row:has(.slider-risk),
 .risk-slider-container { display: revert !important; grid-template-columns: revert !important; }
 
 /* New clean structure */
-.risk-slider-block {
-  display: flex; flex-direction: column; gap: 12px;
-  width: 100%;
-}
-.risk-slider-head {
-  display: flex; align-items: baseline; gap: 6px;
-  flex-wrap: wrap;
-}
-.risk-slider-head strong { font-size: .98rem; }
 .risk-slider-head .muted { color: var(--text-tertiary); font-size: .82rem; }
-.risk-slider-row {
-  display: flex; align-items: center; gap: 14px;
-  width: 100%;
-}
-.risk-slider-row .slider-risk { flex: 1 1 auto; min-width: 80px; width: auto; }
-.risk-slider-edge {
-  font-family: var(--font-mono);
-  font-size: .78rem;
-  font-weight: 700;
-  color: var(--text-tertiary);
-  flex-shrink: 0;
-  min-width: 36px;
-}
-.risk-slider-edge:first-child { text-align: right; }
-.risk-slider-val {
-  font-family: var(--font-mono);
-  font-size: 1.05rem;
-  font-weight: 800;
-  color: var(--brand-700);
-  font-feature-settings: 'tnum';
-  flex-shrink: 0;
-  min-width: 56px;
-  text-align: right;
-}
-[data-theme=dark] .risk-slider-val { color: #4ade80; }
-
-@media (max-width: 600px) {
-  .risk-slider-row { gap: 8px; }
-  .risk-slider-edge { min-width: 32px; font-size: .72rem; }
-  .risk-slider-val { font-size: .95rem; min-width: 50px; }
-}
 
 /* ──────── .odd buttons with book logo (Comparator + Builder) ──────── */
 .odd, .odd.best {
@@ -3613,10 +3153,6 @@ html[data-theme=dark] .hero-orbs span:nth-child(1) {
   text-transform: capitalize;
 }
 
-
-/* =====================================================================
- * v20 — Próximos eventos pretty card
- * ===================================================================*/
 #upNext { display: flex; flex-direction: column; gap: 8px; }
 
 .event-row {
@@ -3659,18 +3195,6 @@ html[data-theme=dark] .hero-orbs span:nth-child(1) {
 }
 
 /* TIME column — accent bar with "en 2h 30m" */
-.event-time {
-  display: flex; flex-direction: column; gap: 2px;
-  padding: 6px 10px;
-  background: linear-gradient(135deg,
-    color-mix(in srgb, var(--brand-500) 12%, transparent),
-    color-mix(in srgb, var(--brand-500) 4%,  transparent));
-  border: 1px solid color-mix(in srgb, var(--brand-500) 22%, transparent);
-  border-radius: 10px;
-  text-align: center;
-  min-height: 44px;
-  justify-content: center;
-}
 .event-when {
   font-family: var(--font-mono);
   font-size: .82rem;
@@ -3690,10 +3214,6 @@ html[data-theme=dark] .hero-orbs span:nth-child(1) {
 /* TEAMS column */
 .event-teams {
   display: flex; align-items: center; gap: 10px;
-  min-width: 0;
-}
-.event-team {
-  display: inline-flex; align-items: center; gap: 6px;
   min-width: 0;
 }
 .event-crest {
@@ -3786,7 +3306,6 @@ html[data-theme=dark] .hero-orbs span:nth-child(1) {
       "meta arrow";
     row-gap: 8px;
   }
-  .event-time { grid-area: time; min-height: auto; padding: 4px 8px; flex-direction: row; gap: 8px; }
   .event-teams { grid-area: teams; }
   .event-meta { grid-area: meta; align-items: flex-start; }
   .event-arrow { grid-area: arrow; }
@@ -3795,11 +3314,6 @@ html[data-theme=dark] .hero-orbs span:nth-child(1) {
 @media (prefers-reduced-motion: reduce) {
   .event-row { animation: none !important; opacity: 1 !important; transform: none !important; }
 }
-
-
-/* =====================================================================
- * v21 — Refinement: smaller subtle VIP pills + centered onboarding
- * ===================================================================*/
 
 /* ──────── VIP pills smaller, lighter, outlined ──────── */
 .vip-tag {
@@ -3841,9 +3355,6 @@ html[data-theme=dark] .hero-orbs span:nth-child(1) {
   border-color: rgba(255, 224, 122, .50) !important;
 }
 .badge-vip::before { display: none !important; }
-
-/* But keep CalcPro tile chip and other "premium" buttons gold-rich
-   Just narrow the rule to .vip-tag / .badge-vip pills, not the .btn-premium */
 
 /* ──────── Onboarding step content — fully centered ──────── */
 .bs-modal .stack-lg > .stack {
@@ -3923,7 +3434,6 @@ html[data-theme=dark] .hero-orbs span:nth-child(1) {
   margin: 0 auto;
 }
 
-
 /* =====================================================================
  * v22 — Fix risk-cards horizontal in onboarding
  * v21's `.bs-modal #obStep > div > div` forced column flex on .risk-cards
@@ -3955,17 +3465,10 @@ html[data-theme=dark] .hero-orbs span:nth-child(1) {
   max-width: min(880px, 96vw);
 }
 
-/* Each risk-card stays self-contained (left-align text inside a centered card) */
 .bs-modal #obStep .risk-card {
   text-align: left;
   align-items: stretch;
 }
-
-
-/* =====================================================================
- * v23 — Próximos eventos: clean vertical row layout
- * Each row: league header on top, teams centered, time at bottom
- * ===================================================================*/
 
 /* Reset prior event-row rules */
 #upNext .event-row {
@@ -3976,22 +3479,7 @@ html[data-theme=dark] .hero-orbs span:nth-child(1) {
   padding: 14px 16px !important;
 }
 
-.event-main {
-  flex: 1 1 auto;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
 /* Top line: league name on the left, sport pill on the right */
-.event-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  min-width: 0;
-}
 .event-league {
   display: inline-flex;
   align-items: center;
@@ -4076,12 +3564,6 @@ html[data-theme=dark] .hero-orbs span:nth-child(1) {
 }
 
 /* Bottom line: time + date */
-.event-bottom {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: .76rem;
-}
 .event-when {
   display: inline-flex;
   align-items: center;
@@ -4098,11 +3580,6 @@ html[data-theme=dark] .hero-orbs span:nth-child(1) {
 [data-theme=dark] .event-when {
   background: rgba(34, 197, 94, .14);
   color: #4ade80;
-}
-.event-dot {
-  color: var(--text-tertiary);
-  font-weight: 700;
-  opacity: .5;
 }
 .event-date {
   color: var(--text-tertiary);
@@ -4121,19 +3598,11 @@ html[data-theme=dark] .hero-orbs span:nth-child(1) {
 /* Mobile: tighter spacing, allow team-name truncation */
 @media (max-width: 540px) {
   #upNext .event-row { padding: 12px !important; }
-  .event-main { gap: 4px; }
   .event-teams { font-size: .88rem; gap: 6px; }
   .event-teams .event-crest { width: 20px !important; height: 20px !important; }
   .event-league { font-size: .7rem; }
 }
 
-
-/* =====================================================================
- * v24 — Badges no longer stretch in flex-column parents
- * Inline-flex children of `flex-direction: column` get `align-items: stretch`
- * by default, which expanded the badge pill across the whole card width.
- * Force them to size to their content only.
- * ===================================================================*/
 .badge,
 .badge-brand,
 .badge-info,
@@ -4168,12 +3637,6 @@ html[data-theme=dark] .hero-orbs span:nth-child(1) {
   width: max-content;
 }
 
-
-/* =====================================================================
- * v25 — Hero headline dynamic effects
- * - .strike-rotate: word with diagonal line that draws across
- * - .type-cycle: rotating words via JS data-words swap
- * ===================================================================*/
 .hero-headline { position: relative; }
 .hero-headline .strike-rotate {
   position: relative; display: inline-block; color: var(--text-secondary);
@@ -4229,11 +3692,6 @@ html[data-theme=dark] .hero-orbs span:nth-child(1) {
   .hero-headline .type-cycle.swapping { animation: none !important; }
 }
 
-
-/* =====================================================================
- * v26 — Hero CTA stays brand green even for VIP users
- * (VIP theme makes all brand-* gold; we keep landing CTA green for clarity)
- * ===================================================================*/
 .hero #heroCta,
 .hero .btn-primary,
 [data-vip="true"] .hero #heroCta,
@@ -4258,13 +3716,6 @@ html[data-theme=dark] .hero-orbs span:nth-child(1) {
   color: #052e1a !important;
   border-color: #2dd47a !important;
 }
-
-
-/* =====================================================================
- * v27 — Cyber background animations (clean, professional, GPU-only)
- * Layered: perspective grid + scan line + glowing nodes + data streaks
- * Sits BEHIND content (z-index: -1), respects prefers-reduced-motion
- * ===================================================================*/
 
 /* ───── Scoping container injected globally via shell ───── */
 .bs-cyber {
@@ -4431,7 +3882,6 @@ html[data-theme=dark] .hero-orbs span:nth-child(1) {
   .bs-cyber__streak, .bs-cyber__core { animation: none !important; }
 }
 
-
 /* =====================================================================
  * v28 — Fix .tk marquee items: SVG was collapsing to width:0
  * ===================================================================*/
@@ -4452,10 +3902,6 @@ html[data-theme=dark] .hero-orbs span:nth-child(1) {
 }
 .tk { gap: 8px !important; }
 
-
-/* =====================================================================
- * v29 — Generador IA VIP (sección dedicada)
- * ===================================================================*/
 .ag-combo {
   position: relative; isolation: isolate;
   background: linear-gradient(135deg, var(--surface), color-mix(in srgb, var(--brand-500) 4%, var(--surface)));
@@ -4473,42 +3919,6 @@ html[data-theme=dark] .hero-orbs span:nth-child(1) {
   border-color: rgba(74,222,128,.2);
 }
 
-.ag-legs { display: flex; flex-direction: column; gap: 8px; padding: 10px 0; border-top: 1px dashed var(--border); border-bottom: 1px dashed var(--border); }
-.ag-leg {
-  display: grid;
-  grid-template-columns: 1fr auto auto;
-  gap: 10px;
-  align-items: center;
-  padding: 8px;
-  background: var(--surface);
-  border-radius: 8px;
-  font-size: .82rem;
-}
-[data-theme=dark] .ag-leg { background: rgba(255,255,255,.03); }
-.ag-leg-teams { display: flex; align-items: center; gap: 5px; min-width: 0; flex-wrap: nowrap; overflow: hidden; }
-.ag-leg-teams strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 110px; }
-.ag-leg-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; min-width: 0; }
-.ag-leg-market { font-size: .58rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--accent-700); padding: 1px 6px; background: color-mix(in srgb, var(--accent-500) 14%, transparent); border-radius: 999px; }
-.ag-leg-pick { font-size: .76rem; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 240px; }
-.ag-leg-odd { font-family: var(--font-mono); font-size: 1rem; min-width: 50px; text-align: right; }
-
-.ag-kpis {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr) 1.5fr;
-  gap: 12px;
-  padding: 12px;
-  background: color-mix(in srgb, var(--brand-500) 6%, var(--surface-2));
-  border-radius: 12px;
-}
-[data-theme=dark] .ag-kpis { background: color-mix(in srgb, var(--brand-500) 8%, rgba(255,255,255,.03)); }
-.ag-kpis > div { display: flex; flex-direction: column; gap: 2px; }
-.ag-kpis .ag-payout { border-left: 1px dashed var(--border); padding-left: 12px; }
-@media (max-width: 540px) {
-  .ag-kpis { grid-template-columns: 1fr 1fr; }
-  .ag-kpis .ag-payout { grid-column: span 2; border-left: 0; border-top: 1px dashed var(--border); padding-left: 0; padding-top: 8px; }
-}
-
-.ag-books-row { display: flex; flex-wrap: wrap; gap: 6px; }
 .ag-bookchip {
   display: inline-flex;
   align-items: center;
@@ -4533,62 +3943,6 @@ html[data-theme=dark] .hero-orbs span:nth-child(1) {
   background: color-mix(in srgb, var(--success) 12%, transparent);
   border-radius: 999px;
   font-weight: 800;
-}
-
-
-/* =====================================================================
- * AI Generator (Generador IA tab) — premium upgrade
- * ===================================================================*/
-.ag-perf-banner {
-  background: linear-gradient(135deg, color-mix(in srgb, var(--brand-500) 6%, var(--surface)), var(--surface));
-  border: 1px solid color-mix(in srgb, var(--brand-500) 18%, var(--border));
-  padding: 18px 20px;
-}
-.ag-perf-row {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 18px;
-  align-items: stretch;
-}
-@media (max-width: 980px) { .ag-perf-row { grid-template-columns: repeat(2, 1fr); gap: 14px; } }
-@media (max-width: 540px) { .ag-perf-row { grid-template-columns: 1fr; } }
-.ag-perf-cell {
-  display: flex; gap: 10px; align-items: flex-start;
-  padding: 10px 14px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-}
-.ag-perf-cell:first-child { border-color: color-mix(in srgb, var(--brand-500) 35%, var(--border)); }
-.ag-perf-dot {
-  flex-shrink: 0; width: 10px; height: 10px;
-  border-radius: 50%; background: #22C55E;
-  margin-top: 6px;
-  box-shadow: 0 0 0 4px rgba(34,197,94,0.2);
-  animation: ag-pulse 1.6s ease-in-out infinite;
-}
-@keyframes ag-pulse {
-  0%, 100% { box-shadow: 0 0 0 4px rgba(34,197,94,0.20); }
-  50%      { box-shadow: 0 0 0 7px rgba(34,197,94,0.06); }
-}
-@media (prefers-reduced-motion: reduce) { .ag-perf-dot { animation: none; } }
-.ag-perf-label { display: block; font-size: .68rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-tertiary); margin-bottom: 2px; }
-.ag-perf-val   { display: block; font-size: .92rem; font-weight: 800; color: var(--text-primary); line-height: 1.3; }
-.ag-perf-num   { font-family: var(--font-mono); font-size: 1.15rem; letter-spacing: -.02em; }
-.ag-perf-sub   { display: block; font-size: .68rem; color: var(--text-tertiary); margin-top: 2px; }
-.ag-perf-feats {
-  display: flex; flex-wrap: wrap; gap: 6px;
-  margin-top: 14px; padding-top: 14px;
-  border-top: 1px dashed var(--border);
-}
-.ag-perf-feat {
-  display: inline-flex; align-items: center;
-  font-size: .68rem; font-weight: 600;
-  color: var(--text-secondary);
-  padding: 4px 10px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 999px;
 }
 
 /* Filtros avanzados */
@@ -4672,489 +4026,33 @@ html[data-theme=dark] .hero-orbs span:nth-child(1) {
 }
 
 /* Confidence + EV bars per combinada */
-.ag-meters {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
-  margin: 10px 0;
-}
-@media (max-width: 540px) { .ag-meters { grid-template-columns: 1fr; } }
-.ag-meter-head {
-  display: flex; justify-content: space-between; align-items: baseline;
-  font-size: .7rem; color: var(--text-tertiary); margin-bottom: 4px;
-}
-.ag-meter-head strong { font-family: var(--font-mono); font-weight: 800; }
-.ag-meter-track {
-  width: 100%; height: 6px;
-  background: var(--surface-2);
-  border-radius: 999px; overflow: hidden;
-}
-.ag-meter-fill {
-  height: 100%;
-  border-radius: 999px;
-  transform-origin: left;
-  animation: ag-meter-grow .8s cubic-bezier(.2,.8,.2,1) both;
-}
-.ag-meter-conf { background: linear-gradient(90deg, #FACC15, #F59E0B); }
-.ag-meter-pos  { background: linear-gradient(90deg, #4ADE80, #16A34A); }
-.ag-meter-neg  { background: linear-gradient(90deg, #FCA5A5, #DC2626); }
-@keyframes ag-meter-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
-@media (prefers-reduced-motion: reduce) { .ag-meter-fill { animation: none; } }
 
 /* AI explanation block */
-.ag-ai-explain {
-  display: flex; gap: 10px;
-  padding: 12px 14px;
-  background: linear-gradient(135deg, color-mix(in srgb, #FACC15 8%, var(--surface)), var(--surface));
-  border: 1px solid color-mix(in srgb, #FACC15 30%, transparent);
-  border-radius: 10px;
-  margin: 10px 0;
-}
-.ag-ai-tag {
-  flex-shrink: 0;
-  font-family: var(--font-mono);
-  font-size: .65rem; font-weight: 800; letter-spacing: .04em;
-  color: #92400E; background: #FEF3C7;
-  padding: 3px 8px; border-radius: 999px;
-  height: fit-content;
-}
-.ag-ai-text {
-  margin: 0; font-size: .82rem; line-height: 1.55;
-  color: var(--text-secondary);
-}
-
 /* AI Generator combinada — BEST PAYER banner único (sin Top 3) */
-.ag-best-pay {
-  margin: 12px 0;
-  padding: 14px 16px;
-  background: linear-gradient(135deg, color-mix(in srgb, #FACC15 16%, var(--surface)), var(--surface) 70%);
-  border: 1px solid color-mix(in srgb, #CA8A04 50%, transparent);
-  border-radius: 12px;
-  position: relative;
-  overflow: hidden;
-}
-[data-theme=dark] .ag-best-pay {
-  background: linear-gradient(135deg, rgba(250,204,21,.16), rgba(255,255,255,.02));
-  border-color: rgba(250,204,21,.32);
-}
-.ag-best-pay::before {
-  content: '';
-  position: absolute; inset: 0; pointer-events: none;
-  background: linear-gradient(120deg, transparent 30%, rgba(255,255,255,.45) 50%, transparent 70%);
-  transform: translateX(-100%);
-  animation: ag-best-shine 3s ease-in-out 1.5s infinite;
-}
-[data-theme=dark] .ag-best-pay::before { background: linear-gradient(120deg, transparent 30%, rgba(250,204,21,.18) 50%, transparent 70%); }
-@keyframes ag-best-shine {
-  0%, 25% { transform: translateX(-100%); }
-  60%, 100% { transform: translateX(100%); }
-}
-@media (prefers-reduced-motion: reduce) { .ag-best-pay::before { animation: none; } }
-
-.ag-best-tag {
-  display: inline-block;
-  font-family: var(--font-mono);
-  font-size: .62rem;
-  font-weight: 900;
-  letter-spacing: .12em;
-  color: #92400E;
-  background: linear-gradient(135deg, #FFE07A, #FACC15);
-  padding: 4px 10px;
-  border-radius: 6px;
-  margin-bottom: 10px;
-  box-shadow: inset 0 -1px 0 rgba(0,0,0,.08);
-}
-.ag-best-row {
-  display: grid;
-  grid-template-columns: 44px 1fr auto;
-  gap: 14px;
-  align-items: center;
-}
-@media (max-width: 540px) {
-  .ag-best-row { grid-template-columns: 40px 1fr; }
-  .ag-best-pay-wrap { grid-column: 1 / -1; text-align: right; }
-}
-.ag-best-logo {
-  display: inline-flex;
-  align-items: center; justify-content: center;
-  width: 44px; height: 44px;
-  border-radius: 10px;
-  overflow: hidden;
-  background: var(--surface);
-  border: 1px solid var(--border);
-}
-.ag-best-logo svg, .ag-best-logo img { width: 100% !important; height: 100% !important; object-fit: contain; display: block; }
-.ag-best-info {
-  display: flex; flex-direction: column; gap: 2px;
-  min-width: 0;
-}
-.ag-best-name {
-  font-size: 1.05rem;
-  font-weight: 800;
-  color: var(--text-primary);
-  letter-spacing: -.01em;
-  line-height: 1.1;
-}
-.ag-best-sub {
-  font-size: .7rem;
-  color: var(--text-tertiary);
-  line-height: 1.4;
-}
-.ag-best-sub strong { color: var(--text-secondary); }
-.ag-best-pay-wrap {
-  display: flex; flex-direction: column; align-items: flex-end; gap: 2px;
-  flex-shrink: 0;
-}
-.ag-best-pay-label {
-  font-size: .65rem;
-  color: var(--text-tertiary);
-  font-weight: 600;
-  letter-spacing: .04em;
-  text-transform: uppercase;
-}
-.ag-best-pay-amt {
-  font-family: var(--font-mono);
-  font-size: 1.35rem;
-  font-weight: 900;
-  letter-spacing: -.02em;
-  color: var(--brand-700);
-  font-feature-settings: 'tnum';
-  line-height: 1;
-}
-[data-theme=dark] .ag-best-pay-amt { color: #4ADE80; }
-.ag-best-pay-delta {
-  font-family: var(--font-mono);
-  font-size: .62rem;
-  font-weight: 700;
-  color: #15803D;
-  background: #DCFCE7;
-  padding: 1px 6px;
-  border-radius: 4px;
-  margin-top: 2px;
-}
-[data-theme=dark] .ag-best-pay-delta { background: rgba(74,222,128,.15); color: #4ADE80; }
 
 /* Hide legacy Top-3 books grid si todavía se renderiza desde algún path */
-.ag-books { display: none; }
-
 /* Action row */
-.ag-actions {
-  display: flex; flex-wrap: wrap; gap: 6px;
-  margin-top: 8px;
-  padding-top: 12px;
-  border-top: 1px dashed var(--border);
-}
 .ag-actions .btn { font-size: .72rem; padding: 6px 10px; }
 
-/* =====================================================================
- * AI Picks — BEST PAYER banner (un solo card prominente, sin ranking)
- * Reemplaza al antiguo podium de 3 casas que se veía cramped en columns.
- * ===================================================================*/
-.ai-best-pay {
-  display: grid;
-  grid-template-columns: auto 36px 1fr auto;
-  align-items: center;
-  gap: 10px;
-  margin-top: 8px;
-  padding: 10px 12px;
-  background: linear-gradient(135deg, color-mix(in srgb, #FACC15 14%, var(--surface)), var(--surface) 70%);
-  border: 1px solid color-mix(in srgb, #CA8A04 40%, transparent);
-  border-radius: 10px;
-  position: relative;
-  overflow: hidden;
-  transform: translateY(4px);
-  opacity: 0;
-  animation: best-pay-in .5s cubic-bezier(.2,.8,.2,1) forwards;
-  transition: transform .2s, box-shadow .2s, border-color .2s;
-}
-.ai-best-pay:hover {
-  transform: translateY(-1px);
-  border-color: color-mix(in srgb, #CA8A04 65%, transparent);
-  box-shadow: 0 6px 16px -8px rgba(202, 138, 4, .35);
-}
-[data-theme=dark] .ai-best-pay {
-  background: linear-gradient(135deg, rgba(250, 204, 21, .14), rgba(255,255,255,.02));
-  border-color: rgba(250, 204, 21, .3);
-}
-.ai-best-pay::before {
-  content: '';
-  position: absolute; inset: 0; pointer-events: none;
-  background: linear-gradient(120deg, transparent 30%, rgba(255,255,255,.5) 50%, transparent 70%);
-  transform: translateX(-100%);
-  animation: best-pay-shine 2.6s ease-in-out 1.2s infinite;
-}
-[data-theme=dark] .ai-best-pay::before { background: linear-gradient(120deg, transparent 30%, rgba(250,204,21,.18) 50%, transparent 70%); }
-
-@keyframes best-pay-in {
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-@keyframes best-pay-shine {
-  0%, 25%   { transform: translateX(-100%); }
-  60%, 100% { transform: translateX(100%); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .ai-best-pay, .ai-best-pay::before { animation: none; }
-  .ai-best-pay { opacity: 1; transform: none; }
-}
-
-.ai-best-tag {
-  font-family: var(--font-mono);
-  font-size: .58rem;
-  font-weight: 900;
-  letter-spacing: .12em;
-  color: #92400E;
-  background: linear-gradient(135deg, #FFE07A, #FACC15);
-  padding: 4px 8px;
-  border-radius: 4px;
-  white-space: nowrap;
-  flex-shrink: 0;
-  box-shadow: inset 0 -1px 0 rgba(0,0,0,.08);
-}
-.ai-best-logo {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px; height: 36px;
-  border-radius: 8px;
-  overflow: hidden;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  flex-shrink: 0;
-}
-.ai-best-logo svg, .ai-best-logo img {
-  width: 100% !important;
-  height: 100% !important;
-  object-fit: contain;
-  display: block;
-}
-.ai-best-info {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-}
-.ai-best-name {
-  font-size: .85rem;
-  font-weight: 800;
-  color: var(--text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  letter-spacing: -.01em;
-}
-.ai-best-delta {
-  font-family: var(--font-mono);
-  font-size: .65rem;
-  font-weight: 700;
-  color: #15803D;
-  background: #DCFCE7;
-  padding: 1px 6px;
-  border-radius: 4px;
-  align-self: flex-start;
-  white-space: nowrap;
-}
-[data-theme=dark] .ai-best-delta { background: rgba(74, 222, 128, .15); color: #4ADE80; }
-.ai-best-price {
-  font-family: var(--font-mono);
-  font-size: 1.2rem;
-  font-weight: 900;
-  letter-spacing: -.02em;
-  color: var(--brand-700);
-  font-feature-settings: 'tnum';
-  flex-shrink: 0;
-}
-[data-theme=dark] .ai-best-price { color: #4ADE80; }
-
 /* Si la card es estrecha (mobile), apilar nombre/delta/precio */
-@media (max-width: 380px) {
-  .ai-best-pay { grid-template-columns: auto 32px 1fr; }
-  .ai-best-price { grid-column: 2 / -1; text-align: right; font-size: 1rem; }
-  .ai-best-logo { width: 32px; height: 32px; }
-}
-
-/* =====================================================================
- * LEGACY (oculto): los antiguos podium-* de Top 3 quedan deprecated.
- * Si algo todavía los renderiza, los ocultamos para evitar duplicados.
- * ===================================================================*/
-.ai-podium-wrap, .ai-podium-head, .ai-podium-group, .ai-podium { display: none !important; }
-
-/* =====================================================================
- * v30 — AI Picks: animated podium for top 3 best-paying books (LEGACY)
- * ===================================================================*/
-.ai-podium-wrap {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-top: 6px;
-  padding: 8px;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--brand-500) 4%, transparent), transparent);
-  border-radius: 10px;
-  border: 1px dashed var(--border);
-}
-[data-theme=dark] .ai-podium-wrap { background: linear-gradient(180deg, rgba(34,197,94,.06), transparent); border-color: rgba(255,255,255,.08); }
-
-.ai-podium-head {
-  display: flex; align-items: center; justify-content: space-between;
-  font-size: .62rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
-  color: var(--text-tertiary);
-}
-
-.ai-podium-group {
-  display: flex; flex-direction: column; gap: 4px;
-  position: relative;
-}
-
-.ai-podium {
-  position: relative; isolation: isolate;
-  display: grid;
-  grid-template-columns: 18px 28px 1fr auto auto;
-  gap: 8px;
-  align-items: center;
-  padding: 8px 10px 8px 12px;
-  border-radius: 10px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  font-size: .72rem;
-  overflow: hidden;
-  transform: translateX(-12px);
-  opacity: 0;
-  animation: podium-in .55s cubic-bezier(.2,.8,.2,1) forwards;
-  animation-delay: calc(var(--rank, 0) * 90ms);
-  transition: transform .25s, border-color .25s, box-shadow .25s;
-  min-height: 38px;
-}
-.ai-podium::before {
-  content: '';
-  position: absolute; left: 0; top: 0; bottom: 0;
-  width: 3px;
-  background: linear-gradient(180deg, var(--brand-500), color-mix(in srgb, var(--brand-500) 50%, transparent));
-}
-.ai-podium:hover { transform: translateX(2px); border-color: color-mix(in srgb, var(--brand-500) 35%, var(--border)); box-shadow: 0 4px 12px -6px rgba(0,0,0,.15); }
-
-@keyframes podium-in {
-  0%   { transform: translateX(-14px) scale(.96); opacity: 0; }
-  60%  { transform: translateX(2px)   scale(1.02); opacity: 1; }
-  100% { transform: translateX(0)     scale(1);    opacity: 1; }
-}
 
 /* Rank-specific styling */
-.ai-podium--0 {
-  background: linear-gradient(135deg, color-mix(in srgb, #FFE07A 16%, var(--surface)), var(--surface));
-  border-color: color-mix(in srgb, #D4A24A 50%, transparent);
-}
-.ai-podium--0::before { background: linear-gradient(180deg, #FFE07A, #D4A24A); }
-[data-theme=dark] .ai-podium--0 {
-  background: linear-gradient(135deg, rgba(255,224,122,.12), rgba(255,255,255,.03));
-  border-color: rgba(212,162,74,.4);
-}
-.ai-podium--1 {
-  background: linear-gradient(135deg, color-mix(in srgb, #cbd5e1 18%, var(--surface)), var(--surface));
-  border-color: color-mix(in srgb, #94a3b8 35%, transparent);
-}
-.ai-podium--1::before { background: linear-gradient(180deg, #e2e8f0, #94a3b8); }
-.ai-podium--2 {
-  background: linear-gradient(135deg, color-mix(in srgb, #c08552 14%, var(--surface)), var(--surface));
-  border-color: color-mix(in srgb, #c08552 30%, transparent);
-}
-.ai-podium--2::before { background: linear-gradient(180deg, #c08552, #8b5a2b); }
-
 /* Rank badge — número grande con tono de medalla, sin emoji */
-.ai-podium-rank {
-  display: inline-flex; align-items: center; justify-content: center;
-  flex-shrink: 0;
-  width: 18px; height: 18px;
-  position: relative;
-}
-.ai-podium-medal { display: none; } /* legacy — quitamos los emojis 🥇🥈🥉 */
-.ai-podium-num {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 18px; height: 18px;
-  border-radius: 50%;
-  font-family: var(--font-mono); font-size: .65rem; font-weight: 900;
-  color: #1F2937;
-  letter-spacing: -.02em;
-}
-.ai-podium--0 .ai-podium-num { background: linear-gradient(135deg, #FFE07A, #D4A24A); box-shadow: 0 1px 2px rgba(212,162,74,.4); }
-.ai-podium--1 .ai-podium-num { background: linear-gradient(135deg, #E8ECF1, #94A3B8); }
-.ai-podium--2 .ai-podium-num { background: linear-gradient(135deg, #D4A574, #8B5A2B); color: #FFFFFF; }
-
-.ai-podium-logo {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 28px; height: 28px;
-  border-radius: 6px; overflow: hidden; flex-shrink: 0;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-}
-.ai-podium-logo svg, .ai-podium-logo img { width: 100% !important; height: 100% !important; object-fit: contain; display: block; }
-.ai-podium-logo svg[width][height] { width: 28px !important; height: 28px !important; }
-
-.ai-podium-name {
-  font-weight: 700;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  min-width: 0;
-}
-
-.ai-podium-price {
-  font-family: var(--font-mono);
-  font-weight: 900;
-  font-size: .9rem;
-  letter-spacing: -.02em;
-  font-feature-settings: 'tnum';
-  color: var(--text-primary);
-  flex-shrink: 0;
-}
-.ai-podium--0 .ai-podium-price { color: var(--brand-700); }
-[data-theme=dark] .ai-podium--0 .ai-podium-price { color: #4ade80; }
-
-.ai-podium-best {
-  font-size: .54rem;
-  font-weight: 800;
-  letter-spacing: .12em;
-  padding: 2px 6px;
-  border-radius: 999px;
-  background: linear-gradient(135deg, #16a34a, #0b6b3a);
-  color: #fff;
-  flex-shrink: 0;
-  animation: podium-best-pulse 2s ease-in-out infinite;
-  box-shadow: 0 0 0 0 color-mix(in srgb, var(--brand-500) 60%, transparent);
-}
-@keyframes podium-best-pulse {
-  0%, 100% { transform: scale(1);    box-shadow: 0 0 0 0 color-mix(in srgb, var(--brand-500) 60%, transparent); }
-  50%      { transform: scale(1.06); box-shadow: 0 0 0 6px transparent; }
-}
-
-.ai-podium-delta {
-  font-family: var(--font-mono);
-  font-size: .58rem;
-  font-weight: 800;
-  color: var(--danger);
-  flex-shrink: 0;
-  padding: 1px 5px;
-  background: color-mix(in srgb, var(--danger) 12%, transparent);
-  border-radius: 999px;
-}
-.ai-podium--1 .ai-podium-delta,
-.ai-podium--2 .ai-podium-delta { color: var(--text-tertiary); background: var(--surface-2); }
+/* legacy — quitamos los emojis 🥇🥈🥉 */
 
 /* Reduced motion */
-@media (prefers-reduced-motion: reduce) {
-  .ai-podium { animation: none !important; opacity: 1 !important; transform: none !important; }
-  .ai-podium-best { animation: none !important; }
-}
-
 
 /* =====================================================================
  * v31 — Marquee duplicate-logo fix + dark mode CTA fix
  * ===================================================================*/
 
-/* CRITICAL: only ONE logo visible per .tk chip — hide fallback SVG when img is loaded */
 .tk .logo-img { position: relative; }
 .tk .logo-img .logo-fb { display: none !important; }
 .tk .logo-img img { display: block !important; }
-/* When img fails (display:none) we let the fallback show via onerror handler */
+
 .tk .logo-img img[style*="display: none"] + .logo-fb,
 .tk .logo-img img[style*="display:none"]  + .logo-fb { display: inline-flex !important; }
 
-/* Override the over-aggressive v28 — exclude fallback SVGs from forced display */
 .tk .logo-img,
 .tk svg.book-mark:not(.logo-fb svg.book-mark) {
   width: 22px !important;
@@ -5181,10 +4079,6 @@ html[data-theme=dark] .hero-orbs span:nth-child(1) {
 [data-theme=dark] .cta-final p,
 [data-theme=dark] .card.card-pad-lg.text-center p { color: rgba(255,255,255,.78) !important; }
 
-
-/* =====================================================================
- * v32 — VIP features grid (panel "Arbitraje en tiempo real…")
- * ===================================================================*/
 .vip-features-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -5263,48 +4157,12 @@ html[data-theme=dark] .hero-orbs span:nth-child(1) {
   .vip-feat { animation: none !important; opacity: 1 !important; transform: none !important; }
 }
 
-
-/* =====================================================================
- * v33 — Risk band track + team logos in table + help-q tooltip rediseñado
- * ===================================================================*/
-
 /* ─── 1. Risk band track distributed along the slider width ─── */
-.risk-band-track {
-  position: relative;
-  height: 64px;
-  margin: 4px 0 0 50px;     /* align with slider edges (10% pad + 100% labels space) */
-  margin-right: 80px;       /* align with right "100%" + value column */
-  padding: 0;
-}
-.risk-band {
-  position: absolute;
-  top: 0;
-  left: var(--p, 50%);
-  transform: translateX(-50%);
-  display: flex; flex-direction: column; align-items: center; gap: 3px;
-  font-size: .7rem;
-  pointer-events: none;
-  white-space: nowrap;
-}
 /* Vertical pin connecting to slider */
-.risk-band-pin {
-  width: 2px; height: 8px;
-  border-radius: 1px;
-  margin-bottom: 2px;
-}
 .risk-band-pin.low  { background: var(--success); }
 .risk-band-pin.mid  { background: var(--warning); }
 .risk-band-pin.high { background: var(--danger); }
 
-.risk-band-pill {
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: .68rem;
-  font-weight: 800;
-  letter-spacing: .04em;
-  border: 1px solid transparent;
-  background: var(--surface);
-}
 .risk-band-pill.low  { background: var(--success-bg); color: var(--success); border-color: color-mix(in srgb, var(--success) 30%, transparent); }
 .risk-band-pill.mid  { background: var(--warning-bg); color: var(--warning); border-color: color-mix(in srgb, var(--warning) 30%, transparent); }
 .risk-band-pill.high { background: var(--danger-bg);  color: var(--danger);  border-color: color-mix(in srgb, var(--danger) 30%, transparent); }
@@ -5312,33 +4170,7 @@ html[data-theme=dark] .hero-orbs span:nth-child(1) {
 [data-theme=dark] .risk-band-pill.mid  { background: rgba(234, 179, 8, .14); color: #fbbf24; }
 [data-theme=dark] .risk-band-pill.high { background: rgba(239, 68, 68, .14); color: #f87171; }
 
-.risk-band-range {
-  font-family: var(--font-mono);
-  font-size: .58rem;
-  color: var(--text-tertiary);
-  font-feature-settings: 'tnum';
-}
-
 /* Edge bands need shifting so they don't overflow */
-.risk-band[data-pct="10"]  { transform: translateX(-10%); }
-.risk-band[data-pct="100"] { transform: translateX(-90%); }
-
-@media (max-width: 720px) {
-  .risk-band-track {
-    height: auto;
-    margin: 6px 0 0;
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 4px;
-    position: static;
-  }
-  .risk-band {
-    position: static;
-    transform: none !important;
-    align-items: flex-start;
-  }
-  .risk-band-pin { display: none; }
-}
 
 /* ─── 2. Team logos visible in comparator table ─── */
 #cBody .cluster svg,
@@ -5413,8 +4245,6 @@ html[data-theme=dark] .hero-orbs span:nth-child(1) {
     0 0 0 1px rgba(0, 0, 0, .06) inset;
 }
 
-/* Auto-flip below when help-q sits in the upper part of the viewport
-   (using a sentinel: any .help-q inside an h2/h3 with sticky parent). */
 .h2 .help-q::after,
 .h3 .help-q::after,
 h2 .help-q::after,
@@ -5439,7 +4269,6 @@ h3 .help-q:focus-visible::after {
 
 /* Ensure the tooltip never breaks tables/cards layout */
 .card, .table, .row { overflow: visible; }
-
 
 /* =====================================================================
  * v34 — FIX masivo: tooltip dark/light + position aware,
@@ -5489,28 +4318,11 @@ h3 .help-q:focus-visible::after {
   opacity: 1 !important;
   transform: translateX(-50%) translateY(0) scale(1) !important;
 }
-/* Tooltips inside the BOTTOM half of viewport flip ABOVE — but harder to detect
-   in CSS only. So we keep them BELOW universally and just clamp the position
-   using right: auto/left: auto when they overflow viewport edges. */
 
-/* Prevent neighbor help-q popovers from stacking on top of each other:
-   give each its own z-index space and isolate via parent */
 .help-q { isolation: isolate; }
 
 /* ──────── B. Risk slider — fix Agresivo/Longshot collision ──────── */
 /* Adjust pcts to give breathing room at edges */
-.risk-band[data-pct="90"]  { transform: translateX(-50%) !important; }
-.risk-band[data-pct="100"] { transform: translateX(-95%) !important; }
-.risk-band[data-pct="10"]  { transform: translateX(-5%) !important; }
-.risk-band-pill { font-size: .62rem !important; padding: 2px 7px !important; }
-.risk-band-range { font-size: .54rem !important; }
-.risk-band-track { padding-bottom: 6px; }
-@media (min-width: 720px) {
-  .risk-band-track {
-    margin-left: 50px !important;
-    margin-right: 90px !important;
-  }
-}
 
 /* ──────── C. Banner casinos — proper overflow handling ──────── */
 .marquee {
@@ -5635,11 +4447,6 @@ h3 .help-q:focus-visible::after {
   color: #fff;
 }
 
-
-/* ============================================================================
-   REBRAND — utilities premium navy + gold (safe additions, override-only)
-   ============================================================================ */
-
 /* Body background — sutil gradiente premium con un toque dorado/azul */
 body {
   background:
@@ -5682,22 +4489,8 @@ body {
 }
 
 /* Premium gold accent — inline glow */
-.gold-glow {
-  box-shadow: 0 0 0 1px rgba(212,160,23,.35), 0 12px 28px rgba(212,160,23,.18);
-}
-
 /* Hairline gold divider — section separator */
-.hr-gold {
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(212,160,23,.45), transparent);
-  border: 0;
-  margin: var(--s-8) 0;
-}
 
-/* ============================================================================
-   TOOLTIP elegante — single source of truth (.bs-tip)
-   Reemplaza barras extra debajo del navbar; sólo popup sobre el ?
-   ============================================================================ */
 .bs-help {
   display: inline-flex;
   align-items: center;
@@ -5807,9 +4600,6 @@ body {
   display: none !important;
 }
 
-/* ============================================================================
-   MUNDIAL 2026 — sección premium con branding propio
-   ============================================================================ */
 .wc-banner {
   position: relative;
   isolation: isolate;
@@ -5907,20 +4697,6 @@ body {
 }
 
 /* WC: countdown + KPI strip */
-.wc-meta {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0,1fr));
-  gap: 10px;
-  margin-top: var(--s-6);
-}
-.wc-meta-card {
-  background: rgba(255,255,255,.04);
-  border: 1px solid rgba(255,255,255,.10);
-  border-radius: 12px;
-  padding: 10px 12px;
-  text-align: left;
-  backdrop-filter: blur(2px);
-}
 .wc-meta-card .v {
   font-family: var(--font-mono);
   font-size: 22px;
@@ -5936,28 +4712,8 @@ body {
   color: rgba(255,255,255,.65);
   margin-top: 4px;
 }
-@media (max-width: 720px) {
-  .wc-meta { grid-template-columns: repeat(2, minmax(0,1fr)); }
-}
 
 /* WC trophy crest — propio (no FIFA copy) */
-.wc-crest {
-  width: 76px;
-  height: 76px;
-  border-radius: 18px;
-  background:
-    linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,0)) padding-box,
-    linear-gradient(135deg, var(--gold-300), var(--gold-600)) border-box;
-  border: 1.5px solid transparent;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  position: relative;
-  box-shadow: 0 12px 28px rgba(212,160,23,.30), inset 0 1px 0 rgba(255,255,255,.18);
-}
-.wc-crest svg { width: 44px; height: 44px; }
-
 /* Países/banderas chips para mundial */
 .wc-flag-chips {
   display: flex;
@@ -5986,9 +4742,6 @@ body {
   background-size: cover;
 }
 
-/* ============================================================================
-   COMPARADOR — top 3 casas por mercado (mismo mercado entre casas)
-   ============================================================================ */
 /* COMPARADOR v3 — alineación garantizada entre columnas
  * El bug histórico: headers de altura variable + cells con altura variable
  * causaban que las cuotas quedaran descentradas entre columnas y se vieran
@@ -6049,7 +4802,7 @@ body {
 }
 .cmp3-row {
   display: grid;
-  /* logo (28px) | nombre flexible (overflow ellipsis) | cuota (auto — toma exactamente lo que necesita) */
+  
   grid-template-columns: 28px minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
@@ -6085,8 +4838,7 @@ body {
 }
 .cmp3-row > * { min-width: 0; }
 .cmp3-row:hover { transform: none; border-color: var(--border); }
-/* .cmp3-col: dejamos overflow visible para que el pill "Mejor" (top: -8px)
-   no se recorte. El control de overflow horizontal está en los hijos. */
+
 .cmp3-col { overflow: visible; min-width: 0; }
 .cmp3-col > * { min-width: 0; }
 /* Rank ahora es una caja con el LOGO de la casa (sin números 1/2/3) */
@@ -6175,9 +4927,6 @@ body {
   .cmp3 { grid-template-columns: 1fr; }
 }
 
-/* ============================================================================
-   BONOS — tabla premium
-   ============================================================================ */
 .bonus-grid {
   display: grid;
   grid-template-columns: 1fr;
@@ -6312,205 +5061,25 @@ body {
   .bonus-row .b-cta { grid-area: cta; justify-self: stretch; }
 }
 
-/* ============================================================================
-   MUNDIAL 2026 — EPIC PREMIUM BANNER
-   Cinematográfico · Stadium atmosphere · Navy + Gold
-   Banderas de 9 naciones · Comparador exclusivo · Countdown live
-   ============================================================================ */
-
-.wc-epic {
-  position: relative;
-  isolation: isolate;
-  border-radius: var(--r-2xl);
-  overflow: hidden;
-  background: #03061a;
-  border: 1px solid rgba(212,160,23,.38);
-  box-shadow:
-    0 0 0 1px rgba(212,160,23,.10),
-    0 48px 100px -20px rgba(3,6,26,.92),
-    inset 0 1px 0 rgba(255,255,255,.05);
-  margin-block: var(--s-8);
-  color: #fff;
-}
-
 /* Layer 1 — multi-color stadium atmosphere */
-.wc-epic::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(ellipse 70% 55% at -5% -8%, rgba(80,130,255,.11), transparent 55%),
-    radial-gradient(ellipse 70% 55% at 105% -8%, rgba(212,160,23,.20), transparent 55%),
-    radial-gradient(ellipse 80% 45% at 50% -25%, rgba(212,160,23,.14), transparent 60%),
-    radial-gradient(ellipse 45% 75% at 8%  58%,  rgba(0,104,71,.10),    transparent 55%),
-    radial-gradient(ellipse 45% 75% at 92% 58%,  rgba(191,10,48,.09),   transparent 55%),
-    radial-gradient(ellipse 65% 38% at 50% 120%, rgba(206,17,38,.07),   transparent 55%),
-    linear-gradient(170deg, #07102e 0%, #040c22 40%, #060f20 75%, #040a18 100%);
-  z-index: 0;
-  pointer-events: none;
-}
-
 /* Layer 2 — diagonal technical grid overlay */
-.wc-epic::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background-image:
-    repeating-linear-gradient(108deg,
-      transparent 0, transparent 48px,
-      rgba(255,255,255,.006) 48px, rgba(255,255,255,.006) 96px),
-    repeating-linear-gradient(-72deg,
-      transparent 0, transparent 110px,
-      rgba(212,160,23,.022) 110px, rgba(212,160,23,.022) 220px);
-  z-index: 0;
-  pointer-events: none;
-  animation: wc-grid-shift 60s linear infinite;
-}
-
-@keyframes wc-grid-shift {
-  0%   { background-position: 0 0, 0 0; }
-  100% { background-position: 96px 96px, 220px 220px; }
-}
 
 /* All inner content above bg layers */
-.wc-epic > * { position: relative; z-index: 1; }
-.wc-epic__inner { padding: clamp(28px, 4vw, 56px) clamp(20px, 4vw, 52px) clamp(24px, 3vw, 40px); }
-
 /* Eyebrow badge */
-.wc-epic__eyebrow {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: .16em;
-  text-transform: uppercase;
-  color: #fcd34d;
-  padding: 5px 12px;
-  border-radius: 999px;
-  background: rgba(212,160,23,.12);
-  border: 1px solid rgba(212,160,23,.32);
-}
-
 /* Small info badges in header */
-.wc-epic__badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: .7rem;
-  font-weight: 600;
-  background: rgba(255,255,255,.06);
-  border: 1px solid rgba(255,255,255,.10);
-  color: rgba(255,255,255,.70);
-  letter-spacing: .04em;
-}
-.wc-epic__badge--gold {
-  background: rgba(212,160,23,.14);
-  border-color: rgba(212,160,23,.30);
-  color: #fcd34d;
-}
-
 /* Trophy */
-.wc-epic__trophy {
-  width: 72px;
-  height: 80px;
-  flex-shrink: 0;
-  filter: drop-shadow(0 8px 24px rgba(212,160,23,.45));
-  animation: trophy-float 5s ease-in-out infinite;
-}
-@keyframes trophy-float {
-  0%,100% { transform: translateY(0) rotate(-1deg); }
-  50%      { transform: translateY(-5px) rotate(1deg); }
-}
 
 /* Main title */
-.wc-epic__title {
-  font-size: clamp(2.1rem, 1.4rem + 3.2vw, 3.8rem);
-  font-weight: 900;
-  line-height: .98;
-  letter-spacing: -.035em;
-  margin: 0;
-  color: #fff;
-}
-.wc-epic__title em {
-  font-style: normal;
-  background: linear-gradient(120deg, #fcd34d 0%, #f6c84a 35%, #d4a017 75%, #fcd34d 100%);
-  background-size: 200% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: wc-gold-shimmer 4s ease-in-out infinite;
-}
 @keyframes wc-gold-shimmer {
   0%,100% { background-position: 0% 0; }
   50%      { background-position: 100% 0; }
 }
 
 /* Subtitle */
-.wc-epic__sub {
-  color: rgba(255,255,255,.70);
-  font-size: clamp(.9rem, .85rem + .3vw, 1.08rem);
-  line-height: 1.65;
-  max-width: 54ch;
-  margin: 14px 0 26px;
-}
-
 /* Nation flag chips */
-.wc-epic__nations {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-bottom: 28px;
-}
-.wc-epic__nation {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 11px;
-  border-radius: 8px;
-  background: rgba(255,255,255,.05);
-  border: 1px solid rgba(255,255,255,.09);
-  font-size: .77rem;
-  font-weight: 600;
-  color: rgba(255,255,255,.85);
-  transition: background .18s, border-color .18s, transform .18s;
-  cursor: default;
-  white-space: nowrap;
-}
-.wc-epic__nation:hover {
-  background: rgba(255,255,255,.10);
-  border-color: rgba(212,160,23,.38);
-  transform: translateY(-1px);
-}
-.wc-epic__nation .nflag {
-  width: 18px;
-  height: 13px;
-  border-radius: 2px;
-  box-shadow: 0 0 0 1px rgba(0,0,0,.18);
-  display: inline-block;
-  flex-shrink: 0;
-}
-
 /* Main content 2-col grid */
-.wc-epic__content {
-  display: grid;
-  grid-template-columns: 1fr 300px;
-  gap: clamp(24px, 3vw, 44px);
-  align-items: start;
-}
-@media (max-width: 900px) {
-  .wc-epic__content { grid-template-columns: 1fr; }
-}
 
 /* CTA row */
-.wc-epic__ctas {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-  align-items: center;
-  margin-bottom: 32px;
-}
 .wc-epic .btn-gold {
   background: linear-gradient(135deg, #fcd34d, #d4a017);
   color: #1a1208;
@@ -6535,29 +5104,7 @@ body {
 }
 
 /* Stats strip */
-.wc-epic__stats {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 10px;
-  margin-top: 4px;
-}
-@media (max-width: 640px) {
-  .wc-epic__stats { grid-template-columns: repeat(2, 1fr); }
-}
-.wc-epic__stat {
-  background: rgba(255,255,255,.04);
-  border: 1px solid rgba(255,255,255,.08);
-  border-radius: 12px;
-  padding: 14px 12px;
-  text-align: center;
-  transition: background .18s, border-color .18s, transform .18s;
-  cursor: default;
-}
-.wc-epic__stat:hover {
-  background: rgba(255,255,255,.07);
-  border-color: rgba(212,160,23,.28);
-  transform: translateY(-2px);
-}
+
 .wc-epic__stat .sv {
   font-family: var(--font-mono);
   font-size: 1.65rem;
@@ -6577,222 +5124,9 @@ body {
 }
 
 /* Right sidebar */
-.wc-epic__right {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
 /* Countdown */
-.wc-epic__countdown {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 7px;
-}
-.wc-epic__cu {
-  background: rgba(255,255,255,.05);
-  border: 1px solid rgba(255,255,255,.10);
-  border-radius: 12px;
-  padding: 14px 6px 10px;
-  text-align: center;
-  backdrop-filter: blur(8px);
-  transition: border-color .18s, background .18s;
-}
-.wc-epic__cu:hover {
-  border-color: rgba(212,160,23,.30);
-  background: rgba(255,255,255,.08);
-}
-.wc-epic__cu strong {
-  display: block;
-  font-family: var(--font-mono);
-  font-size: clamp(1.35rem, 2.2vw, 1.75rem);
-  font-weight: 800;
-  letter-spacing: -.04em;
-  line-height: 1;
-  color: #fff;
-}
-.wc-epic__cu span {
-  font-size: .58rem;
-  text-transform: uppercase;
-  letter-spacing: .14em;
-  color: rgba(255,255,255,.45);
-  display: block;
-  margin-top: 4px;
-}
-
 /* Favorites panel */
-.wc-epic__favorites {
-  background: rgba(255,255,255,.03);
-  border: 1px solid rgba(255,255,255,.07);
-  border-radius: 14px;
-  padding: 14px 16px;
-}
-.wc-epic__fav-header {
-  font-size: .68rem;
-  text-transform: uppercase;
-  letter-spacing: .12em;
-  color: rgba(255,255,255,.42);
-  margin-bottom: 10px;
-  display: block;
-}
-.wc-epic__fav-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 6px 0;
-  border-bottom: 1px solid rgba(255,255,255,.04);
-}
-.wc-epic__fav-row:last-child { border-bottom: 0; }
-.wc-epic__fav-name {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  font-size: .84rem;
-  font-weight: 600;
-  color: rgba(255,255,255,.88);
-}
-.wc-epic__fav-flag {
-  width: 18px;
-  height: 13px;
-  border-radius: 2px;
-  box-shadow: 0 0 0 1px rgba(0,0,0,.18);
-  flex-shrink: 0;
-  display: inline-block;
-}
-.wc-epic__fav-odd {
-  font-family: var(--font-mono);
-  font-size: .82rem;
-  font-weight: 700;
-  color: #fcd34d;
-}
-
 /* ── Comparador exclusivo del Mundial ── */
-.wc-epic__comparator {
-  position: relative;
-  z-index: 1;
-  border-top: 1px solid rgba(255,255,255,.06);
-  padding: clamp(18px, 2.5vw, 30px) clamp(20px, 4vw, 52px);
-}
-.wc-epic__comparator-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 16px;
-  margin-bottom: 18px;
-  flex-wrap: wrap;
-}
-.wc-epic__cmp-title { font-size: 1rem; font-weight: 700; color: #fff; }
-.wc-epic__cmp-sub {
-  color: rgba(255,255,255,.52);
-  font-size: .83rem;
-  margin: 4px 0 0;
-  line-height: 1.5;
-}
-.wc-epic__cmp-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 4px 11px;
-  border-radius: 999px;
-  background: rgba(212,160,23,.12);
-  border: 1px solid rgba(212,160,23,.30);
-  font-size: .68rem;
-  font-weight: 700;
-  color: #fcd34d;
-  text-transform: uppercase;
-  letter-spacing: .10em;
-  white-space: nowrap;
-}
-.wc-epic__cmp-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 12px;
-}
-.wc-epic__cmp-card {
-  background: rgba(255,255,255,.03);
-  border: 1px solid rgba(255,255,255,.07);
-  border-radius: 14px;
-  padding: 15px;
-  transition: border-color .18s, background .18s, transform .18s;
-}
-.wc-epic__cmp-card:hover {
-  border-color: rgba(212,160,23,.30);
-  background: rgba(255,255,255,.06);
-  transform: translateY(-2px);
-}
-.wc-epic__cmp-match {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
-  flex-wrap: wrap;
-}
-.wc-epic__cmp-teams {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: .82rem;
-  font-weight: 700;
-  color: rgba(255,255,255,.90);
-}
-.wc-epic__cmp-flag {
-  width: 16px;
-  height: 11px;
-  border-radius: 2px;
-  box-shadow: 0 0 0 1px rgba(0,0,0,.18);
-  display: inline-block;
-  flex-shrink: 0;
-}
-.wc-epic__cmp-vs { color: rgba(255,255,255,.30); font-size: .75rem; }
-.wc-epic__cmp-stage {
-  font-size: .65rem;
-  color: #fcd34d;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: .06em;
-}
-.wc-epic__cmp-outcomes {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 6px;
-}
-.wc-epic__cmp-col {
-  background: rgba(0,0,0,.20);
-  border-radius: 9px;
-  padding: 9px 7px 8px;
-}
-.wc-epic__cmp-col-label {
-  font-size: .6rem;
-  text-transform: uppercase;
-  letter-spacing: .08em;
-  color: rgba(255,255,255,.40);
-  margin-bottom: 7px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.wc-epic__cmp-col-code {
-  font-family: var(--font-mono);
-  font-weight: 800;
-  color: rgba(255,255,255,.55);
-  font-size: .68rem;
-}
-.wc-epic__cmp-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 3px 0;
-  border-bottom: 1px solid rgba(255,255,255,.04);
-  font-size: .72rem;
-}
-.wc-epic__cmp-row:last-child { border-bottom: 0; }
-.wc-epic__cmp-book { color: rgba(255,255,255,.52); }
-.wc-epic__cmp-price {
-  font-family: var(--font-mono);
-  font-weight: 700;
-  color: rgba(255,255,255,.75);
-}
 .wc-epic__cmp-row.is-top .wc-epic__cmp-book { color: rgba(255,255,255,.80); font-weight: 600; }
 .wc-epic__cmp-row.is-top .wc-epic__cmp-price { color: #fcd34d; font-weight: 800; }
 
@@ -6820,13 +5154,6 @@ body {
 /* Tooltip z-index: never overlap sibling popovers */
 .help-q::after { z-index: 500 !important; }
 .h2 .help-q::after, h2 .help-q::after { z-index: 500 !important; }
-
-
-/* ============================================================
- * MUNDIAL 2026 — MEGA BANNER v3
- * Cinematic stadium night · Bokeh floodlights · Pitch floor
- * Crowd silhouette · Navy + Gold · Film grain · Epic depth
- * ============================================================ */
 
 .wc-mega {
   position: relative;
@@ -7008,10 +5335,6 @@ body {
   display: flex;
   align-items: center;
   gap: 14px;
-}
-.wc-mega__emblem-icon {
-  flex-shrink: 0;
-  filter: drop-shadow(0 4px 20px rgba(212,160,23,.58));
 }
 .wc-mega__emblem-text {
   display: flex;
@@ -7273,16 +5596,6 @@ body {
   font-weight: 600;
   color: rgba(255,255,255,.88);
 }
-.wc-mega__fav-flag {
-  display: inline-block;
-  width: 18px;
-  height: 12px;
-  border-radius: 2px;
-  overflow: hidden;
-  flex-shrink: 0;
-  box-shadow: 0 0 0 1px rgba(0,0,0,.20);
-}
-.wc-mega__fav-flag svg { display: block; width: 100%; height: 100%; }
 .wc-mega__fav-odd {
   font-family: var(--font-mono);
   font-size: .82rem;
@@ -7360,16 +5673,6 @@ body {
   font-weight: 700;
   color: rgba(255,255,255,.90);
 }
-.wc-mega__cmp-flag {
-  display: inline-block;
-  width: 17px;
-  height: 11px;
-  border-radius: 2px;
-  overflow: hidden;
-  flex-shrink: 0;
-  box-shadow: 0 0 0 1px rgba(0,0,0,.20);
-}
-.wc-mega__cmp-flag svg { display: block; width: 100%; height: 100%; }
 .wc-mega__cmp-vs { color: rgba(255,255,255,.28); font-size: .72rem; }
 .wc-mega__cmp-stage {
   font-size: .63rem;
@@ -7472,10 +5775,6 @@ body {
   stroke: rgba(255,255,255,.78) !important;
 }
 
-/* ============================================================
- * WC MEGA BANNER — Festive confetti strips
- * ============================================================ */
-
 .wc-mega__festive {
   position: absolute;
   inset: 0;
@@ -7499,37 +5798,11 @@ body {
 }
 
 /* Enhanced emblem glow — host nation red mixed with gold */
-.wc-mega__emblem-icon {
-  filter:
-    drop-shadow(0 4px 22px rgba(212,160,23,.55))
-    drop-shadow(0 0  44px rgba(200,16,46,.20));
-}
-
 /* FIFA badge pill in badge cluster */
-.wc-mega__badge--fifa {
-  background: #003DA5;
-  border-color: rgba(0,61,165,.50);
-  color: #fff;
-  font-weight: 800;
-  font-size: .64rem;
-  letter-spacing: .22em;
-  text-transform: uppercase;
-}
 
-/* ============================================================
- * BETSAFE LOGO — real image in header navbar
- * ============================================================ */
 .brand--img {
   padding: 0;
   gap: 0;
-}
-.brand-logo-img {
-  display: block;
-  height: 44px;
-  width: auto;
-  object-fit: contain;
-  flex-shrink: 0;
-  transition: opacity .2s ease, filter .2s ease;
 }
 .brand--img:hover .brand-logo-img {
   opacity: .88;
@@ -7540,13 +5813,7 @@ body {
   padding: 5px 12px;
   border-radius: 10px;
 }
-[data-theme=dark] .brand-logo-img {
-  filter: drop-shadow(0 1px 6px rgba(255,255,255,.08));
-}
 
-/* ============================================================
- * WC2026 LOGO — real image emblem (replaces SVG shield)
- * ============================================================ */
 .wc-mega__emblem-img-wrap {
   flex-shrink: 0;
   background: rgba(255,255,255,.96);
@@ -7569,9 +5836,6 @@ body {
   border-radius: 11px;
 }
 
-/* ============================================================
- * FIFA LOGO — real image badge in wc-mega header
- * ============================================================ */
 .wc-mega__fifa-badge {
   height: 36px;
   width: auto;
@@ -7588,73 +5852,12 @@ body {
   box-shadow: 0 4px 24px rgba(0,61,165,.70), 0 0 48px rgba(0,61,165,.40);
 }
 
-/* ============================================================
- * WC LOGO STRIP — FIFA + WC26 alternados en sección mundial
- * ============================================================ */
-.wc-logo-strip {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 20px 0 8px;
-  flex-wrap: wrap;
-}
-.wc-logo-strip__sep {
-  width: 1px;
-  height: 32px;
-  background: rgba(255,255,255,.14);
-  flex-shrink: 0;
-}
-.wc-logo-strip__item {
-  border-radius: 10px;
-  overflow: hidden;
-  border: 1px solid rgba(255,255,255,.10);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: transform .25s ease, box-shadow .25s ease;
-}
-.wc-logo-strip__item:hover {
-  transform: scale(1.05);
-}
-.wc-logo-strip__item--wc {
-  background: rgba(255,255,255,.93);
-  padding: 4px 6px;
-  box-shadow: 0 4px 18px rgba(0,0,0,.40), 0 0 28px rgba(212,160,23,.30);
-}
-.wc-logo-strip__item--wc:hover {
-  box-shadow: 0 6px 24px rgba(0,0,0,.50), 0 0 44px rgba(212,160,23,.50);
-}
-.wc-logo-strip__item--fifa {
-  background: transparent;
-  padding: 0;
-  box-shadow: 0 4px 18px rgba(0,61,165,.40), 0 0 28px rgba(0,61,165,.20);
-}
-.wc-logo-strip__item--fifa:hover {
-  box-shadow: 0 6px 24px rgba(0,61,165,.60), 0 0 44px rgba(0,61,165,.35);
-}
-.wc-logo-strip__img {
-  display: block;
-  height: 38px;
-  width: auto;
-  max-width: 80px;
-  object-fit: contain;
-}
-
-/* ============================================================
- * FOOTER logo — light pill on dark surface
- * ============================================================ */
-.brand-logo-img--footer {
-  opacity: .92;
-}
 .site-footer .brand--img {
   background: rgba(255,255,255,.07);
   padding: 6px 12px;
   border-radius: 10px;
 }
 
-/* ============================================================
- * DASHBOARD — WC2026 + FIFA logo pair in banner header
- * ============================================================ */
 .wc-dash-logos {
   display: flex;
   gap: 8px;
@@ -7685,9 +5888,6 @@ body {
 }
 .wc-dash-logo:hover { transform: scale(1.06); }
 
-/* ============================================================
- * COUNTDOWN — premium cards
- * ============================================================ */
 .cu-p {
   display: flex;
   flex-direction: column;
@@ -7728,7 +5928,6 @@ body {
 }
 
 @media (max-width: 640px) {
-  .brand-logo-img { height: 34px; }
   .wc-dash-logo img { height: 36px; }
   .cu-p { min-width: 52px; padding: 10px 8px 8px; }
   .cu-p__val { font-size: 1.3rem; }
@@ -7777,22 +5976,10 @@ body {
     0 0 0 1px rgba(255, 255, 255, .12);
 }
 
-/* Disable CSS-only popovers on .help-q and .bs-help — the portal handles them.
-   Kept the icon visible (the `?` glyph comes from ::before on .help-q, which
-   we still need; only the tooltip popover ::after is disabled). */
 .help-q::after { display: none !important; }
 .bs-help[data-tip]::before,
 .bs-help[data-tip]::after { display: none !important; }
 
-/* ============================================================
- * v35 — Logo: inline SVG with theme-aware fills (no white pill)
- * ============================================================ */
-/* ============================================================
- * BetSafe wordmark — dos PNG theme-aware (light + dark)
- * Sin filters de color: simplemente mostramos la versión correcta
- * según data-theme. El header del sitio es siempre dark (header
- * navy + glass), así que ahí también usamos la variante "dark".
- * ============================================================ */
 .brand-logo-pic {
   display: inline-flex;
   align-items: center;
@@ -7815,11 +6002,6 @@ body {
 }
 .brand-logo-svg--footer { height: 24px; }
 
-/* Swap entre las dos variantes según tema:
-   - light theme → brand-logo-light  (bet navy + safe dorado)
-   - dark  theme → brand-logo-dark   (bet blanco + safe dorado)
-   Tanto el header como el footer siguen el tema (fondo claro u oscuro), así
-   que el swap normal por [data-theme] es exactamente lo que queremos. */
 .brand-logo-light { display: block; }
 .brand-logo-dark  { display: none; }
 [data-theme=dark] .brand-logo-light { display: none; }
@@ -7869,24 +6051,16 @@ body {
   .brand-logo-svg--footer { height: 20px; }
 }
 
-/* Remove the dark-mode and footer white pills behind the brand wrapper
-   (the SVG now adapts its own colors per theme). */
 [data-theme=dark] .brand--img,
 .site-footer .brand--img {
   background: transparent !important;
   padding: 0 !important;
   border-radius: 0 !important;
 }
-[data-theme=dark] .brand-logo-img { filter: none; }
-
 @media (max-width: 640px) {
   .brand-logo-svg { height: 26px; }
   .brand-logo-svg--footer { height: 24px; }
 }
-
-/* ============================================================================
- * v36 — Sidebar simplificado: 4 primarias destacadas + Avanzadas colapsable
- * ============================================================================ */
 
 /* Sidebar container — un poco más de aire entre secciones */
 .sidebar nav.stack-sm { gap: 4px; }
@@ -8085,19 +6259,11 @@ body {
 .mob-adv-label { font-weight: 600; font-size: .95rem; line-height: 1.2; }
 .mob-adv-desc { font-size: .78rem; color: var(--text-tertiary); line-height: 1.3; margin-top: 2px; }
 
-/* ============================================================================
- * v36 — Logo BetSafe: viewBox holgado para que no se corte + altura limpia
- * ============================================================================ */
 .brand-logo-svg {
-  /* viewBox actualizado vía atributo, pero por las dudas, dejamos overflow visible */
+  
   overflow: visible;
 }
 
-/* ============================================================================
- * v36 — Dark mode: legibilidad de textos azul oscuro
- * Override de tokens accent en dark para que pasen a azul claro.
- * No tocamos texto blanco/primario.
- * ============================================================================ */
 [data-theme=dark] {
   /* Accent navy → light blue family en dark mode */
   --accent-50:  #1a2548;
@@ -8129,9 +6295,6 @@ body {
 /* Eyebrows y labels secundarios */
 [data-theme=dark] .eyebrow { color: var(--brand-700); }
 
-/* ============================================================================
- * v36 — Pricing cards premium (Plan Básico + VIP)
- * ============================================================================ */
 .price-card {
   position: relative;
   border: 1px solid var(--border);
@@ -8310,9 +6473,6 @@ body {
   box-shadow: 0 18px 36px -14px rgba(212,160,23,.7);
 }
 
-/* ============================================================================
- * v36 — Mobile responsivo para sidebar + nav
- * ============================================================================ */
 @media (max-width: 1100px) {
   .bottom-nav { display: flex; }
 }
@@ -8322,9 +6482,6 @@ body {
   }
 }
 
-/* ============================================================================
- * v37 — Inicio (Overview) minimalista: bienvenida + eventos + accesos rápidos
- * ============================================================================ */
 .ov-hero {
   padding: 12px 4px 4px;
   display: flex;
@@ -8567,22 +6724,9 @@ body {
   transition: opacity .25s var(--ease);
   z-index: -1;
 }
-.ov-quick-card--brand::before {
-  background: linear-gradient(135deg, color-mix(in srgb, var(--brand-600) 10%, transparent), transparent 70%);
-}
-.ov-quick-card--gold::before {
-  background: linear-gradient(135deg, color-mix(in srgb, var(--gold-500) 12%, transparent), transparent 70%);
-}
 .ov-quick-card:hover {
   transform: translateY(-3px);
   box-shadow: 0 18px 36px -20px rgba(15,23,42,.25);
-}
-.ov-quick-card--brand:hover {
-  border-color: color-mix(in srgb, var(--brand-600) 45%, var(--border));
-}
-.ov-quick-card--gold:hover {
-  border-color: color-mix(in srgb, var(--gold-500) 55%, var(--border));
-  box-shadow: 0 18px 40px -18px rgba(212,160,23,.4);
 }
 .ov-quick-card:hover::before { opacity: 1; }
 
@@ -8648,11 +6792,6 @@ body {
   .ov-event-row { padding: 14px; }
   .ov-quick-card { padding: 14px; }
 }
-
-/* ============================================================================
- * v41 — Generador IA rediseñado: hero compacto + step cards prolijos
- * Configurador minimalista, animado, intuitivo. Sin stats banner.
- * ============================================================================ */
 
 /* Hero superior: título + step indicator visual */
 .agx-hero {
@@ -8977,124 +7116,12 @@ body {
   .agx-card:hover, .agx-action__cta:hover { transform: none; }
 }
 
-/* ============================================================================
- * v40 — AI Picks rediseñado: tarjeta partido + 3 picks verticales cómodos
- * Sin truncamiento, animaciones premium, hover lift, paleta theme-aware.
- * ============================================================================ */
-/* AI Picks: stack vertical (no grid) — cards full-width premium con info
- * legible. El grid de 2-3 columns rompía el layout interno de los combos
- * (texto vertical letra por letra cuando las cards se hacían muy estrechas). */
 #aiPicks {
   display: flex !important;
   flex-direction: column !important;
   gap: 16px !important;
 }
 .ai-combo-card { width: 100%; }
-
-.ai-match {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  padding: 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  position: relative;
-  overflow: hidden;
-  isolation: isolate;
-  transition: transform .3s var(--ease, ease), border-color .25s var(--ease, ease), box-shadow .3s var(--ease, ease);
-  animation: aiMatchIn .5s var(--ease-out, ease) backwards;
-}
-.ai-match::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(700px 320px at 0% 0%, rgba(30,58,138,.05), transparent 60%);
-  z-index: -1;
-  pointer-events: none;
-}
-[data-theme=dark] .ai-match::before {
-  background: radial-gradient(700px 320px at 0% 0%, rgba(110,144,223,.08), transparent 60%);
-}
-.ai-match:hover {
-  transform: translateY(-2px);
-  border-color: color-mix(in srgb, var(--brand-600) 35%, var(--border));
-  box-shadow: 0 22px 44px -22px rgba(15,23,42,.25);
-}
-[data-theme=dark] .ai-match:hover { box-shadow: 0 24px 50px -22px rgba(0,0,0,.7); }
-@keyframes aiMatchIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-.ai-match__head {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding-bottom: 12px;
-  border-bottom: 1px dashed var(--border);
-}
-.ai-match__teams {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  font-size: 1.05rem;
-  font-weight: 800;
-  letter-spacing: -.01em;
-}
-.ai-match__crest {
-  width: 28px; height: 28px;
-  display: inline-flex;
-  align-items: center; justify-content: center;
-  flex-shrink: 0;
-}
-.ai-match__crest svg, .ai-match__crest img { width: 100%; height: 100%; object-fit: contain; }
-.ai-match__name { color: var(--text-primary); }
-.ai-match__vs {
-  font-size: .7rem;
-  font-weight: 700;
-  color: var(--text-tertiary);
-  text-transform: uppercase;
-  letter-spacing: .1em;
-}
-.ai-match__meta {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: .75rem;
-  color: var(--text-tertiary);
-  font-weight: 500;
-}
-.ai-match__league {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-weight: 700;
-  color: var(--text-secondary);
-}
-.ai-match__league svg, .ai-match__league img { flex-shrink: 0; }
-.ai-match__sep { opacity: .6; }
-.ai-match__ia {
-  margin-left: auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  background: color-mix(in srgb, var(--brand-600) 14%, transparent);
-  color: var(--brand-700);
-  border: 1px solid color-mix(in srgb, var(--brand-600) 28%, transparent);
-  padding: 3px 8px;
-  border-radius: 999px;
-  font-size: .65rem;
-  font-weight: 800;
-  letter-spacing: .08em;
-}
-
-.ai-match__picks {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
 
 .ai-pick {
   position: relative;
@@ -9122,112 +7149,12 @@ body {
 [data-theme=dark] .ai-pick:hover { box-shadow: 0 14px 28px -16px rgba(0,0,0,.6); }
 
 /* Riel vertical de color (indicador rápido del nivel de riesgo) */
-.ai-pick__rail {
-  position: absolute;
-  top: 12px; bottom: 12px; left: 5px;
-  width: 3px;
-  border-radius: 999px;
-  background: var(--rail, var(--brand-500));
-}
-.ai-pick--low  { --rail: linear-gradient(180deg, #34d399, #16a34a); }
-.ai-pick--mid  { --rail: linear-gradient(180deg, #fbbf24, #d97706); }
-.ai-pick--high { --rail: linear-gradient(180deg, #f87171, #dc2626); }
-.ai-pick--low  .ai-pick__rail { background: linear-gradient(180deg, #34d399, #16a34a); }
-.ai-pick--mid  .ai-pick__rail { background: linear-gradient(180deg, #fbbf24, #d97706); }
-.ai-pick--high .ai-pick__rail { background: linear-gradient(180deg, #f87171, #dc2626); }
-
-.ai-pick__head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-.ai-pick__risk {
-  font-size: .7rem !important;
-  font-weight: 800 !important;
-  padding: 3px 10px !important;
-  letter-spacing: .02em !important;
-}
-.ai-pick__market {
-  font-size: .65rem;
-  font-weight: 700;
-  letter-spacing: .06em;
-  text-transform: uppercase;
-  color: var(--brand-700);
-  background: color-mix(in srgb, var(--brand-600) 10%, transparent);
-  border: 1px solid color-mix(in srgb, var(--brand-600) 22%, transparent);
-  padding: 3px 8px;
-  border-radius: 6px;
-}
-[data-theme=dark] .ai-pick__market {
-  background: color-mix(in srgb, var(--brand-500) 14%, transparent);
-  border-color: color-mix(in srgb, var(--brand-500) 28%, transparent);
-}
-.ai-pick__risk-hint {
-  font-size: .68rem;
-  color: var(--text-tertiary);
-  font-style: italic;
-  margin-left: auto;
-}
-@media (max-width: 480px) {
-  .ai-pick__risk-hint { display: none; }
-}
-
-.ai-pick__main {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.ai-pick__label {
-  font-size: .98rem;
-  font-weight: 700;
-  color: var(--text-primary);
-  line-height: 1.3;
-  letter-spacing: -.005em;
-  /* SIN truncate — el texto puede wrap a 2 líneas si hace falta */
-  word-break: break-word;
-}
-.ai-pick__ev {
-  display: inline-block;
-  align-self: flex-start;
-  font-family: var(--font-mono);
-  font-size: .7rem;
-  font-weight: 700;
-  padding: 2px 7px;
-  border-radius: 5px;
-  letter-spacing: -.01em;
-}
-.ai-pick__ev.is-pos {
-  color: #15803D;
-  background: rgba(34,197,94,.13);
-}
-.ai-pick__ev.is-neg {
-  color: var(--text-tertiary);
-  background: var(--surface);
-}
-[data-theme=dark] .ai-pick__ev.is-pos {
-  color: #34D399;
-  background: rgba(52,211,153,.12);
-}
-[data-theme=dark] .ai-pick__ev.is-neg {
-  color: var(--text-tertiary);
-  background: rgba(255,255,255,.04);
-}
 
 /* "Mejor pago" banner queda compacto dentro del pick (ya tiene estilos v39) */
 .ai-pick .ai-best-pay {
   margin: 0 !important;
 }
 
-.ai-pick__bottom {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding-top: 4px;
-  border-top: 1px dashed var(--border);
-  margin-top: 2px;
-  padding-top: 12px;
-}
 .ai-pick__odd {
   font-size: 1.6rem !important;
   font-weight: 900;
@@ -9235,12 +7162,6 @@ body {
   color: var(--text-primary);
   font-feature-settings: 'tnum';
   line-height: 1;
-}
-.ai-pick__actions {
-  display: flex;
-  gap: 6px;
-  margin-left: auto;
-  flex-wrap: wrap;
 }
 .ai-pick__actions .btn {
   font-size: .78rem;
@@ -9252,11 +7173,8 @@ body {
 }
 
 @media (max-width: 480px) {
-  .ai-match { padding: 14px; }
   .ai-pick { padding: 12px 12px 12px 16px; }
   .ai-pick__odd { font-size: 1.4rem !important; }
-  .ai-pick__bottom { flex-wrap: wrap; }
-  .ai-pick__actions { width: 100%; }
   .ai-pick__actions .btn { flex: 1; justify-content: center; }
 }
 
@@ -9271,100 +7189,11 @@ body {
  * Sin tag "MEJOR PAGA" gigante que se cortaba. Todo en una sola fila,
  * elementos compactos, nombre con ellipsis, cuota siempre al final.
  * ============================================================================ */
-.ai-best-pay {
-  display: flex !important;
-  align-items: center;
-  justify-content: center;
-  gap: 8px !important;
-  grid-template-columns: none !important;
-  padding: 8px 10px !important;
-  min-width: 0;
-  border-radius: 10px !important;
-  background: linear-gradient(135deg,
-    color-mix(in srgb, #D4A017 12%, var(--surface)) 0%,
-    var(--surface) 70%) !important;
-  border: 1px solid color-mix(in srgb, #D4A017 32%, transparent) !important;
-  overflow: hidden;
-}
-[data-theme=dark] .ai-best-pay {
-  background: linear-gradient(135deg,
-    rgba(252,211,77,.10) 0%,
-    rgba(255,255,255,.02) 70%) !important;
-  border-color: rgba(252,211,77,.28) !important;
-}
-
-.ai-best-pay .ai-best-crown {
-  flex: 0 0 auto;
-  width: 18px; height: 18px;
-  display: inline-flex; align-items: center; justify-content: center;
-  color: #D4A017;
-  filter: drop-shadow(0 1px 2px rgba(212,160,23,.4));
-}
-[data-theme=dark] .ai-best-pay .ai-best-crown {
-  color: #FCD34D;
-  filter: drop-shadow(0 0 4px rgba(252,211,77,.5));
-}
-
-.ai-best-pay .ai-best-logo {
-  flex: 0 0 auto;
-  width: 24px !important;
-  height: 24px !important;
-  border-radius: 6px;
-  overflow: hidden;
-  background: var(--surface);
-  border: 1px solid var(--border);
-}
-.ai-best-pay .ai-best-logo svg,
-.ai-best-pay .ai-best-logo img {
-  width: 100% !important;
-  height: 100% !important;
-  object-fit: contain;
-  display: block;
-}
-
-.ai-best-pay .ai-best-name {
-  flex: 1 1 auto;
-  min-width: 0;
-  font-size: .82rem;
-  font-weight: 700;
-  color: var(--text-primary);
-  letter-spacing: -.005em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.ai-best-pay .ai-best-price {
-  flex: 0 0 auto;
-  margin-left: auto;
-  font-family: var(--font-mono);
-  font-size: 1rem !important;
-  font-weight: 800;
-  letter-spacing: -.02em;
-  color: #B58709;
-  font-feature-settings: 'tnum';
-}
-[data-theme=dark] .ai-best-pay .ai-best-price { color: #FCD34D; }
-
 /* Hover sutil */
-.ai-best-pay:hover {
-  transform: translateY(-1px);
-  border-color: color-mix(in srgb, #D4A017 55%, transparent) !important;
-  box-shadow: 0 8px 18px -10px rgba(212,160,23,.32);
-}
-
 /* Reglas legacy hidden — el tag MEJOR PAGA y el delta ya no se renderizan */
-.ai-best-pay .ai-best-tag,
-.ai-best-pay .ai-best-info,
-.ai-best-pay .ai-best-delta { display: none !important; }
-
 /* Que las pick cards no recorten el banner */
 #aiPicks .card { min-width: 0; overflow: visible; }
-.ai-best-pay, .ai-best-pay * { min-width: 0; }
 
-/* ============================================================================
- * v38 — Trophy icon premium: tint dorado en el container del tab Mundial 2026
- * ============================================================================ */
 #sideNav button[data-tab="worldcup"] .tab-icon {
   background: linear-gradient(135deg,
     color-mix(in srgb, var(--gold-300) 30%, var(--surface-2)),
@@ -9403,11 +7232,6 @@ body {
 .bottom-nav a[data-tab-link="worldcup"].active { color: var(--gold-700); }
 [data-theme=dark] .bottom-nav a[data-tab-link="worldcup"].active { color: var(--gold-300); }
 
-/* ============================================================================
- * v37 — Pricing cards: arreglo TOTAL del ribbon "Recomendado"
- * El ribbon ahora está perfectamente integrado: dentro del card, sin overflow,
- * esquina superior derecha, respeta el border-radius del card.
- * ============================================================================ */
 .price-card.popular::after {
   /* Override absoluto del ribbon anterior */
   content: 'Recomendado' !important;
@@ -9439,8 +7263,7 @@ body {
     0 8px 18px -8px rgba(252,211,77,.55),
     0 0 0 1px rgba(252,211,77,.35) inset !important;
 }
-/* En el card VIP popular hay que dar espacio para el ribbon en la esquina
-   y que el badge VIP no choque con él */
+
 .price-card.popular {
   padding-top: 56px;
 }
@@ -9457,18 +7280,10 @@ body {
   }
 }
 
-/* ============================================================================
- * v37 — Asegurar consistencia entre landing pricing y pricing.html
- * Forzamos que el grid layout y el inner be la misma en ambas páginas
- * ============================================================================ */
 .price-card { min-width: 0; }
 .price-card .badge-brand,
 .price-card .badge-vip { margin-bottom: 4px; }
 
-
-/* ============================================================================
- * v38 — AI Picks hyper-detailed (tabs-ai.js)
- * ============================================================================ */
 .ai-factors-strip { display:flex; gap:8px; flex-wrap:wrap; padding:10px 0; margin:8px 0; border-top:1px dashed var(--border); border-bottom:1px dashed var(--border); }
 .ai-factor { display:inline-flex; align-items:center; gap:6px; padding:4px 10px; background:var(--surface-2); border:1px solid var(--border); border-radius:999px; font-size:.7rem; }
 .ai-factor strong { color:var(--fg); }
@@ -9493,20 +7308,12 @@ body {
 /* Arbitrage hiper-preciso (tabs-arbitrage.js) */
 .arb-card { border-left:3px solid var(--success); transition:border-color .2s; }
 .arb-card:hover { border-color:var(--brand-500); }
-.arb-legs { display:grid; gap:6px; margin:8px 0; padding:8px 0; border-top:1px dashed var(--border); border-bottom:1px dashed var(--border); }
 .arb-leg { display:grid; grid-template-columns:1.4fr 1fr .8fr 1fr; gap:8px; align-items:center; padding:4px 0; }
 .arb-leg:not(:last-child) { border-bottom:1px dotted var(--border); }
 @media (max-width:680px) { .arb-leg { grid-template-columns:1fr 1fr; } }
 
 /* Generator IA — lista de factores backend */
-.ag-ai-factors-list { list-style:none; padding:0; margin:8px 0 0; display:flex; flex-direction:column; gap:4px; }
-.ag-ai-factors-list li { display:flex; align-items:center; gap:8px; font-size:.78rem; color:var(--muted); padding:4px 8px; background:var(--surface-2); border-radius:6px; }
-.ag-ai-factor-ic { font-size:.95rem; }
-.ag-ai-confidence { margin-top:8px; padding-top:6px; border-top:1px dashed var(--border); font-size:.78rem; color:var(--muted); }
 
-/* ============================================================================
- * v39 — Generador IA: casinos primero, banner "Mejor paga en" prominente
- * ============================================================================ */
 .agx-card--books .agx-card__badge { background:var(--brand-50); color:var(--brand-700); border:1px solid color-mix(in srgb, var(--brand-500) 25%, transparent); }
 .agx-card--books .agx-card__badge.is-empty { background:var(--warning-bg); color:#92400e; border-color:rgba(220,38,38,0.30); animation:pulse-soft 1.6s ease-in-out infinite; }
 @keyframes pulse-soft { 0%, 100% { opacity:1; } 50% { opacity:.55; } }
@@ -9565,117 +7372,8 @@ body {
 .agx-book-card.is-on .agx-book-tick { opacity:1; transform:scale(1); }
 
 /* Banner "MEJOR PAGA EN" prominente */
-.ag-best-pay--prominent {
-  margin-top:12px;
-  background:linear-gradient(135deg, color-mix(in srgb, var(--gold-500) 14%, var(--surface)), color-mix(in srgb, var(--brand-500) 8%, var(--surface)));
-  border:1.5px solid color-mix(in srgb, var(--gold-500) 50%, transparent);
-  border-radius:14px;
-  padding:14px 16px;
-  position:relative;
-  overflow:hidden;
-}
-.ag-best-pay--prominent .ag-best-tag {
-  display:inline-block;
-  font-size:.62rem;
-  letter-spacing:.14em;
-  font-weight:800;
-  text-transform:uppercase;
-  background:var(--gold-500);
-  color:#1a1500;
-  padding:3px 10px;
-  border-radius:999px;
-  margin-bottom:8px;
-}
-.ag-best-pay--prominent .ag-best-row {
-  display:grid;
-  grid-template-columns:auto 1fr auto;
-  gap:14px;
-  align-items:center;
-}
-.ag-best-pay--prominent .ag-best-logo {
-  width:64px; height:64px;
-  background:#fff;
-  border-radius:14px;
-  display:grid; place-items:center;
-  padding:8px;
-  box-shadow:0 4px 12px rgba(0,0,0,0.08);
-}
-.ag-best-pay--prominent .ag-best-name {
-  display:block;
-  font-size:1.2rem;
-  font-weight:800;
-  line-height:1.1;
-}
-.ag-best-pay--prominent .ag-best-sub { color:var(--muted); font-size:.78rem; }
-.ag-best-pay--prominent .ag-best-odd-strip {
-  margin-top:4px;
-  display:flex; gap:6px; align-items:baseline;
-}
-.ag-best-pay--prominent .ag-best-total-odd {
-  font-size:1.3rem; font-weight:800;
-  color:var(--brand-700);
-  font-variant-numeric:tabular-nums;
-}
-.ag-best-pay--prominent .ag-best-pay-wrap {
-  text-align:right;
-  display:flex; flex-direction:column; gap:2px;
-}
-.ag-best-pay--prominent .ag-best-pay-label {
-  font-size:.65rem;
-  letter-spacing:.06em;
-  text-transform:uppercase;
-  color:var(--muted);
-}
-.ag-best-pay--prominent .ag-best-pay-amt {
-  font-size:1.8rem;
-  font-weight:800;
-  color:var(--success);
-  line-height:1;
-  font-variant-numeric:tabular-nums;
-}
-.ag-best-pay--prominent .ag-best-pay-delta {
-  font-size:.7rem;
-  color:var(--success);
-  font-weight:600;
-}
-.ag-best-runners {
-  margin-top:10px;
-  padding-top:10px;
-  border-top:1px dashed color-mix(in srgb, var(--gold-500) 40%, transparent);
-}
-.ag-best-runners summary { cursor:pointer; padding:2px 0; }
-.ag-best-runners-list {
-  display:flex; flex-direction:column; gap:4px;
-  margin-top:8px;
-}
-.ag-best-runner {
-  display:grid;
-  grid-template-columns:auto 1.4fr auto auto auto;
-  gap:8px;
-  align-items:center;
-  padding:6px 8px;
-  background:rgba(255,255,255,.4);
-  border-radius:6px;
-}
-.ag-best-runner.is-winner { background:rgba(212,160,23,.18); font-weight:700; }
-.ag-best-runner-rank { font-size:.7rem; font-weight:800; color:var(--muted); width:24px; }
-
-[data-theme="dark"] .ag-best-pay--prominent .ag-best-logo { background:#fff; }
-[data-theme="dark"] .ag-best-runner { background:rgba(255,255,255,.06); }
-
 @media (max-width: 600px) {
-  .ag-best-pay--prominent .ag-best-row { grid-template-columns:auto 1fr; }
-  .ag-best-pay--prominent .ag-best-pay-wrap { grid-column:1 / -1; text-align:left; padding-top:8px; border-top:1px dashed color-mix(in srgb, var(--gold-500) 40%, transparent); }
-  .ag-best-runner { grid-template-columns:auto 1fr auto; }
   .ag-best-runner .muted { display:none; }
-}
-
-/* ─────────────────────────────────────────────────────────────────────────
-   Hero surebet gate — blurred preview for non-VIP, click → scroll a VIP CTA
-   ───────────────────────────────────────────────────────────────────────── */
-@keyframes pulse-gold {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(212, 160, 23, 0.6); transform: scale(1); }
-  50%      { box-shadow: 0 0 0 6px rgba(212, 160, 23, 0); transform: scale(1.15); }
 }
 
 .hero-surebet-gate {
@@ -9756,9 +7454,6 @@ body {
   opacity: 1;
 }
 
-/* ─────────────────────────────────────────────────────────────────────────
-   AI Picks empty/error state — animación radar suave (no toscas)
-   ───────────────────────────────────────────────────────────────────────── */
 .ai-empty-card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -9809,28 +7504,6 @@ body {
   .ai-empty-ring { animation: none; }
 }
 
-/* ─────────────────────────────────────────────────────────────────────────
-   Sidebar brand — visible siempre, sticky en top del sidebar
-   ───────────────────────────────────────────────────────────────────────── */
-.sidebar-brand {
-  position: sticky;
-  top: 0;
-  z-index: 5;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 6px 14px;
-  margin: -12px -6px 8px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-  font-weight: 800;
-  font-size: 1.05rem;
-  letter-spacing: -.01em;
-  color: var(--text-primary);
-  text-decoration: none;
-  transition: opacity .2s;
-}
-.sidebar-brand:hover { opacity: 0.85; }
 .sidebar-brand .logo-mark {
   width: 28px;
   height: 28px;
@@ -9838,13 +7511,7 @@ body {
   align-items: center;
   justify-content: center;
 }
-.sidebar-brand .brand-name {
-  line-height: 1;
-}
 
-/* ─────────────────────────────────────────────────────────────────────────
-   AI Picks — Teaser VIP al final (cuando user es Standard)
-   ───────────────────────────────────────────────────────────────────────── */
 .ai-vip-teaser {
   position: relative;
   overflow: hidden;
@@ -9911,9 +7578,6 @@ body {
   .ai-vip-teaser__shine { animation: none; }
 }
 
-/* ─────────────────────────────────────────────────────────────────────────
-   Builder — Best book ranking widget (ganador + top 3 comparativos)
-   ───────────────────────────────────────────────────────────────────────── */
 .bb-winner {
   display: flex;
   flex-direction: column;
@@ -9957,10 +7621,6 @@ body {
   font-size: 0.85rem;
 }
 .bb-row .num { font-variant-numeric: tabular-nums; }
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   BETSAFE AI — Flagship VIP feature
-   ═══════════════════════════════════════════════════════════════════════════ */
 
 /* ── Locked state for non-VIP ── */
 .bsai-locked {
@@ -10554,9 +8214,6 @@ body {
   .bsai-combo-footer { flex-direction: column; align-items: flex-start; }
 }
 
-/* ─────────────────────────────────────────────────────────────────────────
-   Comparador v2 — stats grid + gap pills
-   ───────────────────────────────────────────────────────────────────────── */
 .cmp-stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
@@ -10630,9 +8287,6 @@ body {
 }
 .cmp-detail-cell.num { font-variant-numeric: tabular-nums; font-weight: 600; }
 
-/* ─────────────────────────────────────────────────────────────────────────
-   Sidebar — Flagship item (BetSafe AI)
-   ───────────────────────────────────────────────────────────────────────── */
 .sidebar nav button.flagship-item {
   position: relative;
   background: linear-gradient(135deg,
@@ -10668,9 +8322,6 @@ body {
   .vip-tag--flagship { animation: none; }
 }
 
-/* ─────────────────────────────────────────────────────────────────────────
-   BetSafe AI — Voice button + history drawer
-   ───────────────────────────────────────────────────────────────────────── */
 .bsai-prompt-btns {
   display: inline-flex;
   gap: 6px;
@@ -10769,9 +8420,6 @@ body {
   .bsai-voice-pulse, .bsai-history-drawer { animation: none; }
 }
 
-/* ─────────────────────────────────────────────────────────────────────────
-   Tracker — Bankroll evolution chart
-   ───────────────────────────────────────────────────────────────────────── */
 .bankroll-chart-wrap {
   position: relative;
   width: 100%;
@@ -10791,9 +8439,6 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* ─────────────────────────────────────────────────────────────────────────
-   Keyboard shortcuts help modal + general kbd styling
-   ───────────────────────────────────────────────────────────────────────── */
 kbd {
   display: inline-block;
   min-width: 22px;
@@ -10826,9 +8471,6 @@ kbd {
   font-size: 0.92rem;
 }
 
-/* ─────────────────────────────────────────────────────────────────────────
-   Overview — Daily Brief widget (IA executive summary)
-   ───────────────────────────────────────────────────────────────────────── */
 .ov-brief {
   margin-top: 14px;
 }
@@ -10944,9 +8586,6 @@ kbd {
   color: var(--text-tertiary);
 }
 
-/* ─────────────────────────────────────────────────────────────────────────
-   Reduce motion — toggle global desde Settings (además del prefers de OS)
-   ───────────────────────────────────────────────────────────────────────── */
 html.reduce-motion *,
 html.reduce-motion *::before,
 html.reduce-motion *::after {
@@ -10956,9 +8595,6 @@ html.reduce-motion *::after {
   scroll-behavior: auto !important;
 }
 
-/* ─────────────────────────────────────────────────────────────────────────
-   Tracker mini KPIs (streaks + CLV)
-   ───────────────────────────────────────────────────────────────────────── */
 .kpi-mini {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -10977,10 +8613,6 @@ html.reduce-motion *::after {
   background: linear-gradient(135deg, color-mix(in srgb, var(--success) 8%, transparent), var(--surface));
   border-color: color-mix(in srgb, var(--success) 30%, transparent);
 }
-.kpi-mini--danger {
-  background: linear-gradient(135deg, color-mix(in srgb, var(--danger) 8%, transparent), var(--surface));
-  border-color: color-mix(in srgb, var(--danger) 30%, transparent);
-}
 .kpi-mini-label {
   font-size: 0.72rem;
   text-transform: uppercase;
@@ -10994,9 +8626,6 @@ html.reduce-motion *::after {
   color: var(--text-primary);
 }
 
-/* ─────────────────────────────────────────────────────────────────────────
-   Bottom nav — flagship item (BetSafe AI destacado en gold)
-   ───────────────────────────────────────────────────────────────────────── */
 .bottom-nav-flagship {
   position: relative;
 }
@@ -11028,9 +8657,6 @@ html.reduce-motion *::after {
   .bottom-nav-flagship::before { animation: none; }
 }
 
-/* ─────────────────────────────────────────────────────────────────────────
-   Overview — What's New banner (dismissable, gold gradient)
-   ───────────────────────────────────────────────────────────────────────── */
 .ov-whatsnew {
   display: flex;
   align-items: center;
@@ -11106,9 +8732,6 @@ html.reduce-motion *::after {
   .ov-whatsnew__icon { animation: none; }
 }
 
-/* ─────────────────────────────────────────────────────────────────────────
-   AI Picks — Loading state RICO (explica la espera, justifica el tiempo)
-   ───────────────────────────────────────────────────────────────────────── */
 .ai-loading-state {
   display: flex;
   flex-direction: column;
@@ -11155,9 +8778,6 @@ html.reduce-motion *::after {
   .ai-loading__seconds { width: 100%; text-align: left; }
 }
 
-/* ─────────────────────────────────────────────────────────────────────────
-   Sidebar VIP card — premium gold tier (rediseño)
-   ───────────────────────────────────────────────────────────────────────── */
 .sidebar-vip-card {
   margin-top: 16px;
   padding: 16px 14px;
@@ -11208,9 +8828,6 @@ html.reduce-motion *::after {
   flex-shrink: 0;
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   HERO — padding reducido para que el contenido aparezca antes
-   ═══════════════════════════════════════════════════════════════════════════ */
 .hero {
   padding-block: clamp(var(--s-6), 4vw, var(--s-12)) !important;   /* era clamp(s-12, 8vw, s-24) */
 }
@@ -11218,9 +8835,6 @@ html.reduce-motion *::after {
   .hero { padding-block: clamp(var(--s-4), 5vw, var(--s-8)) !important; }
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   QUICK ACCESS CARDS — estilo Stripe/Linear/Vercel premium
-   ═══════════════════════════════════════════════════════════════════════════ */
 .quick-access {
   padding-block: 32px 8px;
 }
@@ -11340,9 +8954,6 @@ html.reduce-motion *::after {
   .qa-grid { grid-template-columns: 1fr; }
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   DASHBOARD WELCOME — Premium hero card con glow azul/dorado sutil
-   ═══════════════════════════════════════════════════════════════════════════ */
 .ov-hero--premium {
   position: relative;
   padding: 28px 30px 26px;
@@ -11415,9 +9026,6 @@ html.reduce-motion *::after {
     var(--surface);
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   WC 2026 — Análisis inteligente por grupos (preview pre-torneo)
-   ═══════════════════════════════════════════════════════════════════════════ */
 .wc-group-ai {
   background:
     linear-gradient(135deg, color-mix(in srgb, var(--gold-500) 5%, transparent), transparent 60%),
@@ -11468,9 +9076,6 @@ html.reduce-motion *::after {
 .wc-insight-dot--orange { background: #f97316; }
 .wc-insight-dot--red    { background: var(--danger, #dc2626); }
 
-/* ─────────────────────────────────────────────────────────────────────────
-   AI Picks — Metrics grid (EV / Value / Convergencia / Kelly)
-   ───────────────────────────────────────────────────────────────────────── */
 .ai-metrics-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(85px, 1fr));
@@ -11497,15 +9102,6 @@ html.reduce-motion *::after {
   letter-spacing: .03em;
 }
 
-/* ─────────────────────────────────────────────────────────────────────────
-   AI Empty card processing state — IA aún analizando
-   ───────────────────────────────────────────────────────────────────────── */
-.ai-empty-card--processing {
-  border: 1px solid color-mix(in srgb, var(--brand-500) 32%, transparent);
-  background:
-    linear-gradient(135deg, color-mix(in srgb, var(--brand-500) 6%, transparent), transparent 60%),
-    var(--surface);
-}
 .ai-empty-card--processing .ai-empty-icon svg {
   animation: ai-spin 1.4s linear infinite;
   color: var(--brand-600);
@@ -11540,8 +9136,7 @@ html.reduce-motion *::after {
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
   }
-  /* Mantener visibles los reveals que usaban opacity 0 → 1: forzar visible
-   * para que el contenido nunca quede oculto si las animaciones se desactivan. */
+  
   .reveal, .reveal-x, .stagger > *, [class*="reveal"] {
     opacity: 1 !important;
     transform: none !important;
@@ -11605,11 +9200,6 @@ html.reduce-motion *::after {
 @keyframes bs-prem-band {
   to { background-position: 200% 0; }
 }
-.bs-prem--vip::before {
-  background: linear-gradient(90deg, #FFE07A, #C49A1A, #FFE07A);
-  background-size: 200% 100%;
-}
-
 /* Header: título + badges */
 .bs-prem__head {
   display: flex; align-items: center; justify-content: space-between;
@@ -11709,9 +9299,6 @@ html.reduce-motion *::after {
   background: linear-gradient(90deg, var(--brand-500), var(--brand-700));
   transition: width .6s cubic-bezier(.2,.7,.2,1);
 }
-.bs-prem__conf-fill--low { background: linear-gradient(90deg, #f59e0b, #d97706); }
-.bs-prem__conf-fill--high { background: linear-gradient(90deg, #16a34a, #15803d); }
-
 /* Factor chips — clima, lesiones, sharp, H2H con iconos */
 .bs-prem__factors {
   display: flex; flex-wrap: wrap; gap: 6px;
@@ -11872,8 +9459,6 @@ html.reduce-motion *::after {
 .toasts { z-index: 320 !important; }
 .tooltip { z-index: 360 !important; }
 
-/* Soporte adicional para ai-pick--prem (selections de AI Picks usan algunas
- * clases del sistema premium, pero conservan su layout original más compacto). */
 .ai-pick--prem .ai-pick__odd-row {
   display: flex; justify-content: space-between; align-items: flex-end;
   margin-top: 8px;
@@ -11930,4 +9515,141 @@ html.reduce-motion *::after {
   border-radius: 999px;
   background: linear-gradient(135deg, var(--brand-500), var(--brand-700));
   color: #fff; font-size: .72rem; font-weight: 800;
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * v5.8 — Banner unificado de estado IA
+ *
+ * Componente compartido por: AI Picks, Brief del día, Constructor Quant,
+ * Coach IA. Sustituye los 4 fragmentos inconsistentes que existían.
+ *
+ * Variantes por tono: `warn` (IA degradada), `info` (sin keys), `neutral` (unknown).
+ * ════════════════════════════════════════════════════════════════════════════ */
+.bs-ai-banner {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 12px 14px; margin: 0 0 14px;
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  border-radius: 10px;
+  background: var(--surface);
+  font-size: .85rem; line-height: 1.45;
+}
+.bs-ai-banner__icon { flex-shrink: 0; display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; }
+.bs-ai-banner__body { flex: 1; min-width: 0; }
+.bs-ai-banner__body strong { display: block; margin-bottom: 2px; font-size: .85rem; font-weight: 600; color: var(--text-primary); }
+.bs-ai-banner__body p { margin: 0; color: var(--text-secondary); font-size: .78rem; }
+.bs-ai-banner__retry { flex-shrink: 0; align-self: center; }
+.bs-ai-banner--warn .bs-ai-banner__icon { color: var(--warning, #d97706); background: color-mix(in srgb, var(--warning, #d97706) 12%, transparent); }
+.bs-ai-banner--info .bs-ai-banner__icon { color: var(--info, #2563eb); background: color-mix(in srgb, var(--info, #2563eb) 12%, transparent); }
+.bs-ai-banner--neutral .bs-ai-banner__icon { color: var(--text-secondary); background: var(--surface-2); }
+
+/* Pill compacta cuando IA está OK — sutil, no roba foco */
+.bs-ai-pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px;
+  font-size: .68rem; font-weight: 600;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--success, #16a34a) 10%, transparent);
+  color: var(--success, #16a34a);
+  border: 1px solid color-mix(in srgb, var(--success, #16a34a) 20%, transparent);
+  vertical-align: middle;
+}
+.bs-ai-pill--ok { background: color-mix(in srgb, var(--success, #16a34a) 10%, transparent); color: var(--success, #16a34a); }
+
+@media (max-width: 640px) {
+  .bs-ai-banner { flex-wrap: wrap; }
+  .bs-ai-banner__retry { width: 100%; margin-top: 6px; }
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * v5.8 — Global accessibility override
+ *
+ * Sustituye los ~75 fragmentos faltantes de `prefers-reduced-motion: reduce`
+ * con UN SOLO override global. Cualquier animación/transición se acorta a
+ * 0.01ms (no 0 — eso rompe transitionend handlers).
+ *
+ * Aplica también a `.reduce-motion` (clase manual que app.js puede activar
+ * desde Settings, para usuarios que no tienen el setting del SO).
+ * ════════════════════════════════════════════════════════════════════════════ */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  
+  .hero-orbs, .particles-host, .aurora, .mesh,
+  .bs-preloader__bar::after, .bs-preloader__mark { animation: none !important; }
+}
+html.reduce-motion *, html.reduce-motion *::before, html.reduce-motion *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+html.reduce-motion .hero-orbs,
+html.reduce-motion .particles-host,
+html.reduce-motion .aurora,
+html.reduce-motion .mesh { animation: none !important; }
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * v5.9 — Header unificado de los 3 motores IA (sin unificar funcionalidad)
+ * Cada motor tiene su color de acento (picks=blue, quant=gold, coach=purple)
+ * pero estructura idéntica. Atajos al final → saltar a otro motor.
+ * ════════════════════════════════════════════════════════════════════════════ */
+.bs-ai-tab-header {
+  display: grid; grid-template-columns: auto 1fr auto; gap: 16px;
+  align-items: center; padding: 16px 20px; margin: 0 0 20px;
+  border: 1px solid var(--border); border-radius: 14px;
+  background: linear-gradient(135deg, var(--surface) 0%, var(--surface-2) 100%);
+  position: relative; overflow: hidden;
+}
+.bs-ai-tab-header::before {
+  content: ''; position: absolute; top: 0; left: 0; bottom: 0; width: 4px;
+  background: var(--accent, var(--brand-500));
+}
+.bs-ai-tab-header__icon {
+  width: 44px; height: 44px; display: inline-grid; place-items: center;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent, var(--brand-500)) 12%, transparent);
+  color: var(--accent, var(--brand-500)); flex-shrink: 0;
+}
+.bs-ai-tab-header__text { min-width: 0; }
+.bs-ai-tab-header__eyebrow {
+  display: inline-block; font-size: .68rem; font-weight: 700;
+  letter-spacing: .08em; text-transform: uppercase;
+  color: var(--accent, var(--brand-500)); margin-bottom: 2px;
+}
+.bs-ai-tab-header__title {
+  margin: 0; font-size: 1.35rem; font-weight: 800; letter-spacing: -.02em;
+  color: var(--text-primary); line-height: 1.2;
+}
+.bs-ai-tab-header__desc {
+  margin: 4px 0 0; font-size: .82rem; color: var(--text-secondary);
+  line-height: 1.45; max-width: 640px;
+}
+.bs-ai-tab-header__alts {
+  display: flex; flex-direction: column; gap: 4px;
+  align-items: flex-end; flex-shrink: 0;
+}
+.bs-ai-tab-header__alt {
+  font-size: .72rem; color: var(--text-tertiary);
+  padding: 4px 10px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--surface);
+  transition: all .15s ease; white-space: nowrap; text-decoration: none;
+}
+.bs-ai-tab-header__alt:hover {
+  color: var(--text-primary);
+  border-color: var(--accent, var(--brand-500));
+  background: color-mix(in srgb, var(--accent, var(--brand-500)) 5%, var(--surface));
+}
+.bs-ai-tab-header--picks { --accent: #2563eb; }
+.bs-ai-tab-header--quant { --accent: #d4a017; }
+.bs-ai-tab-header--coach { --accent: #8b5cf6; }
+@media (max-width: 880px) {
+  .bs-ai-tab-header { grid-template-columns: auto 1fr; }
+  .bs-ai-tab-header__alts {
+    grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; align-items: flex-start;
+  }
 }

@@ -8,13 +8,19 @@
     "start": "node server.js",
     "dev": "node --watch server.js",
     "install-browsers": "playwright install chromium",
-    "test-scraper": "node lib/test-scraper.js"
+    "test-scraper": "node lib/test-scraper.js",
+    "test-ai": "node test/test-ai-endpoints.js",
+    "bench-gemini": "node test/bench-gemini.js",
+    "diagnose-gemini": "node test/diagnose-gemini.js",
+    "build-css": "node ../build/build-css.js",
+    "build": "node ../build/inject-env.js && node ../build/build-css.js"
   },
   "engines": {
     "node": ">=20"
   },
   "dependencies": {
     "cheerio": "^1.0.0",
+    "compression": "^1.8.1",
     "dotenv": "^17.4.2",
     "express": "^4.21.1",
     "fast-xml-parser": "^5.8.0",

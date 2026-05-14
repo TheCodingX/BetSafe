@@ -60,6 +60,16 @@
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
     }
+
+    // v5.8 — Pre-warm de estado IA: el dashboard espera el evento 'bs:ai-status'
+    // antes de quitar el preloader (loading global real). Lo disparamos
+    // automáticamente al boot consultando el backend. Si NO estamos en
+    // dashboard.html, igual disparamos para que cualquier widget se entere.
+    if (typeof window.BSLive !== 'undefined' && typeof BSLive.getAiStatus === 'function') {
+      // No esperamos: si el backend no responde, `getAiStatus()` dispara el
+      // evento con health: 'unknown' y el preloader sigue de largo.
+      BSLive.getAiStatus().catch(() => {});
+    }
   });
 
   function renderAuthChip(host) {

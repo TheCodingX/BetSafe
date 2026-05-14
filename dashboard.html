@@ -9,7 +9,7 @@
 <meta name="robots" content="noindex" />
 <link rel="manifest" href="manifest.webmanifest" />
 <link rel="icon" href="assets/img/icon-192.svg" type="image/svg+xml" />
-<link rel="stylesheet" href="assets/css/main.css?v=5.7.0" />
+<link rel="stylesheet" href="assets/css/main.min.css?v=5.9.0" />
 <!-- Premium initial loader inline para que aparezca antes de cualquier JS.
      Se oculta automáticamente cuando BSLive snapshot está listo + logos cargaron. -->
 <style id="bs-preloader-styles">
@@ -70,36 +70,64 @@
 <script>
   document.documentElement.classList.add('bs-preloading');
   (function () {
-    // En conexiones rápidas el loader anterior se quedaba hasta 5.5s aun con
-    // todo listo; bajamos el hardcap a 2.5s y dejamos que `bs:live-ready` o
-    // `load` (lo que primero llegue) lo oculte en cuanto el snapshot/logos
-    // estén disponibles. Sigue habiendo minShowMs para evitar flash.
-    var maxWaitMs = 2500;
-    var minShowMs = 400;
+    // v5.8 — Pre-warm real: esperamos que TODO esté listo (snapshot + logos + IA
+    // status) antes de mostrar el dashboard, en lugar de un hardcap arbitrario
+    // que dejaba al usuario con UI a medio cargar.
+    //
+    //   minShowMs    — anti-flash: garantiza que el preloader se vea al menos N ms
+    //   readyTimeout — tiempo de gracia para que aparezcan los eventos de ready
+    //   ultimateMax  — hard-cap absoluto: pase lo que pase, NO bloqueamos al usuario
+    var minShowMs   = 600;
+    var readyTimeout = 6000;   // si en 6s no salieron los eventos de ready, escondemos
+    var ultimateMax = 12000;   // hard cap: 12s y entramos igual (mostrando estado)
     var startedAt = Date.now();
-    function hide() {
-      var loader = document.getElementById('bs-preloader');
-      if (!loader) return;
+    var hideCalled = false;
+
+    var readyFlags = { live: false, logos: false, ai: false };
+
+    function hintEl() { return document.querySelector('#bs-preloader .bs-preloader__hint'); }
+    function updateHint(msg) { var el = hintEl(); if (el) el.textContent = msg; }
+
+    function maybeHide(reason) {
+      if (hideCalled) return;
+      // Esperamos TODO listo o el timeout de readyTimeout
       var elapsed = Date.now() - startedAt;
+      var allReady = readyFlags.live && readyFlags.logos && readyFlags.ai;
+      if (!allReady && reason !== 'timeout' && reason !== 'ultimate') return;
+      hideCalled = true;
       var wait = Math.max(0, minShowMs - elapsed);
       setTimeout(function () {
+        var loader = document.getElementById('bs-preloader');
+        if (!loader) return;
         loader.classList.add('is-hidden');
         document.documentElement.classList.remove('bs-preloading');
         setTimeout(function () { loader && loader.parentNode && loader.parentNode.removeChild(loader); }, 600);
       }, wait);
     }
-    // Hard cap: si algo se cuelga, igual sacamos el loader
-    setTimeout(hide, maxWaitMs);
-    // Cuando el snapshot del backend está listo, ocultamos
-    window.addEventListener('bs:live-ready', hide, { once: true });
-    // Cuando los logos están listos también ocultamos (lo que ocurra antes)
-    window.addEventListener('bs:logos-ready', hide, { once: true });
-    // Fallback: DOMContentLoaded + 400ms (logos suelen cargar en ese rango)
-    if (document.readyState === 'complete') {
-      setTimeout(hide, 400);
-    } else {
-      window.addEventListener('load', function () { setTimeout(hide, 200); }, { once: true });
-    }
+
+    function onLiveReady() { readyFlags.live = true; updateHint('Cuotas listas · cargando logos…'); maybeHide('live'); }
+    function onLogosReady() { readyFlags.logos = true; updateHint('Logos listos · revisando IA…'); maybeHide('logos'); }
+    function onAiReady() { readyFlags.ai = true; updateHint('IA verificada · entrando…'); maybeHide('ai'); }
+
+    window.addEventListener('bs:live-ready', onLiveReady, { once: true });
+    window.addEventListener('bs:live-snapshot', onLiveReady, { once: true });   // compat
+    window.addEventListener('bs:logos-ready', onLogosReady, { once: true });
+    window.addEventListener('bs:ai-status', onAiReady, { once: true });
+
+    // Fallbacks: si algún evento NO llega, no nos quedamos colgados
+    setTimeout(function () {
+      if (!hideCalled) {
+        // Marcar como ready lo que ya pasó por DOMContentLoaded
+        if (!readyFlags.logos) { readyFlags.logos = true; }
+        // Si todavía falta live o ai, igual escondemos pero loggeamos
+        if (!readyFlags.live || !readyFlags.ai) {
+          updateHint('Listos para arrancar (algunos servicios siguen calentando)');
+        }
+        maybeHide('timeout');
+      }
+    }, readyTimeout);
+    // Ultimate hard-cap: jamás bloqueamos al usuario más de 12s
+    setTimeout(function () { maybeHide('ultimate'); }, ultimateMax);
   })();
 </script>
 </head>

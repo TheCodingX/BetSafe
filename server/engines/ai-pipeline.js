@@ -396,7 +396,24 @@ async function llmStructured(factors, poisson, elo) {
     awayCount: factors.injuries.away?.injuries?.length || 0
   } : null;
 
-  const userMsg = JSON.stringify({
+  // v5.9 — RESUMEN TEXTUAL de factors antes del JSON denso. Los LLMs procesan
+  // mejor texto narrativo que JSON con campos crípticos. Esto le da al modelo
+  // un "briefing" en lenguaje natural que después citará en los rationale.
+  // Solo incluimos factors REALES (skipeamos `unavailable: true`).
+  const textSummary = buildTextSummary({
+    event: factors.event,
+    tier, homeAdv,
+    weather: factors.weather,
+    injuries: factors.injuries,
+    historical: factors.historical,
+    lineups: factors.lineups,
+    sharp: factors.sharp,
+    quant: factors.quantitative,
+    poisson,
+    elo
+  });
+
+  const userMsg = textSummary + '\n\nDATOS ESTRUCTURADOS (JSON):\n' + JSON.stringify({
     event: factors.event,
     contexto: {
       tier, tierLabel: tier >= 8 ? 'TIER 1 top mundial' : tier >= 6 ? 'TIER 2 regional' : tier >= 4 ? 'TIER 3 secundaria' : 'TIER 4 menor',
@@ -464,36 +481,30 @@ Devolvés JSON exacto:
 DATOS:
 ${userMsg}`;
 
-  // ═══ CASCADA OPTIMIZADA: Gemini PRIMARY (gran rate limit) ════════════════
+  // ═══ CASCADA v5.10 — Sin retries duplicados ═══════════════════════════════
   //
-  // El user pidió EXPLICITAMENTE que Gemini sea el motor principal y que
-  // pagar no sea limitación. Estrategia:
-  //   1) Gemini 2.5 Flash × 3 retries: tiene 1500 RPM (free) / 1000+ RPM
-  //      (paid) y 1M tokens TPM. Casi nunca falla por rate limit.
-  //   2) Claude Sonnet 4.5 para premium matches (UCL/Premier/top teams)
-  //   3) Groq llama-3.1-8b ÚLTIMO recurso (free tier 14400 TPM se llena rápido
-  //      con muchos requests paralelos — preferimos pagar Gemini que rate
-  //      limit Groq)
-  //   4) OpenRouter como red de seguridad
+  // ANTES: 3× geminiJson en serie × 4 retries internos = 12 intentos antes de
+  // pasar a Claude. Total worst-case ~60s con backoffs. Google interpretaba
+  // esto como abuso y rate-limiteaba la key.
+  //
+  // AHORA: 1× geminiJson (que internamente hace hasta 4 retries con backoff
+  // específico por tipo de error: respeta Retry-After de 429, backoff
+  // exponencial para 503 overloaded, retry rápido para 500/network). Si tras
+  // los 4 intentos Gemini sigue fallando, vamos directo a Claude (premium) /
+  // Groq / OpenRouter. Total worst-case ~25s con menos intentos.
   const isPremium = isPremiumMatch(factors.event, factors);
   const providers2 = [];
 
   if (GEMINI_KEY) {
-    // Gemini siempre primero: 3 attempts (free tier soporta 1500 RPM,
-    // paid tier ilimitado prácticamente).
-    providers2.push({ name: 'gemini', fn: () => geminiJson(SYSTEM_PROMPT, prompt) });
-    providers2.push({ name: 'gemini', fn: () => geminiJson(SYSTEM_PROMPT, prompt) });
+    // 1 sola entrada — el cliente Gemini hace retry inteligente interno
     providers2.push({ name: 'gemini', fn: () => geminiJson(SYSTEM_PROMPT, prompt) });
   }
   // Claude SOLO para premium matches — análisis sportbook-grade
   if (isPremium && ANTHROPIC_KEY) {
     providers2.push({ name: 'claude', fn: () => anthropicJson(SYSTEM_PROMPT, prompt) });
   } else if (ANTHROPIC_KEY && !GEMINI_KEY) {
-    // Si no hay Gemini, Claude pasa a primary
     providers2.push({ name: 'claude', fn: () => anthropicJson(SYSTEM_PROMPT, prompt) });
   }
-  // Groq como ÚLTIMO recurso ahora (era 2do antes). El free tier de 14400 TPM
-  // se llena rápido cuando hacemos 10+ requests paralelos.
   if (GROQ_KEY) {
     providers2.push({ name: 'groq', fn: () => groqJson(SYSTEM_PROMPT, prompt) });
   }
@@ -758,55 +769,49 @@ async function groqJsonGeneric(systemPrompt, userPrompt, opts = {}) {
   try { return JSON.parse(content); } catch { return null; }
 }
 
+/* v5.10 — Cliente Gemini robusto con keep-alive + retry opcional.
+ * Ver `lib/gemini-client.js` para detalles.
+ *
+ * Toggle de retries via env var BS_GEMINI_RETRY:
+ *   true  (default): retry inteligente (4 intentos máx, backoff específico por
+ *                    error code). Necesario para 0.1-0.5% de fallos transitorios
+ *                    que existen aún en paid tier (503 overloaded, network blips).
+ *   false: sin retry. Si Gemini falla, falla inmediatamente y caemos al fallback
+ *          (Claude/Groq). Más rápido en caso de fallo, menos resiliente. */
+const { geminiCall, geminiCallWithRetry, GeminiError } = require('../lib/gemini-client');
+
+const GEMINI_RETRY = process.env.BS_GEMINI_RETRY !== 'false';
+const geminiInvoke = GEMINI_RETRY ? geminiCallWithRetry : geminiCall;
+
 async function geminiJson(system, user) {
-  if (!GEMINI_KEY) throw new Error('no-key');
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_KEY}`;
-  // 6000 tokens: el prompt expandido pide 3 picks con rationale profundo
-  // (~600-800 tokens cada uno) + synthesis + keyFactor + marketEdge.
-  // El old 1600 cortaba el JSON a mitad del primer pick.
-  const res = await fetchWithTimeout(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ role: 'user', parts: [{ text: system + '\n\n' + user + '\n\nRespondé estrictamente en JSON válido, COMPLETO (cerrá todas las llaves), sin markdown.' }] }],
-      generationConfig: {
-        temperature: 0.4,
-        maxOutputTokens: 6000,
-        responseMimeType: 'application/json'
-      }
-    })
+  const result = await geminiInvoke({
+    model: GEMINI_MODEL,
+    key: GEMINI_KEY,
+    systemPrompt: system,
+    userPrompt: user,
+    temperature: 0.4,
+    maxOutputTokens: 4500,   // antes 6000 — calibrado a 3 picks + synthesis + meta
+    timeoutMs: 45000
   });
-  if (!res.ok) {
-    const txt = await res.text().catch(() => '');
-    throw new Error(`HTTP ${res.status}: ${txt.slice(0, 120)}`);
-  }
-  const data = await res.json();
-  return safeJsonParse(data.candidates?.[0]?.content?.parts?.[0]?.text);
+  return safeJsonParse(result.raw.candidates?.[0]?.content?.parts?.[0]?.text);
 }
 
-/* Versión genérica de geminiJson con opciones (maxTokens, temperature).
- * Reemplazo natural de groqJsonGeneric para parsers/explainers/etc. */
+/* Versión genérica con opciones. Usada por parsers/explainers que NO necesitan
+ * análisis profundo — por eso thinkingBudget:0 cuando es Flash 2.5 (más rápido). */
 async function geminiJsonGeneric(systemPrompt, userPrompt, opts = {}) {
-  if (!GEMINI_KEY) throw new Error('no-key');
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_KEY}`;
-  const res = await fetchWithTimeout(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ role: 'user', parts: [{ text: systemPrompt + '\n\n' + userPrompt + '\n\nRespondé estrictamente en JSON válido, COMPLETO (cerrá todas las llaves), sin markdown.' }] }],
-      generationConfig: {
-        temperature: opts.temperature ?? 0.3,
-        maxOutputTokens: opts.maxTokens || 4000,
-        responseMimeType: 'application/json'
-      }
-    })
+  const isFlash25 = /flash$|flash-latest|flash-001|2\.5-flash/.test(GEMINI_MODEL);
+  const result = await geminiInvoke({
+    model: GEMINI_MODEL,
+    key: GEMINI_KEY,
+    systemPrompt,
+    userPrompt,
+    temperature: opts.temperature ?? 0.3,
+    maxOutputTokens: opts.maxTokens || 2500,    // antes 4000 — parsers usan ~500-1500
+    timeoutMs: opts.timeoutMs || 30000,         // parsers son rápidos (era 45s default)
+    // Solo Flash 2.5 soporta thinkingBudget. 0 = sin thinking → más rápido para parsers.
+    thinkingBudget: (opts.thinkingBudget !== undefined) ? opts.thinkingBudget : (isFlash25 && opts.allowThinking !== true ? 0 : undefined)
   });
-  if (!res.ok) {
-    const txt = await res.text().catch(() => '');
-    throw new Error(`HTTP ${res.status}: ${txt.slice(0, 120)}`);
-  }
-  const data = await res.json();
-  return safeJsonParse(data.candidates?.[0]?.content?.parts?.[0]?.text);
+  return safeJsonParse(result.raw.candidates?.[0]?.content?.parts?.[0]?.text);
 }
 
 /* Claude Sonnet 4.5 (Anthropic Messages API) — análisis premium para top picks.
@@ -1430,5 +1435,117 @@ analyzeMatch.cacheStats = () => ({
   size: cache.size,
   max: cache.max
 });
+
+/**
+ * v5.9 — Genera un BRIEFING TEXTUAL legible de los factors del partido.
+ * Los LLMs procesan mejor texto narrativo que JSON denso, y este briefing
+ * le da al modelo un punto de partida claro para citar factors específicos
+ * en los rationales (lo que pidió el user: "análisis IA profundo").
+ *
+ * Solo incluye factors que TIENEN data real. Los `unavailable` se omiten
+ * (no decimos "sin clima" — simplemente no aparece esa línea).
+ */
+function buildTextSummary({ event, tier, homeAdv, weather, injuries, historical, lineups, sharp, quant, poisson, elo }) {
+  const lines = ['RESUMEN DEL PARTIDO:'];
+  const home = event?.home?.name || 'Local';
+  const away = event?.away?.name || 'Visitante';
+  const league = event?.leagueName || event?.league || 'liga';
+  const tierName = tier >= 8 ? 'top mundial' : tier >= 6 ? 'regional fuerte' : tier >= 4 ? 'secundaria' : 'menor';
+  lines.push(`${home} (local) vs ${away} (visitante) — ${league} (tier ${tierName})`);
+  if (homeAdv != null) lines.push(`Ventaja local cuantificada: +${(homeAdv * 100).toFixed(0)}% sobre baseline neutral.`);
+  lines.push('');
+
+  // Historical: H2H + forma reciente
+  if (historical && !historical.unavailable) {
+    const h2h = historical.h2h;
+    if (h2h && h2h.matches >= 2) {
+      const homePct = ((h2h.homeWinRate || 0) * 100).toFixed(0);
+      const drawPct = ((h2h.drawRate || 0) * 100).toFixed(0);
+      const awayPct = ((h2h.awayWinRate || 0) * 100).toFixed(0);
+      lines.push(`H2H HISTÓRICO (${h2h.matches} encuentros recientes): ${home} ganó ${homePct}%, empates ${drawPct}%, ${away} ganó ${awayPct}%. Promedio ${(h2h.avgGoals || 0).toFixed(2)} goles por partido${h2h.bttsRate != null ? `, BTTS ${((h2h.bttsRate || 0) * 100).toFixed(0)}%` : ''}.`);
+    }
+    const form = historical.form;
+    if (form?.home) {
+      const f = form.home;
+      lines.push(`FORMA RECIENTE ${home}: ${f.wdl || '?'} (${(f.pointsPerGame || 0).toFixed(2)} pts/partido), ${f.goalsFor || 0} GF / ${f.goalsAgainst || 0} GC.`);
+    }
+    if (form?.away) {
+      const f = form.away;
+      lines.push(`FORMA RECIENTE ${away}: ${f.wdl || '?'} (${(f.pointsPerGame || 0).toFixed(2)} pts/partido), ${f.goalsFor || 0} GF / ${f.goalsAgainst || 0} GC.`);
+    }
+  }
+
+  // Lesiones
+  if (injuries && !injuries.unavailable) {
+    const sev = injuries.severityScore;
+    const hCount = injuries.home?.injuries?.length || 0;
+    const aCount = injuries.away?.injuries?.length || 0;
+    if (sev != null || hCount > 0 || aCount > 0) {
+      const parts = [];
+      if (hCount > 0) {
+        const sevHome = injuries.severityScore?.home || (typeof sev === 'object' ? sev.home : null);
+        parts.push(`${home}: ${hCount} bajas${sevHome ? ` (severidad ${(sevHome * 100).toFixed(0)}%)` : ''}`);
+      }
+      if (aCount > 0) {
+        const sevAway = injuries.severityScore?.away || (typeof sev === 'object' ? sev.away : null);
+        parts.push(`${away}: ${aCount} bajas${sevAway ? ` (severidad ${(sevAway * 100).toFixed(0)}%)` : ''}`);
+      }
+      if (parts.length) lines.push(`LESIONES REPORTADAS: ${parts.join(' · ')}.`);
+    }
+  }
+
+  // Lineups
+  if (lineups && !lineups.unavailable) {
+    const homeStart = lineups.home?.confirmedStarters || lineups.home?.starters?.length;
+    const awayStart = lineups.away?.confirmedStarters || lineups.away?.starters?.length;
+    if (homeStart || awayStart) {
+      lines.push(`LINEUPS: ${home} ${homeStart || '?'} confirmados${lineups.home?.formation ? ` (${lineups.home.formation})` : ''}, ${away} ${awayStart || '?'} confirmados${lineups.away?.formation ? ` (${lineups.away.formation})` : ''}.`);
+    }
+  }
+
+  // Clima (si tiene impacto)
+  if (weather && !weather.unavailable && weather.impact) {
+    const w = weather;
+    const imp = w.impact;
+    const climaItems = [];
+    if (w.tempC != null) climaItems.push(`${w.tempC.toFixed(0)}°C`);
+    if (w.windKmh != null && w.windKmh > 15) climaItems.push(`viento ${w.windKmh.toFixed(0)} km/h`);
+    if (w.rainMm != null && w.rainMm > 0.5) climaItems.push(`lluvia ${w.rainMm.toFixed(1)}mm`);
+    const goalsMult = imp.goalsMultiplier;
+    const impactNote = goalsMult != null && Math.abs(goalsMult - 1) > 0.05
+      ? (goalsMult < 1 ? `reduce goles ~${((1 - goalsMult) * 100).toFixed(0)}%` : `aumenta goles ~${((goalsMult - 1) * 100).toFixed(0)}%`)
+      : 'sin impacto significativo';
+    if (climaItems.length || impactNote !== 'sin impacto significativo') {
+      lines.push(`CLIMA: ${climaItems.join(', ') || 'normal'} → ${impactNote}.`);
+    }
+  }
+
+  // Movimiento sharp (steam moves)
+  if (sharp && (sharp.steamMoves?.length || sharp.score > 0.2)) {
+    const stm = sharp.steamMoves || [];
+    if (stm.length) {
+      const top = stm.slice(0, 2).map(s => `${s.side || '?'} ${(s.deltaPct >= 0 ? '+' : '')}${(s.deltaPct || 0).toFixed(1)}%`).join(', ');
+      lines.push(`MOVIMIENTO DEL MERCADO (sharp): ${stm.length} movimiento${stm.length > 1 ? 's' : ''} significativo${stm.length > 1 ? 's' : ''} — ${top}. Score sharp: ${(sharp.score * 100).toFixed(0)}/100.`);
+    } else if (sharp.score > 0.2) {
+      lines.push(`MOVIMIENTO DEL MERCADO: score sharp ${(sharp.score * 100).toFixed(0)}/100 — actividad de profesionales detectada.`);
+    }
+  }
+
+  // Modelos cuant (Poisson + Elo)
+  if (poisson && !poisson.unavailable) {
+    if (poisson.lambdaHome != null && poisson.lambdaAway != null) {
+      lines.push(`GOLES ESPERADOS (modelo): ${home} ${poisson.lambdaHome.toFixed(2)} vs ${away} ${poisson.lambdaAway.toFixed(2)} → total ${(poisson.lambdaHome + poisson.lambdaAway).toFixed(2)}.`);
+    }
+  }
+  if (elo && !elo.unavailable && elo.eloDiff != null) {
+    const diffSign = elo.eloDiff >= 0 ? '+' : '';
+    lines.push(`RATING DIFERENCIAL (forma): ${diffSign}${elo.eloDiff.toFixed(0)} pts a favor de ${elo.eloDiff >= 0 ? home : away}.`);
+  }
+  if (quant && !quant.unavailable && quant.margin != null) {
+    lines.push(`MARGEN DE LA CASA: ${quant.margin.toFixed(2)}% (cuanto más alto, peor la cuota para el apostador).`);
+  }
+
+  return lines.join('\n');
+}
 
 module.exports = { analyzeMatch, groqJsonGeneric, geminiJsonGeneric };

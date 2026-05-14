@@ -200,10 +200,11 @@
     const host = panel.querySelector('#ovBrief');
     if (!host) return;
     try {
-      // 60s timeout: daily-report puede hacer LLM call que tarde 20-40s
+      // 90s timeout: daily-report puede hacer LLM call que tarde 30-60s con
+      // analizando 10 partidos. Antes 60s era demasiado ajustado y abortaba.
       const API_BASE = (window.BSLive && window.BSLive.API_BASE) || '';
       const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), 60000);
+      const t = setTimeout(() => ctrl.abort(), 90000);
       const res = await fetch(API_BASE + '/api/daily-report', { signal: ctrl.signal });
       clearTimeout(t);
       if (!res.ok) throw new Error('http ' + res.status);
@@ -213,12 +214,26 @@
       const surebet = r.topSurebets?.[0];
       const sharp = r.steamMoves?.[0];
 
+      // Si IA no respondió (aiNarrative null o aiHealth distinto de 'ok'),
+      // mostramos un banner honesto al usuario explicando POR QUÉ, en lugar
+      // de simplemente esconder el headline/summary.
+      const aiBannerHtml = (!ai.headline || r.aiHealth !== 'ok')
+        ? BSUI.aiHealthBanner({
+            health: r.aiHealth || 'unknown',
+            provider: r.aiProvider,
+            reason: r.aiReason,
+            onRetry: 'ovBriefRetry',
+            context: 'Brief del día'
+          })
+        : '';
+
       host.innerHTML = `
+        ${aiBannerHtml}
         <div class="ov-brief-card">
           <div class="ov-brief-head">
             <span class="ov-brief-eyebrow">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
-              Brief del día · análisis IA
+              Brief del día${r.aiProvider ? ` · análisis IA` : ' · análisis cuantitativo'}
             </span>
             ${ai.headline ? `<strong class="ov-brief-headline">${BSUI.esc(ai.headline)}</strong>` : ''}
           </div>
@@ -268,6 +283,8 @@
           </div>
         </div>
       `;
+      // Bind retry del banner IA (si está visible)
+      host.querySelector('#ovBriefRetry')?.addEventListener('click', () => loadDailyBrief(panel));
     } catch (e) {
       // Mostrar fallback útil en lugar de ocultar silenciosamente
       host.innerHTML = `
@@ -275,9 +292,10 @@
           <div class="ov-brief-head">
             <span class="ov-brief-eyebrow">📊 Brief del día</span>
           </div>
-          <p class="muted tiny">${e?.name === 'AbortError' ? 'El motor IA está procesando el reporte diario — volvé en unos segundos.' : 'No pudimos generar el brief en este momento. Reintentando…'}</p>
-          <button class="btn btn-outline btn-sm" onclick="window.__bsOverviewRender && window.__bsOverviewRender(document.querySelector('[data-tab-panel=overview]'))">Reintentar</button>
+          <p class="muted tiny">${e?.name === 'AbortError' ? 'El motor está procesando el reporte diario — análisis profundo de los partidos del día. Volvé en unos segundos.' : 'No pudimos generar el brief en este momento. Probablemente el backend no responde.'}</p>
+          <button class="btn btn-outline btn-sm" id="ovBriefRetryErr" type="button">Reintentar</button>
         </div>`;
+      host.querySelector('#ovBriefRetryErr')?.addEventListener('click', () => loadDailyBrief(panel));
     }
   }
 

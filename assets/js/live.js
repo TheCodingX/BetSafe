@@ -515,6 +515,30 @@
     return await jget(`/api/surebet/${encodeURIComponent(key)}/explain`);
   }
 
+  /* AI status global — el cliente lo llama al cargar dashboard y antes de
+   * pedirle nada a la IA. Devuelve {ok, primary, health, reason, providers}.
+   * Caché 30s en memoria para no martillar el backend. */
+  let _aiStatusCache = { ts: 0, data: null };
+  async function getAiStatus(opts = {}) {
+    const force = !!opts.force;
+    const now = Date.now();
+    if (!force && _aiStatusCache.data && (now - _aiStatusCache.ts) < 30000) {
+      return _aiStatusCache.data;
+    }
+    try {
+      const data = await jget('/api/ai-status', { timeoutMs: 5000 });
+      _aiStatusCache = { ts: now, data };
+      // Notificar al resto del app por si quieren reaccionar (ej: pre-loader)
+      try { global.dispatchEvent(new CustomEvent('bs:ai-status', { detail: data })); } catch {}
+      return data;
+    } catch (e) {
+      // Si el backend no responde, asumimos unknown. NO mentimos diciendo OK.
+      const fallback = { ok: false, health: 'unknown', primary: null, reason: 'No pudimos consultar el estado de la IA (¿backend caído?).', providers: {} };
+      _aiStatusCache = { ts: now, data: fallback };
+      return fallback;
+    }
+  }
+
   async function deepAnalysis(matchId) {
     return await jget(`/api/match/${encodeURIComponent(matchId)}/deep`);
   }
@@ -540,6 +564,8 @@
     getArbitrageSnapshot,
     generate,
     checkCorrelation,
-    analyzeCombo, explainSurebet, deepAnalysis
+    analyzeCombo, explainSurebet, deepAnalysis,
+    // AI health
+    getAiStatus
   };
 })(window);

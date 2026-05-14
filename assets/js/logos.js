@@ -2004,4 +2004,13 @@
     flag, NATIONS,
     neutralChip      // exposed: minimal initials chip (no fake logo art)
   };
+  // v5.8 — Avisar al preloader que el catálogo de logos está cargado.
+  // Como este archivo es síncrono, el evento dispara al instante después de
+  // que el browser parsee + ejecute el script. Lo emitimos en el próximo tick
+  // para que cualquier listener añadido antes de DOMContentLoaded lo reciba.
+  try {
+    setTimeout(function () {
+      try { global.dispatchEvent(new CustomEvent('bs:logos-ready', { detail: { teams: Object.keys(TEAMS || {}).length, books: Object.keys(BOOKS || {}).length } })); } catch (_) {}
+    }, 0);
+  } catch (_) {}
 })(window);

@@ -51,6 +51,20 @@
     // categoría independiente: NO mezclar con fútbol).
     const SPORTS = (BSData.SPORTS || []).slice(0, 8);
     return `
+      <header class="bs-ai-tab-header bs-ai-tab-header--picks" role="banner">
+        <div class="bs-ai-tab-header__icon" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+        </div>
+        <div class="bs-ai-tab-header__text">
+          <span class="bs-ai-tab-header__eyebrow">Motor IA · curado automático</span>
+          <h2 class="bs-ai-tab-header__title">AI Picks</h2>
+          <p class="bs-ai-tab-header__desc">La IA analiza todos los partidos del día y te entrega las mejores combinadas ya armadas. No configurás nada — lo elige el motor.</p>
+        </div>
+        <div class="bs-ai-tab-header__alts">
+          <a href="#aigenerator" class="bs-ai-tab-header__alt" title="¿Querés controlar los filtros vos? Probá Constructor Quant">⚙ Constructor Quant</a>
+          <a href="#betsafeai" class="bs-ai-tab-header__alt" title="¿Preferís pedirlo en lenguaje natural? Probá Coach IA">💬 Coach IA</a>
+        </div>
+      </header>
       <div class="row between mb-4">
         <div>
           <h2 class="h3">Picks del día — combinadas hechas por la IA<a class="help-q" tabindex="0" data-tip="La IA mira TODOS los partidos del día y te muestra solo las mejores combinadas. Cada una junta entre 2 y 5 apuestas (la IA decide cuántas según qué tan fuertes son las señales). Mezcla: 1 conservadora, 1-2 equilibradas, opcionalmente 1 agresiva para pagar más."></a></h2>
@@ -189,6 +203,11 @@
       });
       state.combos = res.combos || [];
       state.meta = res.meta;
+      // v5.8: capturar estado IA del backend para mostrarle al usuario.
+      // NO mentimos si la IA falló — banner honesto.
+      state.aiHealth = res.aiHealth || 'unknown';
+      state.aiProvider = res.aiProvider || null;
+      state.aiReason = res.aiReason || null;
       state.error = null;
     } catch (e) {
       const msg = e?.message || String(e);
@@ -256,8 +275,20 @@
         : (m.message || '—');
     }
 
+    // Banner unificado de estado IA: honestidad por encima de pretensión.
+    // Si hay keys faltantes o IA degradada, el usuario lo ve claramente,
+    // con razón concreta del servidor.
+    const aiBannerHtml = BSUI.aiHealthBanner({
+      health: state.aiHealth,
+      provider: state.aiProvider,
+      reason: state.aiReason,
+      onRetry: state.aiHealth !== 'ok' ? 'aiHealthRetry' : null,
+      context: 'AI Picks'
+    });
+
     if (state.error) {
       host.innerHTML = `
+        ${aiBannerHtml}
         <div class="ai-empty-card">
           <div class="ai-empty-icon ai-empty-icon--err">
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
@@ -267,12 +298,14 @@
           <button class="btn btn-primary btn-sm" id="aiRetry">Reintentar</button>
         </div>`;
       panel.querySelector('#aiRetry')?.addEventListener('click', () => reload(panel));
+      panel.querySelector('#aiHealthRetry')?.addEventListener('click', () => reload(panel));
       return;
     }
     if (!state.combos.length) {
       const reason = state.meta?.reason;
       const message = state.meta?.message;
       host.innerHTML = `
+        ${aiBannerHtml}
         <div class="ai-empty-card">
           <div class="ai-empty-icon">
             <span class="ai-empty-ring"></span>
@@ -287,10 +320,11 @@
           </button>
         </div>`;
       panel.querySelector('#aiRetry')?.addEventListener('click', () => reload(panel));
+      panel.querySelector('#aiHealthRetry')?.addEventListener('click', () => reload(panel));
       return;
     }
     const isVip = BSAuth.isVip();
-    let html = state.combos.map((c, idx) => comboCard(c, idx)).join('');
+    let html = aiBannerHtml + state.combos.map((c, idx) => comboCard(c, idx)).join('');
     // Teaser VIP al final si no-VIP (limit 3) para tentarlo
     if (!isVip) {
       html += `
@@ -473,6 +507,18 @@ ${legsText}
         </div>`;
     }).join('');
 
+    // v5.8: usar probTotal del backend (prob real producto de confidences),
+    // no recalcular. evReal y impliedProb también del backend.
+    const probPct = c.probTotalPct != null
+      ? c.probTotalPct
+      : Math.max(1, Math.round(combinedProb * 100));
+    const evReal = c.evReal != null ? c.evReal : (combinedProb * c.totalOdd);
+    const impliedPct = c.impliedProb != null
+      ? Math.round(c.impliedProb * 100)
+      : Math.round(100 / c.totalOdd);
+    const evRealClass = evReal >= 1.2 ? 'text-success' : evReal >= 1.05 ? 'text-success' : 'muted';
+    const probClass = probPct >= 25 ? 'text-success' : probPct >= 15 ? '' : 'muted';
+
     return `
       <article class="card card-pad-md ai-combo-card" data-combo-idx="${idx}" style="border-left:3px solid ${riskColor}">
         <header class="row between" style="margin-bottom:10px;flex-wrap:wrap;gap:8px">
@@ -480,6 +526,7 @@ ${legsText}
             <strong style="font-size:1.05rem">Combinada IA #${idx+1}</strong>
             <span class="badge tiny" style="background:${riskColor};color:white;font-weight:700;letter-spacing:.04em">${riskLabel}</span>
             <span class="tiny muted">${c.legCount} legs${c.sportsCount > 1 ? ` · ${c.sportsCount} deportes` : ''}</span>
+            ${evReal >= 1.15 ? `<span class="badge badge-success tiny" title="EV real ${evReal.toFixed(2)}x — la combinada paga más de lo que vale estadísticamente.">+EV ${evReal.toFixed(2)}x</span>` : ''}
           </div>
           <div class="text-right">
             <strong class="num text-brand" style="font-size:1.4rem">${c.totalOdd.toFixed(2)}</strong>
@@ -506,17 +553,23 @@ ${legsText}
           <span class="muted" style="text-align:right;max-width:60%">${BSUI.esc(c.keyFactor)}</span>
         </div>` : ''}
 
-        <div class="row between" style="font-size:.72rem;padding:8px 10px;background:rgba(255,255,255,0.03);border-radius:6px;margin-bottom:10px">
-          <div>
-            <div class="muted">Confianza promedio</div>
+        <div class="row between" style="font-size:.72rem;padding:8px 10px;background:rgba(255,255,255,0.03);border-radius:6px;margin-bottom:10px;gap:6px;flex-wrap:wrap">
+          <div title="Probabilidad REAL de que pegue la combinada: producto de las prob de cada leg. La casa cobra como si fuera ${impliedPct}%; el modelo cree que es ${probPct}%.">
+            <div class="muted">Prob real</div>
+            <strong class="${probClass}">${probPct}%</strong>
+            <span class="muted tiny" style="display:block">casa: ${impliedPct}%</span>
+          </div>
+          <div title="EV real = prob × cuota. >1.0 = la combinada paga MÁS de lo que estadísticamente vale (valor positivo).">
+            <div class="muted">EV real</div>
+            <strong class="${evRealClass}">${evReal.toFixed(2)}x</strong>
+            <span class="muted tiny" style="display:block">${evReal >= 1.2 ? 'excelente' : evReal >= 1.05 ? 'positivo' : evReal >= 1.0 ? 'marginal' : 'negativo'}</span>
+          </div>
+          <div title="Confianza promedio de las legs.">
+            <div class="muted">Conf prom</div>
             <strong>${(c.avgConfidence * 100).toFixed(0)}%</strong>
           </div>
-          <div>
-            <div class="muted">Ventaja promedio</div>
-            <strong class="${c.avgEv > 0 ? 'text-success' : 'muted'}">${c.avgEv > 0 ? '+' : ''}${c.avgEv.toFixed(1)}%</strong>
-          </div>
           <div class="text-right">
-            <div class="muted">Si ganás × $10.000</div>
+            <div class="muted">Si pega × $10.000</div>
             <strong class="text-success num">${BSUI.money(10000 * c.totalOdd)}</strong>
           </div>
         </div>

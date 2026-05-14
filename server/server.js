@@ -46,6 +46,7 @@ try {
 } catch (_) { /* sin dotenv, sigue como antes con env del shell */ }
 
 const express = require('express');
+const compression = require('compression');
 const http = require('http');
 const { WebSocketServer } = require('ws');
 const path = require('path');
@@ -63,22 +64,183 @@ const { analyzeMatch, groqJsonGeneric, geminiJsonGeneric } = require('./engines/
 // algunos parsers, agregar acá entre los retries de Gemini y Groq.
 const HAS_GEMINI = !!(process.env.BS_GEMINI_API_KEY || process.env.GEMINI_API_KEY);
 const HAS_GROQ = !!(process.env.BS_GROQ_API_KEY || process.env.GROQ_API_KEY);
+const HAS_ANTHROPIC = !!(process.env.BS_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY);
+const HAS_OPENROUTER = !!(process.env.BS_OPENROUTER_API_KEY || process.env.OPENROUTER_API_KEY);
+
+// Estado runtime del último intento por proveedor — observabilidad para que el
+// cliente sepa POR QUÉ la IA falla, no solo "fallback offline".
+// Cada entrada: { ok: bool, ts: epoch, error: string|null, durMs: number }
+const aiProviderState = {
+  gemini: { ok: HAS_GEMINI ? null : false, ts: 0, error: HAS_GEMINI ? null : 'key not set', durMs: 0 },
+  groq:    { ok: HAS_GROQ ? null : false, ts: 0, error: HAS_GROQ ? null : 'key not set', durMs: 0 },
+  anthropic: { ok: HAS_ANTHROPIC ? null : false, ts: 0, error: HAS_ANTHROPIC ? null : 'key not set', durMs: 0 },
+  openrouter: { ok: HAS_OPENROUTER ? null : false, ts: 0, error: HAS_OPENROUTER ? null : 'key not set', durMs: 0 }
+};
+function recordProvider(name, ok, error = null, durMs = 0) {
+  if (!aiProviderState[name]) return;
+  aiProviderState[name] = { ok, ts: Date.now(), error: error ? String(error).slice(0, 200) : null, durMs };
+}
+
 async function preferredJson(systemPrompt, userPrompt, opts = {}) {
+  // v5.10 — El retry inteligente vive AHORA en lib/gemini-client.js (que respeta
+  // Retry-After header, distingue 429/503/500/network, usa keep-alive). Este
+  // wrapper solo:
+  //   1) Llama Gemini (que internamente hace hasta 4 retries con backoff específico)
+  //   2) Si Gemini sigue fallando tras los 4 intentos → fallback a Groq (1 retry interno)
+  //   3) Si Groq también falla → no hay más opciones (Anthropic premium ya intentado upstream)
+  //
+  // Esto evita el bug anterior: el for-loop externo de 5 retries * 4 retries
+  // internos = 20 intentos, que Google interpreta como abuso y banea.
   let lastErr = null;
   if (HAS_GEMINI) {
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      try {
-        return await geminiJsonGeneric(systemPrompt, userPrompt, opts);
-      } catch (e) {
-        lastErr = e;
-        // Backoff exponencial: 200ms, 600ms, 1800ms
-        if (attempt < 3) await new Promise(r => setTimeout(r, 200 * Math.pow(3, attempt - 1)));
-      }
+    const t0 = Date.now();
+    try {
+      const r = await geminiJsonGeneric(systemPrompt, userPrompt, opts);
+      recordProvider('gemini', true, null, Date.now() - t0);
+      return r;
+    } catch (e) {
+      lastErr = e;
+      recordProvider('gemini', false, e?.message, Date.now() - t0);
+      log(`[preferredJson] gemini agotado: ${e?.message?.slice(0,100)} — fallback a Groq`);
     }
-    log(`[preferredJson] gemini falló 3 veces: ${lastErr?.message?.slice(0,80)} — fallback a Groq`);
   }
-  if (HAS_GROQ) return groqJsonGeneric(systemPrompt, userPrompt, opts);
+  if (HAS_GROQ) {
+    const t0 = Date.now();
+    try {
+      const r = await groqJsonGeneric(systemPrompt, userPrompt, opts);
+      recordProvider('groq', true, null, Date.now() - t0);
+      return r;
+    } catch (e) {
+      lastErr = e;
+      recordProvider('groq', false, e?.message, Date.now() - t0);
+      log(`[preferredJson] groq también falló: ${e?.message?.slice(0,100)}`);
+    }
+  }
+  // Último recurso: OpenRouter
+  if (HAS_OPENROUTER) {
+    const t0 = Date.now();
+    try {
+      const { openrouterJson } = require('./engines/ai-pipeline');
+      if (typeof openrouterJson === 'function') {
+        const r = await openrouterJson(systemPrompt, userPrompt, opts);
+        recordProvider('openrouter', true, null, Date.now() - t0);
+        return r;
+      }
+    } catch (e) {
+      recordProvider('openrouter', false, e?.message, Date.now() - t0);
+      lastErr = e;
+    }
+  }
   throw lastErr || new Error('Sin LLM disponible (configurá BS_GEMINI_API_KEY o BS_GROQ_API_KEY)');
+}
+
+/**
+ * Snapshot uniforme del estado IA para incluir en respuestas de endpoints.
+ * Devuelve la verdad: si las keys faltan, si hubo errores recientes, qué
+ * proveedor está activo, y un mensaje de UX corto.
+ *
+ * Forma:
+ *   {
+ *     ok: bool,
+ *     primary: 'gemini'|'groq'|'anthropic'|'openrouter'|null,
+ *     health: 'ok'|'degraded'|'no-keys'|'unknown',
+ *     reason: string|null,   // mensaje humano corto para mostrar al usuario
+ *     providers: { gemini: {present, lastOk, error}, ... }
+ *   }
+ */
+function aiHealthSnapshot({ activeProvider = null, offlineCount = 0, totalCount = 0 } = {}) {
+  const anyKey = HAS_GEMINI || HAS_GROQ || HAS_ANTHROPIC || HAS_OPENROUTER;
+  if (!anyKey) {
+    return {
+      ok: false,
+      primary: null,
+      health: 'no-keys',
+      reason: 'No hay keys de IA configuradas en el servidor. Configurá BS_GEMINI_API_KEY (recomendado) o BS_GROQ_API_KEY.',
+      providers: snapshotProviders()
+    };
+  }
+  // Si activeProvider viene en la request actual, lo usamos. Si no, miramos
+  // el último estado conocido de los providers.
+  if (activeProvider && activeProvider !== 'offline') {
+    return {
+      ok: true,
+      primary: activeProvider,
+      health: 'ok',
+      reason: null,
+      providers: snapshotProviders()
+    };
+  }
+  // Si tuvimos N partidos y la mayoría cayó offline, es degraded
+  const offlineRatio = totalCount > 0 ? offlineCount / totalCount : 0;
+  if (totalCount > 0 && offlineRatio > 0.3) {
+    const lastErr = pickLastError();
+    return {
+      ok: false,
+      primary: null,
+      health: 'degraded',
+      reason: lastErr ? `IA degradada — último error: ${lastErr}` : 'La IA generativa no respondió a tiempo (rate-limit o red lenta). Reintentá en unos segundos.',
+      providers: snapshotProviders()
+    };
+  }
+  // Si tenemos keys pero todavía no probamos nada en esta request
+  // y los proveedores tienen estado recient OK, vale 'ok'.
+  const someRecentOk = Object.values(aiProviderState).some(s => s.ok === true && (Date.now() - s.ts) < 5 * 60 * 1000);
+  if (someRecentOk) {
+    return { ok: true, primary: pickActiveProvider(), health: 'ok', reason: null, providers: snapshotProviders() };
+  }
+  // Si tenemos keys pero TODOS los providers fallaron recientes (probamos y fallaron)
+  const anyProbed = Object.values(aiProviderState).some(s => s.ts > 0);
+  const allRecentFail = anyProbed && Object.entries(aiProviderState).every(([n, s]) => {
+    if (!keyPresentFor(n)) return true;
+    return s.ok === false && (Date.now() - s.ts) < 5 * 60 * 1000;
+  });
+  if (allRecentFail) {
+    return {
+      ok: false,
+      primary: null,
+      health: 'degraded',
+      reason: pickLastError() || 'Todos los proveedores IA fallaron recientemente.',
+      providers: snapshotProviders()
+    };
+  }
+  // Tenemos keys pero todavía no probamos nada en runtime — asumimos OK.
+  // La verdad: el .env tiene las keys, no sabemos hasta hacer la 1ra call.
+  // Mejor mostrar "ok" que "unknown" porque el banner aiHealthBanner muestra
+  // un mensaje confuso cuando health='unknown' con keys configuradas.
+  return {
+    ok: true,
+    primary: pickActiveProvider(),
+    health: 'ok',
+    reason: null,
+    providers: snapshotProviders()
+  };
+}
+function snapshotProviders() {
+  return {
+    gemini: { present: HAS_GEMINI, lastOk: aiProviderState.gemini.ok, lastTs: aiProviderState.gemini.ts, error: aiProviderState.gemini.error },
+    groq: { present: HAS_GROQ, lastOk: aiProviderState.groq.ok, lastTs: aiProviderState.groq.ts, error: aiProviderState.groq.error },
+    anthropic: { present: HAS_ANTHROPIC, lastOk: aiProviderState.anthropic.ok, lastTs: aiProviderState.anthropic.ts, error: aiProviderState.anthropic.error },
+    openrouter: { present: HAS_OPENROUTER, lastOk: aiProviderState.openrouter.ok, lastTs: aiProviderState.openrouter.ts, error: aiProviderState.openrouter.error }
+  };
+}
+function keyPresentFor(name) {
+  return name === 'gemini' ? HAS_GEMINI : name === 'groq' ? HAS_GROQ : name === 'anthropic' ? HAS_ANTHROPIC : name === 'openrouter' ? HAS_OPENROUTER : false;
+}
+function pickActiveProvider() {
+  if (HAS_GEMINI) return 'gemini';
+  if (HAS_ANTHROPIC) return 'anthropic';
+  if (HAS_GROQ) return 'groq';
+  if (HAS_OPENROUTER) return 'openrouter';
+  return null;
+}
+function pickLastError() {
+  let best = null;
+  for (const [name, s] of Object.entries(aiProviderState)) {
+    if (!keyPresentFor(name)) continue;
+    if (!s.error) continue;
+    if (!best || s.ts > best.ts) best = { ...s, name };
+  }
+  return best ? `${best.name}: ${best.error.slice(0, 120)}` : null;
 }
 const { analyzeCombo, pairCorrelation } = require('./engines/correlation');
 const { buildFactors } = require('./factors');
@@ -103,6 +265,11 @@ const arbEngine = new ArbitrageEngine({
 
 const app = express();
 app.disable('x-powered-by');
+
+// v5.9 — gzip/brotli automático para todas las respuestas (CSS/JS/JSON/HTML).
+// Sin esto, el browser descarga 270KB de CSS; con compression, ~46KB.
+// Threshold 1KB = no comprime payloads chicos donde el overhead supera el ahorro.
+app.use(compression({ threshold: 1024 }));
 
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', CORS_ORIGIN);
@@ -362,6 +529,30 @@ app.get('/api/keys-status', (req, res) => {
       port: process.env.PORT || '8787',
       hint: 'Pon las keys en /Users/rocki/Documents/betposta/.env (o donde corra el server) y reinicia. .env se carga automáticamente.'
     }
+  });
+});
+
+/**
+ * GET /api/ai-status — Salud unificada de la cascada IA.
+ *
+ * El cliente lo llama al cargar el dashboard (pre-warm) y antes de invocar
+ * cualquier motor IA. Devuelve la verdad: si las keys están, qué proveedor
+ * es primary, último error conocido por proveedor.
+ *
+ * Es lightweight (no hace fetch a los providers — usa el estado cacheado
+ * de calls previos). Si querés un verify real, usá /api/keys-verify o /api/ai/test.
+ */
+app.get('/api/ai-status', (req, res) => {
+  const snap = aiHealthSnapshot();
+  res.json({
+    ...snap,
+    hint: snap.health === 'no-keys'
+      ? 'Configurá BS_GEMINI_API_KEY (recomendado, free 1500 RPM) o BS_GROQ_API_KEY en el servidor.'
+      : snap.health === 'degraded'
+        ? 'La IA falla intermitentemente. Esperá 30-60s y reintentá. Si persiste, llamá /api/keys-verify para diagnosticar.'
+        : snap.health === 'ok'
+          ? `IA activa con proveedor ${snap.primary}.`
+          : 'Estado IA aún no determinado — hacé una request a /api/picks o /api/daily-report y volvé a consultar.'
   });
 });
 
@@ -868,9 +1059,17 @@ app.get('/api/picks', async (req, res) => {
   const valueCount = ranked.length;
   const rejectedByValue = aiCount - valueCount;
   const offlineCount = filtered.length - aiCount;
+  const picksSnap = aiHealthSnapshot({
+    activeProvider: aiVerified[0]?.llmProvider || null,
+    offlineCount,
+    totalCount: filtered.length
+  });
 
   res.json({
     picks: ranked.slice(0, limit),
+    aiHealth: picksSnap.health,
+    aiProvider: picksSnap.primary,
+    aiReason: picksSnap.reason,
     meta: {
       analyzed: out.length,
       filtered: filtered.length,
@@ -880,9 +1079,13 @@ app.get('/api/picks', async (req, res) => {
       rejectedByValue,
       onlyValue,
       // Si tiramos picks offline, avisamos al cliente:
-      hint: offlineCount > 0
-        ? `${offlineCount} análisis IA aún procesando — refrescá en unos segundos para verlos.`
-        : (rejectedByValue > 0 ? `${rejectedByValue} picks descartados por no tener valor positivo. Para ver todos: ?onlyValue=false` : null)
+      hint: picksSnap.health === 'no-keys'
+        ? 'El motor IA no está configurado en el servidor. Sin keys, no hay picks con análisis IA.'
+        : picksSnap.health === 'degraded'
+          ? `IA degradada (${offlineCount}/${filtered.length} cayeron offline). Reintentá en 30s.`
+          : offlineCount > 0
+            ? `${offlineCount} análisis IA aún procesando — refrescá en unos segundos para verlos.`
+            : (rejectedByValue > 0 ? `${rejectedByValue} picks descartados por no tener valor positivo. Para ver todos: ?onlyValue=false` : null)
     }
   });
 });
@@ -921,8 +1124,12 @@ app.get('/api/curated-combos', async (req, res) => {
   events = events.filter(e => Number.isFinite(e.start) && e.start >= now && e.start <= now + 36*3600*1000);
 
   if (!events.length) {
+    const aiSnap0 = aiHealthSnapshot();
     return res.json({
       combos: [],
+      aiHealth: aiSnap0.health,
+      aiProvider: aiSnap0.primary,
+      aiReason: aiSnap0.reason,
       meta: { reason: 'no-events', sport, message: `No hay partidos${sport!=='all'?` de ${sport}`:''} en las próximas 36hs.` }
     });
   }
@@ -982,17 +1189,25 @@ app.get('/api/curated-combos', async (req, res) => {
   }
 
   if (pool.length < 4) {
+    const aiSnap1 = aiHealthSnapshot({ offlineCount: llmOffline, totalCount: llmOk + llmOffline });
     return res.json({
       combos: [],
+      aiHealth: aiSnap1.health,
+      aiProvider: aiSnap1.primary,
+      aiReason: aiSnap1.reason,
       meta: {
-        reason: 'pool-too-small',
+        reason: aiSnap1.health === 'no-keys' ? 'no-ai-keys' : (aiSnap1.health === 'degraded' ? 'ai-degraded' : 'pool-too-small'),
         analyzed: analyzed.length,
         analyzedEvents: analyzed.length,
         llmOk, llmOffline,
         poolSize: pool.length,
-        message: pool.length === 0
-          ? `Hoy no encontramos picks con valor positivo. Probablemente los modelos cuantitativos no detectan edge claro en los partidos disponibles.`
-          : `Solo encontramos ${pool.length} picks con valor positivo. Necesitamos al menos 4 para armar combinadas de calidad.`
+        message: aiSnap1.health === 'no-keys'
+          ? `El motor IA no está configurado en el servidor. Configurá la key de Gemini para activar el análisis profundo de cada partido.`
+          : aiSnap1.health === 'degraded'
+            ? `La IA falla intermitentemente (${llmOffline}/${llmOk + llmOffline} análisis cayeron offline). Esperá 30-60s y reintentá.`
+            : pool.length === 0
+              ? `Hoy no encontramos picks con valor positivo. Probablemente los modelos cuantitativos no detectan edge claro en los partidos disponibles.`
+              : `Solo encontramos ${pool.length} picks con valor positivo. Necesitamos al menos 4 para armar combinadas de calidad.`
       }
     });
   }
@@ -1006,18 +1221,29 @@ app.get('/api/curated-combos', async (req, res) => {
     `[${i}] ${p.event.home?.name} vs ${p.event.away?.name} | ${p.event.leagueName || p.event.sport} | ${p.sel.market}:${p.sel.outcome} (${p.sel.label}) @ ${p.sel.odd} | EV ${p.sel.consensusEv?.toFixed(1)}% | conf ${(p.sel.confidence*100)?.toFixed(0)}% | book ${p.sel.book}`
   ).join('\n');
 
-  const systemPrompt = `Sos un analista cuantitativo SENIOR de apuestas deportivas que arma combinadas curadas para usuarios serios.
+  const systemPrompt = `Sos un analista cuantitativo SENIOR de apuestas deportivas que arma combinadas para apostadores serios que quieren GANARLE A LA CASA — no a cualquiera que sume cuotas bajas.
 
-Tu trabajo: del pool de picks (todos con EV positivo y data profunda), elegir las MEJORES ${count} COMBINADAS posibles. NO un combo por partido. NO repetir el mismo evento entre legs. NO combos genéricos.
+OBJETIVO PRINCIPAL: combinadas con CUOTA ALTA pero PROBABILIDAD REAL DE GANAR ALTA — algo difícil que solo se logra eligiendo legs realmente buenas. NO querés "5 favoritos a 1.30" (eso lo hace cualquiera, paga poco y no diferencia). Querés combinaciones donde la probabilidad TOTAL (producto de las prob individuales) supere a la implícita en la cuota total.
 
-REGLAS:
-- Cada combinada tiene 2 a 5 legs (vos decidís cuántas según calidad de las señales disponibles).
-- NUNCA combos de 1 leg (eso es una single).
-- DIVERSIDAD DE MERCADOS OBLIGATORIA: si la combinada tiene 3+ legs, los mercados deben ser DIVERSOS (mezclar 1X2, totals, córners, tarjetas, BTTS, AH, etc.). NUNCA armar combinadas de 3-4 legs todas del mismo mercado (ej: 4 "Under 2.5 goles" en distintos partidos es PEREZOSO y poco profesional). El usuario quiere VARIEDAD de mercados — combina ganadores con córners con tarjetas con goleadores.
-- Mezclá perfil de riesgo: al menos 1 combo seguro (cuota total ≤ 4), 1-2 equilibrados (cuota 4-12), y opcionalmente 1 agresivo (cuota 12-50).
-- Los partidos en una misma combinada NO deben estar correlacionados estructuralmente (ej: no combines "Local A gana" + "Local A marca primero" del mismo partido).
-- Si no podés armar combos de alta calidad CON DIVERSIDAD DE MERCADOS, devolvé MENOS combos — preferible 2 brillantes que 5 mediocres con el mismo mercado repetido.
-- Cada combo necesita una NARRATIVA que explique por qué esos partidos juntos tienen sentido + qué hace interesante la mezcla de mercados.
+Tu trabajo: del pool de picks (todos con EV positivo y data profunda), armá ${count} combinadas. CALIDAD por encima de cantidad.
+
+REGLAS CRÍTICAS:
+1) **Cada leg debe tener confidence ≥ 0.55** (= prob real de ganar ≥ 55%). NO uses legs débiles solo para subir la cuota.
+2) **PROBABILIDAD TOTAL mínima por combo**:
+   - "seguro": prob_total ≥ 28% (cuota total típica 2.5–4.5×)
+   - "equilibrado": prob_total ≥ 18% (cuota total 4–10×)
+   - "agresivo": prob_total ≥ 10% (cuota total 8–20×)
+   Calculá prob_total como el PRODUCTO de las confidences. Ejemplo: 4 legs a 0.65 conf = 0.65^4 = 0.179 = 17.9% — eso es "equilibrado".
+3) **EV POSITIVO TOTAL OBLIGATORIO**: la cuota total ofrecida tiene que ser mejor que la justa según las prob reales. Es decir: cuota_total > 1/prob_total. Si no, descartá la combinada.
+4) Cada combinada tiene 2 a 5 legs. NUNCA 1 leg. Idealmente 3–4 legs.
+5) **DIVERSIDAD DE MERCADOS OBLIGATORIA** (si 3+ legs): mezclá 1X2, totals, córners, tarjetas, BTTS, AH, goleadores, etc. Nunca 4 "Under 2.5" o 4 h2h favoritos.
+6) Los partidos en una misma combinada NO deben estar correlacionados (no "Local A gana" + "Local A marca primero" del mismo partido).
+7) Repetir el MISMO partido en distintas legs SÍ se permite pero hasta 2 legs por partido (combo de mercados complementarios del mismo match).
+8) Si no podés armar ${count} combos de calidad, devolvé MENOS — 2 brillantes que 5 mediocres.
+
+DISTRIBUCIÓN OBJETIVO: al menos 1 combo seguro, 1–2 equilibrados, idealmente 1 agresivo. Variá la cantidad de legs entre combos para no aburrir.
+
+Cada combo necesita NARRATIVA específica + EDGE (dónde está el valor vs el mercado) + KEYFACTOR (qué vigilar antes del kickoff).
 
 Devolvés JSON estricto:
 {
@@ -1025,9 +1251,9 @@ Devolvés JSON estricto:
     {
       "legs": [<índices del pool, ej [3, 7, 12]>],
       "risk": "seguro" | "equilibrado" | "agresivo",
-      "narrative": "<2-3 frases que expliquen la lógica de unir estos partidos>",
-      "edge": "<frase corta: por qué esta combinada tiene valor real vs el mercado>",
-      "keyFactor": "<el factor más importante a vigilar antes del kickoff>"
+      "narrative": "<2-3 frases concretas: por qué estos partidos juntos>",
+      "edge": "<una frase: dónde la cuota ofrecida es generosa vs prob real>",
+      "keyFactor": "<una frase: qué puede cambiar el resultado de la combinada>"
     },
     ...
   ]
@@ -1048,76 +1274,112 @@ Generá las ${count} mejores combinadas posibles. Usá los índices del pool. Re
 
   let aiCombos = Array.isArray(aiResp?.combos) ? aiResp.combos : [];
 
-  // FALLBACK ALGORÍTMICO: si el LLM curator devolvió vacío pero tenemos
-  // 4+ picks en el pool, generamos combos por score con diversidad de riesgo.
-  // El usuario merece ver combos en lugar de pantalla vacía.
+  // FALLBACK ALGORÍTMICO v5.8: si el LLM curator devolvió vacío pero tenemos
+  // 4+ picks en el pool, generamos combos OPTIMIZADOS para alta-cuota + alta-prob
+  // real. No combos triviales — el algoritmo busca el sweet spot prob_total × cuota_total
+  // por riesgo objetivo.
+  //
+  // Filosofía: mejor 2 brillantes que 5 mediocres. Si una zona de riesgo no
+  // alcanza el target, no la mostramos (descartar > engañar).
   if (!aiCombos.length && topPool.length >= 4) {
     log(`[curated] LLM curator vacío — generando algorítmicamente desde pool de ${topPool.length}`);
-    const ranked = topPool.slice().sort((a, b) => b.score - a.score);
 
-    // Generamos hasta `count` combos:
-    // 1) Seguro: top 2-3 picks (cuota total más baja)
-    // 2) Equilibrado: top 3 distintos (cuota media)
-    // 3) Agresivo: top 4 con cuotas medias-altas
-    const usedIndices = new Set();
-    function pickIndices(n, startIdx, preferLowOdd) {
-      const picked = [];
-      const seenEvents = new Set();
-      const candidates = preferLowOdd
-        ? ranked.slice().sort((a, b) => a.sel.odd - b.sel.odd)
-        : ranked;
-      for (let i = startIdx; i < candidates.length && picked.length < n; i++) {
-        const p = candidates[i];
-        if (seenEvents.has(p.event.id)) continue;
-        const originalIdx = topPool.indexOf(p);
-        if (originalIdx < 0) continue;
-        picked.push(originalIdx);
-        seenEvents.add(p.event.id);
+    // Solo legs realmente buenas: confidence ≥ 0.55 (prob real ≥ 55%)
+    const strong = topPool.filter(p => (p.sel.confidence || 0) >= 0.55);
+    const usable = strong.length >= 4 ? strong : topPool.slice();   // si no hay 4 strong, relajamos
+
+    // Generar combinaciones candidatas: probamos top 12 picks combinados de a 2/3/4 legs.
+    // Para cada candidata: prob_total = product(confidence), cuota_total = product(odd),
+    // ev_real = prob_total × cuota_total. Solo válidas: ev_real ≥ 1.05 (5% margen sobre fair).
+    const sample = usable.slice(0, Math.min(12, usable.length));
+    const candidates = [];
+    function pushIfValid(indices) {
+      // No repetir mismo evento
+      const seenEv = new Set();
+      for (const i of indices) {
+        if (seenEv.has(sample[i].event.id)) return;
+        seenEv.add(sample[i].event.id);
       }
-      return picked;
+      const probTot = indices.reduce((a, i) => a * (sample[i].sel.confidence || 0.5), 1);
+      const oddTot = indices.reduce((a, i) => a * sample[i].sel.odd, 1);
+      const evReal = probTot * oddTot;
+      if (evReal < 1.05) return;  // descartar combos sin valor real
+      candidates.push({ indices: indices.slice(), probTot, oddTot, evReal });
     }
+    // Generar todas las combinaciones de 2, 3 y 4 elementos (cap a 12 picks ya filtrado)
+    for (let i = 0; i < sample.length; i++) {
+      for (let j = i + 1; j < sample.length; j++) {
+        pushIfValid([i, j]);
+        for (let k = j + 1; k < sample.length; k++) {
+          pushIfValid([i, j, k]);
+          for (let l = k + 1; l < sample.length; l++) {
+            pushIfValid([i, j, k, l]);
+          }
+        }
+      }
+    }
+    log(`[curated] candidatas con ev_real ≥ 1.05: ${candidates.length}`);
+
+    // Clasificar por riesgo objetivo
+    function pickBest(min, max, riskLabel) {
+      const inRange = candidates.filter(c => c.probTot >= min && c.probTot <= max);
+      // Maximizar ev_real dentro del rango
+      inRange.sort((a, b) => b.evReal - a.evReal);
+      return inRange[0] || null;
+    }
+    const seguro      = pickBest(0.28, 0.65, 'seguro');         // prob 28-65%, cuota típica 2.5-4.5x
+    const equilibrado = pickBest(0.18, 0.28, 'equilibrado');    // prob 18-28%, cuota 4-10x
+    const agresivo    = pickBest(0.10, 0.18, 'agresivo');       // prob 10-18%, cuota 8-20x
 
     const fallbackCombos = [];
-    // Seguro: 2 legs cuota más baja
-    if (topPool.length >= 2) {
-      const idx = pickIndices(2, 0, true);
-      if (idx.length === 2) {
+    if (seguro) {
+      // Mapear índices del `sample` a índices del `topPool` original
+      const realIdx = seguro.indices.map(i => topPool.indexOf(sample[i])).filter(i => i >= 0);
+      if (realIdx.length === seguro.indices.length) {
         fallbackCombos.push({
-          legs: idx,
+          legs: realIdx,
           risk: 'seguro',
-          narrative: 'Combinada conservadora con los dos picks de mejor relación valor/cuota del día. Ambos partidos con señales claras de los modelos cuantitativos.',
-          edge: 'EV positivo en cada leg, cuota total accesible.',
-          keyFactor: 'Verificar alineaciones 30 min antes del kickoff.'
+          narrative: `Combinada conservadora de ${realIdx.length} legs: cada selection tiene probabilidad real ${(seguro.probTot * 100).toFixed(0)}% (producto) y cuota total ${seguro.oddTot.toFixed(2)}x. Pega ~${(seguro.probTot*100).toFixed(0)}% de las veces y paga ${seguro.evReal.toFixed(2)}× tu stake.`,
+          edge: `EV real positivo: la prob de pegar (${(seguro.probTot*100).toFixed(0)}%) supera lo que la cuota implica (${(100/seguro.oddTot).toFixed(0)}%).`,
+          keyFactor: 'Verificar alineaciones titulares 30 min antes del primer kickoff.'
         });
       }
     }
-    // Equilibrado: 3 legs top
-    if (topPool.length >= 3) {
-      fallbackCombos.push({
-        legs: pickIndices(3, 0, false),
-        risk: 'equilibrado',
-        narrative: 'Combinada equilibrada que aprovecha los 3 mejores picks del día por score compuesto (EV + confianza + tier de liga).',
-        edge: 'Combinación de valor del mercado con consistencia de modelo.',
-        keyFactor: 'Lesiones de último momento.'
-      });
+    if (equilibrado) {
+      const realIdx = equilibrado.indices.map(i => topPool.indexOf(sample[i])).filter(i => i >= 0);
+      if (realIdx.length === equilibrado.indices.length) {
+        fallbackCombos.push({
+          legs: realIdx,
+          risk: 'equilibrado',
+          narrative: `Combinada equilibrada de ${realIdx.length} legs: prob real ${(equilibrado.probTot * 100).toFixed(0)}%, cuota total ${equilibrado.oddTot.toFixed(2)}x. Punto óptimo entre riesgo y pago.`,
+          edge: `Cuota generosa para el ${(equilibrado.probTot*100).toFixed(0)}% de prob real — la casa subestima al menos una de las selections.`,
+          keyFactor: 'Mirá los movimientos de cuota desde ahora hasta el kickoff: si bajan, validan el call.'
+        });
+      }
     }
-    // Agresivo: 4 legs si hay
-    if (topPool.length >= 4 && fallbackCombos.length < count) {
-      fallbackCombos.push({
-        legs: pickIndices(4, 1, false),
-        risk: 'agresivo',
-        narrative: 'Combinada agresiva que multiplica valor combinando 4 picks con edge positivo. Mayor cuota pero exige acierto en todos los partidos.',
-        edge: 'EV acumulado alto si la correlación entre legs es baja.',
-        keyFactor: 'Es 4 legs — un solo fallo cae todo. Stake recomendado: 1-2% de banca.'
-      });
+    if (agresivo && fallbackCombos.length < count) {
+      const realIdx = agresivo.indices.map(i => topPool.indexOf(sample[i])).filter(i => i >= 0);
+      if (realIdx.length === agresivo.indices.length) {
+        fallbackCombos.push({
+          legs: realIdx,
+          risk: 'agresivo',
+          narrative: `Combinada agresiva de ${realIdx.length} legs: prob ${(agresivo.probTot * 100).toFixed(0)}%, cuota total ${agresivo.oddTot.toFixed(2)}x. Pega ~1 de cada ${Math.round(1/agresivo.probTot)} y paga muy bien — stake controlado (1–2% banca).`,
+          edge: `EV real ${agresivo.evReal.toFixed(2)}x: si pega, el retorno justifica las veces que falla.`,
+          keyFactor: 'Es una sola — no la multipliques por banca. Es una combinada de "valor esperado", no de "siempre pega".'
+        });
+      }
     }
 
     aiCombos = fallbackCombos.slice(0, count);
   }
 
   if (!aiCombos.length) {
+    const aiSnap2 = aiHealthSnapshot({ offlineCount: llmOffline, totalCount: llmOk + llmOffline });
     return res.json({
       combos: [],
+      aiHealth: aiSnap2.health,
+      aiProvider: aiSnap2.primary,
+      aiReason: aiSnap2.reason,
       meta: {
         reason: 'ai-empty',
         analyzed: analyzed.length,
@@ -1226,6 +1488,12 @@ Generá las ${count} mejores combinadas posibles. Usá los índices del pool. Re
       }
 
       const totalOdd = legs.reduce((a, l) => a * l.odd, 1);
+      // v5.8: prob_total real = PRODUCTO de confidences (no promedio!). Esta
+      // es la métrica HONESTA: tres legs a 65% conf = 0.65^3 = 27.5% prob, NO 65%.
+      const probTotal = legs.reduce((a, l) => a * Math.min(0.98, l.confidence || 0.5), 1);
+      // EV real de la combinada = prob_total × cuota_total. >1.0 = expected value positivo,
+      // <1.0 = -EV (la casa cobra más de lo que vale la combinada).
+      const evReal = probTotal * totalOdd;
       // Contar mercados únicos para el meta
       const uniqueMarkets = [...new Set(legs.map(l => l.market))];
       return {
@@ -1235,6 +1503,10 @@ Generá las ${count} mejores combinadas posibles. Usá los índices del pool. Re
         marketsCount: uniqueMarkets.length,
         marketsUsed: uniqueMarkets,
         totalOdd: Number(totalOdd.toFixed(2)),
+        probTotal: Number(probTotal.toFixed(4)),                  // v5.8 (frontend muestra el %)
+        probTotalPct: Math.round(probTotal * 100),                // v5.8
+        evReal: Number(evReal.toFixed(2)),                        // v5.8
+        impliedProb: Number((1 / totalOdd).toFixed(4)),           // v5.8 prob implícita
         avgConfidence: Number((legs.reduce((a, l) => a + (l.confidence || 0), 0) / legs.length).toFixed(3)),
         avgEv: Number((legs.reduce((a, l) => a + (l.ev || 0), 0) / legs.length).toFixed(2)),
         risk: c.risk || (totalOdd < 4 ? 'seguro' : totalOdd < 12 ? 'equilibrado' : 'agresivo'),
@@ -1244,14 +1516,38 @@ Generá las ${count} mejores combinadas posibles. Usá los índices del pool. Re
         sportsCount: new Set(legs.map(l => l.sport)).size
       };
     })
-    .filter(Boolean);
+    .filter(Boolean)
+    // v5.8 — FILTRO FINAL DE CALIDAD: solo combinadas con EV real positivo
+    // (cuota total ofrecida > 1/prob_total). Sin esto, podríamos mostrar
+    // combos de cuota baja agregada (lo que hace cualquiera) o de prob tan
+    // baja que ni vale el riesgo. Esta es la regla "high-odds-but-safe" que
+    // diferencia BetSafe del resto.
+    .filter(c => {
+      if (c.evReal < 1.02) return false;     // descartar -EV
+      if (c.probTotalPct < 8) return false;  // descartar prob real < 8% (1 de cada 12+)
+      return true;
+    })
+    // Sort final por valor esperado descendente — las mejores combinadas primero
+    .sort((a, b) => b.evReal - a.evReal);
 
+  // aiHealth: usa info del aiResp (si el LLM curador respondió OK) + ratio
+  // de partidos que cayeron offline en analyzeMatch.
+  const aiSnap = aiHealthSnapshot({
+    activeProvider: aiResp ? (aiResp.__provider || pickActiveProvider()) : null,
+    offlineCount: llmOffline,
+    totalCount: llmOk + llmOffline
+  });
   res.json({
     combos: combos.slice(0, count),
+    aiHealth: aiSnap.health,
+    aiProvider: aiSnap.primary,
+    aiReason: aiSnap.reason,
     meta: {
       analyzedEvents: analyzed.length,
       poolSize: pool.length,
       topPoolSize: topPool.length,
+      llmOk,
+      llmOffline,
       sport,
       includeEsports,
       generatedAt: Date.now()
@@ -1975,11 +2271,42 @@ DETECCIÓN DE MERCADOS — IMPORTANTE:
 - Si no menciona mercado específico → markets: [] (todos disponibles)`;
 
   let parsed = null;
+  let parserError = null;
   try {
     parsed = await preferredJson(parserSystem, prompt, { maxTokens: 700, temperature: 0.2 });
   } catch (e) {
-    log(`[betsafe-ai] parse err: ${e?.message?.slice(0, 100)}`);
+    parserError = e?.message?.slice(0, 200) || String(e);
+    log(`[betsafe-ai] parse err: ${parserError}`);
   }
+
+  // v5.8 — POLÍTICA "Coach IA = IA REAL O NADA":
+  // Si el LLM parser falló completamente (timeout, rate-limit, todos los
+  // providers caídos) NO seguimos con defaults+regex porque el usuario quiere
+  // entender SU pedido exacto, no una interpretación genérica. Devolvemos
+  // error 503 con razón concreta + sugerencia de reformular.
+  //
+  // Los regex fallbacks que vienen después SIGUEN existiendo, pero son
+  // refinamientos cuando el LLM extrae parcialmente (books faltantes, etc.).
+  // No sustituyen al LLM completo.
+  if (parsed == null || typeof parsed !== 'object') {
+    const aiSnapErr = aiHealthSnapshot();
+    return res.status(503).json({
+      ok: false,
+      error: 'La IA no pudo entender tu pedido en este momento',
+      aiHealth: aiSnapErr.health === 'no-keys' ? 'no-keys' : 'degraded',
+      aiProvider: null,
+      aiReason: parserError
+        ? `El parser LLM falló: ${parserError}`
+        : (aiSnapErr.health === 'no-keys'
+            ? 'No hay keys de IA configuradas en el servidor.'
+            : 'La IA no respondió a tiempo o devolvió respuesta inválida.'),
+      hint: aiSnapErr.health === 'no-keys'
+        ? 'El admin del servidor debe configurar BS_GEMINI_API_KEY o BS_GROQ_API_KEY.'
+        : 'Probá: (1) reformular tu pedido más simple, (2) esperar 30-60s y reintentar, (3) si persiste, chequeá /api/keys-verify para diagnosticar.',
+      promptEcho: prompt.slice(0, 200)
+    });
+  }
+
   // Defaults si el parse falla
   const filters = {
     legs: Number.isFinite(Number(parsed?.legs)) ? clamp(Number(parsed.legs), 2, 8) : null,
@@ -1995,6 +2322,32 @@ DETECCIÓN DE MERCADOS — IMPORTANTE:
     preferTopTeams: parsed?.preferTopTeams !== false,
     userIntent: String(parsed?.userIntent || prompt).slice(0, 250)
   };
+
+  // v5.9 — Tracking de qué filtros vinieron del LLM vs qué fueron rellenados
+  // por regex complementarios. El frontend muestra warning específico cuando
+  // los regex rellenaron algo: "Entendí lo básico pero la IA no aplicó todos
+  // los filtros que pediste" (porque significa que el LLM no entendió esa
+  // parte del prompt y tuvimos que adivinar con palabras clave).
+  const parserAiExtracted = {
+    legs: filters.legs != null,
+    sport: !!parsed?.sport && parsed.sport !== 'all',
+    leagues: filters.leagues.length > 0,
+    books: filters.books.length > 0,
+    markets: filters.markets.length > 0,
+    risk: !!parsed?.risk,
+    targetOdd: filters.targetOdd != null,
+    minOddPerLeg: filters.minOddPerLeg != null,
+    maxOddPerLeg: filters.maxOddPerLeg != null,
+    timeWindow: filters.timeWindow !== 'any'
+  };
+  // Snapshot ANTES de los regex fallbacks para comparar después
+  const beforeRegexBooks = filters.books.length;
+  const beforeRegexMarkets = filters.markets.length;
+  const beforeRegexLeagues = filters.leagues.length;
+  const beforeRegexLegs = filters.legs;
+  const beforeRegexTarget = filters.targetOdd;
+  const beforeRegexMinOdd = filters.minOddPerLeg;
+  const beforeRegexTimeWin = filters.timeWindow;
 
   // ── REGEX FALLBACK para books si el LLM no los extrajo ──
   if (!filters.books.length) {
@@ -2167,6 +2520,23 @@ DETECCIÓN DE MERCADOS — IMPORTANTE:
     else if (/esports|cs:?go|valorant|dota|lol/i.test(p)) filters.sport = 'esports';
   }
 
+  // v5.9 — Comparar estado post-regex con snapshot pre-regex.
+  // Si algo cambió, significa que el LLM NO entendió esa parte del prompt y
+  // los regex rellenaron el hueco. El frontend va a mostrar warning específico
+  // diciendo qué filtros se inferyeron por palabras clave.
+  const regexFilled = [];
+  if (filters.books.length > beforeRegexBooks) regexFilled.push('casinos');
+  if (filters.markets.length > beforeRegexMarkets) regexFilled.push('mercados');
+  if (filters.leagues.length > beforeRegexLeagues) regexFilled.push('ligas');
+  if (filters.legs !== beforeRegexLegs && beforeRegexLegs == null) regexFilled.push('cantidad de partidos');
+  if (filters.targetOdd !== beforeRegexTarget && beforeRegexTarget == null) regexFilled.push('cuota objetivo');
+  if (filters.minOddPerLeg !== beforeRegexMinOdd && beforeRegexMinOdd == null) regexFilled.push('cuota mínima por leg');
+  if (filters.timeWindow !== beforeRegexTimeWin) regexFilled.push('fecha');
+  const parserPartialAI = regexFilled.length > 0;
+  const parserPartialReason = parserPartialAI
+    ? `La IA no detectó: ${regexFilled.join(', ')} — los inferí por palabras clave del prompt.`
+    : null;
+
   // 2) Buscar eventos REALES del orchestrator que matcheen
   const now = Date.now();
   const timeRange = {
@@ -2322,6 +2692,31 @@ DETECCIÓN DE MERCADOS — IMPORTANTE:
   const analyzed = await Promise.allSettled(
     top.map(ev => analyzeLimit(() => analyzeMatch(ev, { steamMoves: steam, surebets })))
   );
+
+  // v5.8 — POLÍTICA "Coach IA = IA REAL": si la mayoría (>50%) de los partidos
+  // cayó a llmProvider:'offline' (= sin análisis IA por leg), devolvemos error
+  // honesto en vez de armar una combinada con stats puras haciéndose pasar por IA.
+  let aiBackedCount = 0, aiOfflineCount = 0;
+  for (const r of analyzed) {
+    if (r.status !== 'fulfilled' || !r.value) continue;
+    if (r.value.llmProvider && r.value.llmProvider !== 'offline') aiBackedCount++;
+    else aiOfflineCount++;
+  }
+  const totalAnalyzed = aiBackedCount + aiOfflineCount;
+  if (totalAnalyzed >= 3 && aiBackedCount === 0) {
+    // CERO partidos tuvieron análisis IA → no podemos servir Coach IA
+    const aiSnapErr2 = aiHealthSnapshot({ offlineCount: aiOfflineCount, totalCount: totalAnalyzed });
+    return res.status(503).json({
+      ok: false,
+      error: 'La IA no pudo analizar los partidos en este momento',
+      aiHealth: 'degraded',
+      aiProvider: null,
+      aiReason: aiSnapErr2.reason || `Los ${totalAnalyzed} partidos analizados cayeron a modo offline (rate-limit o red lenta).`,
+      hint: 'El Coach IA requiere análisis IA real de cada partido — sin eso, no armamos combinada. Esperá 30-60s y reintentá. Si persiste, /api/keys-verify diagnostica el problema.',
+      promptEcho: prompt.slice(0, 200),
+      meta: { analyzed: totalAnalyzed, aiBacked: 0, aiOffline: aiOfflineCount }
+    });
+  }
 
   // Helper: si el user pidió una casa específica, intentamos REEMPLAZAR la cuota
   // de la selection (que usa la mejor casa por default) con la de la casa pedida,
@@ -2617,15 +3012,43 @@ Explicá brevemente POR QUÉ esta combinada cumple lo pedido + qué tiene de int
     } catch (e) { log(`[betsafe-ai groq fallback] ${e?.message?.slice(0, 80)}`); }
   }
 
+  // v5.8 — POLÍTICA "Coach IA = IA REAL": si NI Gemini NI Groq generaron la
+  // narrativa final, no servimos texto hardcoded haciéndose pasar por IA.
+  // La combinada se armó (con IA por partido — eso ya lo validamos arriba)
+  // pero falta la JUSTIFICACIÓN IA del bundle. Devolvemos 503 honesto.
+  if (!narrative || !aiProvider) {
+    const failSnap = aiHealthSnapshot();
+    return res.status(503).json({
+      ok: false,
+      error: 'La IA no pudo justificar la combinada en este momento',
+      aiHealth: 'degraded',
+      aiProvider: null,
+      aiReason: failSnap.reason || 'La narrativa IA falló tras 3 retries de Gemini + 1 de Groq. Probablemente rate-limit o red lenta.',
+      hint: 'La combinada SE ARMÓ con análisis IA por partido, pero el resumen IA final no salió. Reintentá en 30-60s — el rate-limit window se mueve rápido.',
+      // Devolvemos las legs igual por si el cliente quiere mostrarlas con disclaimer
+      filters,
+      legs: enrichedLegs,
+      totalOdd: Number(totalOdd.toFixed(2)),
+      avgConfidence: Number((enrichedLegs.reduce((a, l) => a + (l.confidence || 0), 0) / enrichedLegs.length).toFixed(3))
+    });
+  }
+
+  const bsaiSnap = aiHealthSnapshot({ activeProvider: aiProvider });
   res.json({
     ok: true,
     filters,
     legs: enrichedLegs,
     totalOdd: Number(totalOdd.toFixed(2)),
-    headline: narrative?.headline || `Combinada de ${enrichedLegs.length} partidos a cuota ${totalOdd.toFixed(2)}`,
-    narrative: narrative?.narrative || `Armé esta combinada de ${enrichedLegs.length} partidos basándome en tu pedido. Cada leg fue seleccionada por su edge sobre la casa y consistencia con el resto.`,
-    aiProvider,                                                          // 'gemini' | 'groq' | null
-    aiHealth: aiProvider ? 'ok' : (HAS_GEMINI || HAS_GROQ ? 'degraded' : 'no-keys'),
+    headline: narrative.headline || `Combinada de ${enrichedLegs.length} partidos a cuota ${totalOdd.toFixed(2)}`,
+    narrative: narrative.narrative,
+    aiProvider,                                                          // 'gemini' | 'groq' (nunca null si llegamos acá)
+    aiHealth: bsaiSnap.health,
+    aiReason: bsaiSnap.reason,
+    // v5.9 — Si el parser LLM entendió SOLO parcialmente y los regex rellenaron
+    // huecos, avisamos al usuario para que sepa qué filtros aplicaron y cuáles
+    // se infirieron por palabras clave. Le da control para reformular.
+    parserPartialAI,
+    parserPartialReason,
     avgConfidence: Number((enrichedLegs.reduce((a, l) => a + (l.confidence || 0), 0) / enrichedLegs.length).toFixed(3))
   });
 });
@@ -2729,8 +3152,13 @@ app.get('/api/daily-report', async (req, res) => {
       .slice(0, 5)
       .map(s => ({ event: s.event, side: s.side, from: s.from, to: s.to, deltaPct: s.deltaPct }));
 
-    // 4) Resumen narrativo IA
+    // 4) Resumen narrativo IA — usamos `preferredJson` (Gemini primary, Groq
+    //    fallback) en vez de hardcodear Groq, así si Gemini está disponible y
+    //    tiene mejor latencia, lo aprovechamos. También logueamos el provider
+    //    real para reportar al cliente.
     let aiNarrative = null;
+    let narrativeProvider = null;
+    let narrativeError = null;
     if (topPicks.length) {
       const prompt = `Generá un brief ejecutivo del día para un apostador AR profesional. Tono natural, en argentino, sin jerga técnica.
 Hoy tenemos:
@@ -2740,14 +3168,24 @@ Hoy tenemos:
 
 Devolvé JSON: {"headline": "<frase atractiva max 80 chars>", "summary": "<párrafo 80-130 palabras>", "topTip": "<una frase: el pick que MÁS recomendás hoy con por qué>"}`;
       try {
-        const r = await groqJsonGeneric(
+        const r = await preferredJson(
           'Sos un analista senior generando un brief ejecutivo diario. Tono argentino natural, sin jerga técnica. JSON estricto.',
           prompt,
           { maxTokens: 600, temperature: 0.5 }
         );
-        if (r) aiNarrative = r;
-      } catch (e) { log(`[daily-report] AI err: ${e?.message?.slice(0, 80)}`); }
+        if (r) {
+          aiNarrative = r;
+          narrativeProvider = HAS_GEMINI ? 'gemini' : 'groq';
+        }
+      } catch (e) {
+        narrativeError = e?.message?.slice(0, 200) || String(e);
+        log(`[daily-report] AI err: ${narrativeError}`);
+      }
     }
+
+    // Snapshot uniforme de salud IA para que el cliente sepa POR QUÉ falta el
+    // análisis IA (sin keys, degraded, o ok).
+    const briefSnap = aiHealthSnapshot({ activeProvider: narrativeProvider });
 
     const report = {
       generatedAt: now,
@@ -2755,6 +3193,9 @@ Devolvé JSON: {"headline": "<frase atractiva max 80 chars>", "summary": "<párr
       topSurebets,
       steamMoves: cleanSteam,
       aiNarrative,
+      aiHealth: briefSnap.health,
+      aiProvider: briefSnap.primary,
+      aiReason: narrativeError || briefSnap.reason,
       counts: {
         totalEvents: events.length,
         liveSurebets: surebets.length,
@@ -2766,7 +3207,7 @@ Devolvé JSON: {"headline": "<frase atractiva max 80 chars>", "summary": "<párr
     res.json(report);
   } catch (e) {
     log(`[daily-report] err: ${e?.message?.slice(0, 100)}`);
-    res.status(500).json({ error: 'No pudimos generar el reporte en este momento.' });
+    res.status(500).json({ error: 'No pudimos generar el reporte en este momento.', aiHealth: aiHealthSnapshot().health });
   }
 });
 

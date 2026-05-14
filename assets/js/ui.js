@@ -604,14 +604,66 @@
     host.innerHTML = `<span class="dot"></span><span class="lbl">IA: en espera</span>`;
     function set(state, label) { host.dataset.state = state; host.querySelector('.lbl').textContent = label; }
     window.addEventListener('bs:ai-status', e => {
-      const { ok, provider } = e.detail || {};
-      if (ok) set('live', 'IA en vivo');
+      const { ok, primary, health } = e.detail || {};
+      if (ok || health === 'ok') set('live', primary ? `IA · ${primary}` : 'IA en vivo');
+      else if (health === 'no-keys') set('offline', 'IA no configurada');
+      else if (health === 'degraded') set('offline', 'IA degradada');
       else set('offline', 'IA offline');
     });
     window.addEventListener('bs:odds-status', e => {
       // optional: piggy-back odds status into title
       if (host.dataset.state === 'idle') set(e.detail?.ok ? 'live' : 'offline', e.detail?.ok ? 'Datos en vivo' : 'Datos en caché');
     });
+  }
+
+  /**
+   * Banner unificado para mostrar estado IA dentro de cualquier panel.
+   * @param {object} opts
+   * @param {'ok'|'degraded'|'no-keys'|'unknown'} opts.health
+   * @param {string|null} opts.provider — 'gemini' | 'groq' | etc
+   * @param {string|null} opts.reason — mensaje humano del servidor
+   * @param {string} [opts.onRetry] — id del botón retry (si no, no se renderiza)
+   * @param {string} [opts.context] — etiqueta extra para el banner (ej. 'Coach IA')
+   * @returns {string} HTML del banner — '' si health === 'ok'
+   */
+  function aiHealthBanner(opts) {
+    const { health, provider, reason, onRetry, context } = opts || {};
+    // Si IA está OK, mostramos un mini-badge sutil, no un banner
+    if (health === 'ok' && provider) {
+      return `<span class="bs-ai-pill bs-ai-pill--ok" title="Análisis generado con ${esc(provider)}">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        IA · ${esc(provider)}
+      </span>`;
+    }
+    let title, body, tone;
+    if (health === 'no-keys') {
+      tone = 'info';
+      title = 'IA no configurada en el servidor';
+      body = reason || 'El admin del servidor todavía no cargó keys de Gemini o Groq. Lo que ves abajo viene de los modelos cuantitativos puros (Poisson + Elo), sin análisis IA generativo.';
+    } else if (health === 'degraded') {
+      tone = 'warn';
+      title = 'La IA no está disponible en este momento';
+      body = reason || 'Rate limit, cuota agotada o red lenta. El motor cuantitativo armó esto sin lectura IA — esperá 30-60s y reintentá para que la IA lo revise.';
+    } else if (health === 'unknown') {
+      tone = 'neutral';
+      title = 'No sabemos si la IA está activa';
+      body = reason || 'No pudimos consultar el estado de la IA. Intentá refrescar la página.';
+    } else {
+      return '';
+    }
+    const icon = tone === 'warn'
+      ? `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`
+      : tone === 'info'
+        ? `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`
+        : `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/></svg>`;
+    return `<div class="bs-ai-banner bs-ai-banner--${tone}" role="status" aria-live="polite">
+      <span class="bs-ai-banner__icon" aria-hidden="true">${icon}</span>
+      <div class="bs-ai-banner__body">
+        <strong>${esc(title)}${context ? ` <span class="muted tiny">· ${esc(context)}</span>` : ''}</strong>
+        <p>${esc(body)}</p>
+      </div>
+      ${onRetry ? `<button class="btn btn-outline btn-sm bs-ai-banner__retry" id="${esc(onRetry)}" type="button">Reintentar</button>` : ''}
+    </div>`;
   }
 
   // Odds flash — apply odd-up / odd-down based on previous value
@@ -668,6 +720,8 @@
     // v2
     bindTilt, bindSpotlight, bindStagger, spawnVipParticles,
     bindVipCursor, unbindVipCursor, mountAiStatus, flashOdd,
-    mountHeroOrbs, autoCount
+    mountHeroOrbs, autoCount,
+    // v5.8: banner unificado para mostrar status IA en cualquier panel
+    aiHealthBanner
   };
 })(window);

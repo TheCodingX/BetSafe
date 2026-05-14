@@ -110,28 +110,21 @@
     }
 
     panel.innerHTML = `
+      <header class="bs-ai-tab-header bs-ai-tab-header--coach" role="banner">
+        <div class="bs-ai-tab-header__icon" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+        </div>
+        <div class="bs-ai-tab-header__text">
+          <span class="bs-ai-tab-header__eyebrow">Motor IA · lenguaje natural</span>
+          <h2 class="bs-ai-tab-header__title">Coach IA <span class="badge-vip" style="vertical-align:middle;margin-left:6px">VIP</span></h2>
+          <p class="bs-ai-tab-header__desc">Pedile la combinada que querés en castellano — "4 partidos de Premier, cuota total 5x, segura". La IA entiende, busca, analiza y arma todo.</p>
+        </div>
+        <div class="bs-ai-tab-header__alts">
+          <a href="#ai" class="bs-ai-tab-header__alt" title="¿Querés combos automáticos del día? Probá AI Picks">⚡ AI Picks</a>
+          <a href="#aigenerator" class="bs-ai-tab-header__alt" title="¿Preferís configurar con checkboxes? Probá Constructor Quant">⚙ Constructor Quant</a>
+        </div>
+      </header>
       <div class="bsai-shell">
-        <header class="bsai-header">
-          <div class="bsai-header__title">
-            <span class="bsai-logo" aria-hidden="true">
-              <svg viewBox="0 0 32 32" width="34" height="34" fill="none">
-                <defs>
-                  <linearGradient id="bsaiG1" x1="0" y1="0" x2="1" y2="1">
-                    <stop offset="0%" stop-color="#d4a017"/>
-                    <stop offset="100%" stop-color="#7b5b0d"/>
-                  </linearGradient>
-                </defs>
-                <rect x="2" y="2" width="28" height="28" rx="9" fill="url(#bsaiG1)"/>
-                <path d="M11 11 L16 23 L21 11 M13 17 L19 17" stroke="#fff" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-                <circle cx="24" cy="9" r="2" fill="#fff"/>
-              </svg>
-            </span>
-            <div>
-              <h2 class="h2" style="margin:0">Coach IA <span class="badge-vip" style="vertical-align:middle">VIP</span></h2>
-              <p class="muted tiny" style="margin:4px 0 0">Pedile combinadas a medida — la IA arma todo cumpliendo tus condiciones</p>
-            </div>
-          </div>
-        </header>
 
         <section class="bsai-prompt-card">
           <textarea id="bsaiPrompt" class="bsai-prompt-input" rows="3"
@@ -183,6 +176,17 @@
 
     bindEvents(panel);
     renderOutput(panel);
+
+    // v5.8 — cleanup al cambiar de tab: cancelar el `_bsaiTimer` interval del
+    // loading state (rotación de pasos visuales) si el user se va mientras
+    // el motor procesa el pedido, evitando setInterval zombie.
+    panel.__cleanup = () => {
+      const host = panel.querySelector('#bsaiOutput');
+      if (host && host._bsaiTimer) {
+        try { clearInterval(host._bsaiTimer); } catch (_) {}
+        host._bsaiTimer = null;
+      }
+    };
   }
 
   function bindEvents(panel) {
@@ -338,6 +342,9 @@
   async function buildCombo(panel, prompt) {
     state.loading = true;
     state.error = null;
+    state.aiHealth = null;
+    state.aiReason = null;
+    state.aiHint = null;
     state.lastPrompt = prompt;
     renderOutput(panel);
 
@@ -353,8 +360,20 @@
       });
       clearTimeout(timeoutId);
       const data = await res.json();
-      if (!res.ok || data.error) {
-        throw new Error(data.error || `HTTP ${res.status}`);
+      // v5.8: Coach IA = "IA real o nada". El backend ahora devuelve 503 con
+      // {error, aiHealth, aiReason, hint} cuando la IA falla en cualquiera de
+      // sus etapas (parser, análisis por partido, narrativa final). En vez de
+      // tirar Error genérico, preservamos la metadata para mostrar el banner
+      // uniforme con la razón concreta + hint accionable.
+      if (!res.ok || data.error || !data.ok) {
+        state.error = data.error || `HTTP ${res.status}`;
+        state.aiHealth = data.aiHealth || 'degraded';
+        state.aiReason = data.aiReason || null;
+        state.aiHint = data.hint || null;
+        state.loading = false;
+        state.result = null;
+        renderOutput(panel);
+        return;
       }
       state.result = data;
       state.loading = false;
@@ -363,6 +382,8 @@
       localStorage.setItem('bs:betsafe-ai:history', JSON.stringify(state.history));
     } catch (e) {
       state.error = e?.message || 'Error inesperado';
+      state.aiHealth = e?.name === 'AbortError' ? 'degraded' : null;
+      state.aiReason = e?.name === 'AbortError' ? 'El motor IA tardó más de 180s. Probablemente está bajo carga.' : null;
       state.loading = false;
       state.result = null;
     }
@@ -411,15 +432,45 @@
     if (host._bsaiTimer) { clearInterval(host._bsaiTimer); host._bsaiTimer = null; }
 
     if (state.error) {
+      // v5.8: si el error es de IA (aiHealth degraded/no-keys), mostramos el
+      // banner uniforme con razón concreta + hint accionable, en lugar de
+      // mensaje genérico.
+      const isAiError = state.aiHealth && state.aiHealth !== 'ok';
+      const aiBannerHtml = isAiError
+        ? BSUI.aiHealthBanner({
+            health: state.aiHealth,
+            provider: null,
+            reason: state.aiReason || state.error,
+            onRetry: 'bsaiRetryAi',
+            context: 'Coach IA'
+          })
+        : '';
       host.innerHTML = `
+        ${aiBannerHtml}
         <div class="bsai-error-card">
           <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--danger)"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-          <strong>No pudimos armar la combinada</strong>
+          <strong>${isAiError ? 'La IA no pudo entender tu pedido' : 'No pudimos armar la combinada'}</strong>
           <p class="muted tiny">${BSUI.esc(state.error)}</p>
-          <button class="btn btn-outline btn-sm" id="bsaiRetry">Reintentar</button>
+          ${state.aiHint ? `<p class="muted tiny" style="margin-top:6px;font-style:italic">💡 ${BSUI.esc(state.aiHint)}</p>` : ''}
+          <div class="row" style="gap:8px;margin-top:10px;flex-wrap:wrap">
+            <button class="btn btn-outline btn-sm" id="bsaiRetry" type="button">Reintentar mismo pedido</button>
+            ${isAiError ? `<button class="btn btn-ghost btn-sm" id="bsaiReformulate" type="button">Reformular pedido</button>` : ''}
+          </div>
         </div>`;
       host.querySelector('#bsaiRetry')?.addEventListener('click', () => {
         buildCombo(panel, state.lastPrompt);
+      });
+      host.querySelector('#bsaiRetryAi')?.addEventListener('click', () => {
+        buildCombo(panel, state.lastPrompt);
+      });
+      // "Reformular" → llevar el cursor al textarea con el prompt cargado
+      host.querySelector('#bsaiReformulate')?.addEventListener('click', () => {
+        const ta = panel.querySelector('#bsaiPrompt');
+        if (ta) {
+          ta.value = state.lastPrompt || '';
+          ta.focus();
+          ta.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
       });
       return;
     }
@@ -457,6 +508,19 @@
 
     host.innerHTML = renderCombo(r);
     bindComboActions(host, r);
+    // Retry del banner IA cuando aiHealth !== 'ok' — re-pedir la última combinada
+    host.querySelector('#bsaiHealthRetry')?.addEventListener('click', () => {
+      if (state.lastPrompt) buildCombo(panel, state.lastPrompt);
+    });
+    // v5.9 — "Reformular" del banner parserPartialAI: llevar al textarea
+    host.querySelector('#bsaiReformulatePartial')?.addEventListener('click', () => {
+      const ta = panel.querySelector('#bsaiPrompt');
+      if (ta) {
+        ta.value = state.lastPrompt || '';
+        ta.focus();
+        ta.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    });
   }
 
   function renderCombo(r) {
@@ -466,16 +530,44 @@
     const bookOrder = computeBookRanking(r.legs);
     const winnerBook = bookOrder[0] || null;
 
+    // Banner uniforme arriba de la combinada cuando IA no está OK
+    const aiBannerHtml = (r.aiHealth && r.aiHealth !== 'ok')
+      ? BSUI.aiHealthBanner({
+          health: r.aiHealth,
+          provider: r.aiProvider,
+          reason: r.aiReason,
+          onRetry: 'bsaiHealthRetry',
+          context: 'Coach IA'
+        })
+      : '';
+
+    // v5.9 — Warning específico cuando el LLM entendió SOLO parte del prompt
+    // y los regex complementarios rellenaron huecos (ej: "casinos" no detectado
+    // por la IA pero detectado por palabra clave). El user sabe que algunos
+    // filtros se infirieron y puede reformular.
+    const partialAiBanner = r.parserPartialAI
+      ? `<div class="bs-ai-banner bs-ai-banner--warn" role="status" aria-live="polite" style="margin-bottom:14px">
+          <span class="bs-ai-banner__icon" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          </span>
+          <div class="bs-ai-banner__body">
+            <strong>Entendí lo básico pero la IA no aplicó todos los filtros que pediste <span class="muted tiny">· Coach IA</span></strong>
+            <p>${BSUI.esc(r.parserPartialReason || 'Algunos filtros se infirieron por palabras clave del prompt.')} Si la combinada no respeta lo que querías, probá reformular más explícito (ej: "en Betano, Premier League, cuota total 5x").</p>
+          </div>
+          <button class="btn btn-outline btn-sm bs-ai-banner__retry" id="bsaiReformulatePartial" type="button">Reformular</button>
+        </div>`
+      : '';
+
     return `
+      ${aiBannerHtml}
+      ${partialAiBanner}
       <article class="bsai-combo-card">
         <header class="bsai-combo-head">
           <div class="bsai-combo-headline">
             <span class="badge-vip">Coach IA</span>
             ${r.aiProvider
               ? `<span class="badge badge-success tiny" style="margin-left:6px" title="Análisis generado con ${BSUI.esc(r.aiProvider)}">IA · ${BSUI.esc(r.aiProvider)}</span>`
-              : r.aiHealth === 'degraded'
-                ? `<span class="badge badge-warning tiny" style="margin-left:6px" title="La IA generativa no está disponible. Te armé la combinada con análisis estadístico. Refrescá en 1 min para que la IA la revise.">⚠ Análisis sin IA</span>`
-                : ''}
+              : ''}
             <h3 class="h3" style="margin:4px 0 0">${BSUI.esc(r.headline)}</h3>
           </div>
           <div class="bsai-combo-stats">

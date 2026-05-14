@@ -45,11 +45,25 @@
     const M_ICON = { h2h:'⚖', dc:'2x', totals:'⚽', btts:'≡', ah:'±', corners:'⌐', cards:'▢' };
 
     panel.innerHTML = `
+      <header class="bs-ai-tab-header bs-ai-tab-header--quant" role="banner">
+        <div class="bs-ai-tab-header__icon" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+        </div>
+        <div class="bs-ai-tab-header__text">
+          <span class="bs-ai-tab-header__eyebrow">Motor IA · wizard configurable</span>
+          <h2 class="bs-ai-tab-header__title">Constructor Quant</h2>
+          <p class="bs-ai-tab-header__desc">Vos elegís casinos, mercados y riesgo en 4 pasos. La IA analiza y arma combinadas que cumplen tus filtros exactos — con la casa que mejor paga cada leg.</p>
+        </div>
+        <div class="bs-ai-tab-header__alts">
+          <a href="#ai" class="bs-ai-tab-header__alt" title="¿Querés que la IA elija todo por vos? Probá AI Picks">⚡ AI Picks</a>
+          <a href="#betsafeai" class="bs-ai-tab-header__alt" title="¿Preferís pedirlo en lenguaje natural? Probá Coach IA">💬 Coach IA</a>
+        </div>
+      </header>
       <header class="agx-hero reveal">
         <div class="agx-hero__main">
           <span class="badge-vip agx-hero__chip">VIP · Quant IA</span>
-          <h2 class="agx-hero__title">Combinadas óptimas del día, armadas por la IA</h2>
-          <p class="agx-hero__sub">Elegí tus casas, los mercados, el nivel de riesgo y la IA arma las combinadas — con la casa argentina que mejor paga cada una.</p>
+          <h2 class="agx-hero__title">Configurá tus criterios en 4 pasos</h2>
+          <p class="agx-hero__sub">Elegí casas, mercados, riesgo, y la IA arma combinadas optimizadas con la casa argentina que mejor paga cada una.</p>
         </div>
         <div class="agx-hero__steps" aria-hidden="true">
           <span class="agx-step is-active" data-step="1"><span class="agx-step__n">1</span><span class="agx-step__t">Casinos</span></span>
@@ -745,6 +759,9 @@
 
       // Animación visual — handle queda vivo hasta done()/fail() después del fetch
       const engine = runEngineAnimation();
+      // v5.8: trackear engine activo en el panel para que panel.__cleanup pueda
+      // cancelarlo si el user cambia de tab mientras se está generando.
+      panel.__activeEngine = engine;
 
       // Mercados desde los chips
       const marketsSet = new Set();
@@ -859,10 +876,22 @@
 
       const aiGlobalNarrative = resp.aiNarrative || null;
       const aiProvider = resp.aiProvider || null;          // 'gemini' | 'groq' | null
-      const aiHealth = resp.aiHealth || 'disabled';        // 'ok' | 'degraded' | 'no-keys' | 'disabled'
+      const aiHealth = resp.aiHealth || 'unknown';         // 'ok' | 'degraded' | 'no-keys' | 'unknown'
+      const aiReason = resp.aiReason || null;
+
+      // Banner uniforme (v5.8): mismo componente en todos los motores IA,
+      // muestra razón concreta cuando falla, no mensaje genérico.
+      const aiBannerHtml = BSUI.aiHealthBanner({
+        health: aiHealth,
+        provider: aiProvider,
+        reason: aiReason,
+        onRetry: aiHealth !== 'ok' ? 'agAiHealthRetry' : null,
+        context: 'Constructor Quant'
+      });
 
       const out = panel.querySelector('#agOutput');
       out.innerHTML = `
+        ${aiBannerHtml}
         <div class="row between mb-3">
           <div>
             <strong>${combos.length} combinada${combos.length>1?'s':''} para vos</strong>
@@ -873,14 +902,6 @@
         ${aiGlobalNarrative ? `<div class="card card-tinted card-pad-sm mb-3" style="border-left:3px solid var(--brand-500);background:rgba(var(--brand-500-rgb,30,75,200),0.04)">
           <div class="row between" style="align-items:center"><strong class="tiny">Lectura global IA${aiProvider ? ` <span class="badge badge-success tiny" style="margin-left:6px">${BSUI.esc(aiProvider)}</span>` : ''}</strong></div>
           <p class="muted tiny" style="margin-top:6px;line-height:1.5">${BSUI.esc(aiGlobalNarrative)}</p>
-        </div>` : ''}
-        ${aiHealth === 'degraded' ? `<div class="card card-pad-sm mb-3" style="border-left:3px solid var(--warning,#d97706);background:color-mix(in srgb, var(--warning,#d97706) 6%, transparent)">
-          <strong class="tiny">⚠ La IA no está disponible en este momento</strong>
-          <p class="muted tiny" style="margin-top:4px;line-height:1.45">Estas combinadas se armaron con análisis estadístico (sin IA generativa). Esperá un minuto y volvé a generar para que la IA las revise.</p>
-        </div>` : ''}
-        ${aiHealth === 'no-keys' ? `<div class="card card-pad-sm mb-3" style="border-left:3px solid var(--info,#2563eb);background:color-mix(in srgb, var(--info,#2563eb) 5%, transparent)">
-          <strong class="tiny">ℹ Sin keys de IA configuradas</strong>
-          <p class="muted tiny" style="margin-top:4px;line-height:1.45">El motor cuantitativo armó las combinadas. Para análisis IA profundo, configurá BS_GEMINI_API_KEY o BS_GROQ_API_KEY en el backend.</p>
         </div>` : ''}
         <div class="grid ${combos.length === 1 ? '' : 'grid-2'}" style="gap:18px">
           ${combos.map((c, ci) => {
@@ -1036,6 +1057,10 @@
           }).join('')}
         </div>
       `;
+      // Retry del banner IA (si está visible) → re-trigger del generate
+      out.querySelector('#agAiHealthRetry')?.addEventListener('click', () => {
+        panel.querySelector('#agGenerate')?.click();
+      });
       out.querySelectorAll('[data-combo-idx]').forEach(b => b.addEventListener('click', () => {
         const i = Number(b.dataset.comboIdx);
         combos[i].legs.forEach(l => BSDash.addToSlip({ matchId: l.match.id, label: l.label, odd: l.odd, market: l.market }));
@@ -1100,6 +1125,16 @@
     });
 
     updateStatus();
+
+    // v5.8 — cleanup al cambiar de tab: cancelar engine animation si el user
+    // se va mientras el motor está corriendo, evitando setTimeout zombies
+    // que rotan textos en un panel ya destruido.
+    panel.__cleanup = () => {
+      if (panel.__activeEngine && typeof panel.__activeEngine.fail === 'function') {
+        try { panel.__activeEngine.fail(); } catch (_) {}
+        panel.__activeEngine = null;
+      }
+    };
   }
 
   function doRegister() {
