@@ -793,7 +793,7 @@ app.get('/api/picks', async (req, res) => {
   // Objetivo: TODOS los picks pasan por IA. Si un partido cae a llmProvider:'offline'
   // (rate limit Groq, network blip, timeout), lo reintentamos en una segunda
   // pasada con un poco de delay para que el rate-limit window se mueva.
-  const analyzeLimit = pLimit(Number(process.env.PICKS_CONCURRENCY || 2));
+  const analyzeLimit = pLimit(Number(process.env.PICKS_CONCURRENCY || 8));
 
   async function analyzePool(evs) {
     const settled = await Promise.allSettled(
@@ -942,7 +942,7 @@ app.get('/api/curated-combos', async (req, res) => {
   const top = events.slice(0, TOP_N);
   const steam = orchestrator.steamMoves();
   const surebets = arbEngine.snapshot().detected;
-  const analyzeLimit = pLimit(Number(process.env.PICKS_CONCURRENCY || 2));
+  const analyzeLimit = pLimit(Number(process.env.PICKS_CONCURRENCY || 8));
   const analyzed = await Promise.allSettled(
     top.map(ev => analyzeLimit(() => analyzeMatch(ev, { steamMoves: steam, surebets })))
   );
@@ -1319,7 +1319,7 @@ app.post('/api/generator', express.json(), async (req, res) => {
   const surebets = arbEngine.snapshot().detected;
 
   // Analizar con concurrencia + retry de offline (igual que /api/picks).
-  const analyzeLimit = pLimit(Number(process.env.PICKS_CONCURRENCY || 2));
+  const analyzeLimit = pLimit(Number(process.env.PICKS_CONCURRENCY || 8));
   async function analyzeGenPool(evs) {
     const settled = await Promise.allSettled(
       evs.map(ev => analyzeLimit(() => analyzeMatch(ev, { steamMoves: steam, surebets })))
@@ -2227,7 +2227,7 @@ DETECCIÓN DE MERCADOS — IMPORTANTE:
     candidates.length
   );
   const top = candidates.slice(0, TOP_N);
-  const analyzeLimit = pLimit(2);
+  const analyzeLimit = pLimit(Number(process.env.PICKS_CONCURRENCY || 8));
   const analyzed = await Promise.allSettled(
     top.map(ev => analyzeLimit(() => analyzeMatch(ev, { steamMoves: steam, surebets })))
   );
@@ -2554,7 +2554,7 @@ app.get('/api/daily-report', async (req, res) => {
     const steam = orchestrator.steamMoves();
     const surebets = arbEngine.snapshot().detected || [];
     const top10 = events.slice(0, 10);
-    const analyzeLimit = pLimit(2);
+    const analyzeLimit = pLimit(Number(process.env.PICKS_CONCURRENCY || 8));
     const analyzed = await Promise.allSettled(
       top10.map(ev => analyzeLimit(() => analyzeMatch(ev, { steamMoves: steam, surebets })))
     );
