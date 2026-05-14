@@ -44,6 +44,21 @@
       text: 'Combinada de 5 partidos de la Liga Profesional Argentina, conservadora, cuota total cerca de 4'
     },
     {
+      icon: '🚩',
+      label: 'Mix córners + goles',
+      text: 'Armá una combinada de 4 legs mezclando más de 9.5 córners y más de 2.5 goles en partidos de hoy'
+    },
+    {
+      icon: '🟨',
+      label: 'Tarjetas premier',
+      text: 'Combinada de 3 partidos con más de 4.5 tarjetas, foco en Liga Argentina o Premier League'
+    },
+    {
+      icon: '⚽',
+      label: 'Goleadores',
+      text: 'Quiero 3 picks de goleadores anytime en partidos de hoy con favoritos claros'
+    },
+    {
       icon: '⚡',
       label: 'Agresiva alta cuota',
       text: 'Quiero una combinada agresiva de 4 partidos top de Europa, con cuota total mayor a 15'
@@ -55,8 +70,23 @@
     },
     {
       icon: '🏀',
-      label: 'NBA mix',
-      text: 'Combiná 3 juegos NBA de hoy con favoritos sólidos, cuota total alrededor de 3.5'
+      label: 'NBA puntos jugador',
+      text: 'Combinada NBA: 3 picks de puntos de jugador para los partidos de esta noche'
+    },
+    {
+      icon: '🏀',
+      label: 'NBA totales',
+      text: 'Combiná 3 juegos NBA de hoy con totales (más/menos puntos), cuota total alrededor de 4'
+    },
+    {
+      icon: '⚾',
+      label: 'MLB carreras',
+      text: 'Combinada MLB de 3 juegos con total de carreras y 1ra entrada (YRFI), cuota entre 4 y 8'
+    },
+    {
+      icon: '🥊',
+      label: 'UFC método',
+      text: '2 picks de UFC de esta noche: método de victoria y rounds totales'
     }
   ];
 

@@ -793,10 +793,11 @@ Tu trabajo: del pool de picks (todos con EV positivo y data profunda), elegir la
 REGLAS:
 - Cada combinada tiene 2 a 5 legs (vos decidís cuántas según calidad de las señales disponibles).
 - NUNCA combos de 1 leg (eso es una single).
+- DIVERSIDAD DE MERCADOS OBLIGATORIA: si la combinada tiene 3+ legs, los mercados deben ser DIVERSOS (mezclar 1X2, totals, córners, tarjetas, BTTS, AH, etc.). NUNCA armar combinadas de 3-4 legs todas del mismo mercado (ej: 4 "Under 2.5 goles" en distintos partidos es PEREZOSO y poco profesional). El usuario quiere VARIEDAD de mercados — combina ganadores con córners con tarjetas con goleadores.
 - Mezclá perfil de riesgo: al menos 1 combo seguro (cuota total ≤ 4), 1-2 equilibrados (cuota 4-12), y opcionalmente 1 agresivo (cuota 12-50).
 - Los partidos en una misma combinada NO deben estar correlacionados estructuralmente (ej: no combines "Local A gana" + "Local A marca primero" del mismo partido).
-- Si no podés armar combos de alta calidad, devolvé MENOS combos — preferible 2 brillantes que 5 mediocres.
-- Cada combo necesita una NARRATIVA que explique por qué esos partidos juntos tienen sentido.
+- Si no podés armar combos de alta calidad CON DIVERSIDAD DE MERCADOS, devolvé MENOS combos — preferible 2 brillantes que 5 mediocres con el mismo mercado repetido.
+- Cada combo necesita una NARRATIVA que explique por qué esos partidos juntos tienen sentido + qué hace interesante la mezcla de mercados.
 
 Devolvés JSON estricto:
 {
@@ -908,7 +909,7 @@ Generá las ${count} mejores combinadas posibles. Usá los índices del pool. Re
     });
   }
 
-  // 7) Hidratar las combinadas con datos reales
+  // 7) Hidratar las combinadas con datos reales + ENFORZAR DIVERSIDAD
   const combos = aiCombos
     .map((c, idx) => {
       const indices = Array.isArray(c.legs) ? c.legs.map(Number).filter(i => i >= 0 && i < topPool.length) : [];
@@ -916,10 +917,14 @@ Generá las ${count} mejores combinadas posibles. Usá los índices del pool. Re
       // Evitar duplicados de mismo evento
       const seenEvents = new Set();
       const legs = [];
+      // DIVERSIDAD: contar markets distintos. Si tenemos 3+ legs y todas son
+      // del mismo market, REEMPLAZAMOS algunas con picks de otros mercados.
+      const marketsInCombo = new Map();
       for (const i of indices) {
         const p = topPool[i];
         if (seenEvents.has(p.event.id)) continue;
         seenEvents.add(p.event.id);
+        marketsInCombo.set(p.sel.market, (marketsInCombo.get(p.sel.market) || 0) + 1);
         legs.push({
           eventId: p.event.id,
           home: p.event.home?.name,
@@ -943,11 +948,63 @@ Generá las ${count} mejores combinadas posibles. Usá los índices del pool. Re
         });
       }
       if (legs.length < 2) return null;
+
+      // ── ENFORCE DIVERSITY: si 3+ legs y todas del MISMO market, sustituimos ──
+      // Para combos de 3+ legs, ningún mercado debe ocupar más del 60% de las legs.
+      if (legs.length >= 3) {
+        const dominantMarket = [...marketsInCombo.entries()]
+          .sort((a, b) => b[1] - a[1])[0];
+        if (dominantMarket && dominantMarket[1] / legs.length > 0.6) {
+          // Buscar picks de OTROS mercados en el pool para reemplazar
+          const dominantMkt = dominantMarket[0];
+          const usedEventIds = new Set(legs.map(l => l.eventId));
+          const diversityCandidates = topPool.filter(p =>
+            p.sel.market !== dominantMkt && !usedEventIds.has(p.event.id)
+          ).slice(0, 4);
+          // Reemplazar legs excedentes del market dominante
+          const allowedFromDominant = Math.max(1, Math.floor(legs.length * 0.5));
+          let removedFromDominant = 0;
+          for (let i = legs.length - 1; i >= 0 && diversityCandidates.length; i--) {
+            if (legs[i].market === dominantMkt && (marketsInCombo.get(dominantMkt) - removedFromDominant) > allowedFromDominant) {
+              const replacement = diversityCandidates.shift();
+              if (replacement) {
+                legs[i] = {
+                  eventId: replacement.event.id,
+                  home: replacement.event.home?.name,
+                  away: replacement.event.away?.name,
+                  sport: replacement.event.sport,
+                  league: replacement.event.leagueName || replacement.event.league,
+                  start: replacement.event.start,
+                  market: replacement.sel.market,
+                  outcome: replacement.sel.outcome,
+                  line: replacement.sel.line || null,
+                  analytical: !!replacement.sel.analytical,
+                  analyticalDisclaimer: replacement.sel.analyticalDisclaimer || null,
+                  player: replacement.sel.player || null,
+                  label: replacement.sel.label,
+                  odd: replacement.sel.odd,
+                  book: replacement.sel.book,
+                  confidence: replacement.sel.confidence,
+                  ev: replacement.sel.consensusEv,
+                  rationale: replacement.sel.rationale || '',
+                  factors: (replacement.sel.factors || []).slice(0, 3)
+                };
+                removedFromDominant++;
+              }
+            }
+          }
+        }
+      }
+
       const totalOdd = legs.reduce((a, l) => a * l.odd, 1);
+      // Contar mercados únicos para el meta
+      const uniqueMarkets = [...new Set(legs.map(l => l.market))];
       return {
         id: `curated-${idx}-${Date.now()}`,
         legs,
         legCount: legs.length,
+        marketsCount: uniqueMarkets.length,
+        marketsUsed: uniqueMarkets,
         totalOdd: Number(totalOdd.toFixed(2)),
         avgConfidence: Number((legs.reduce((a, l) => a + (l.confidence || 0), 0) / legs.length).toFixed(3)),
         avgEv: Number((legs.reduce((a, l) => a + (l.ev || 0), 0) / legs.length).toFixed(2)),
@@ -974,11 +1031,33 @@ Generá las ${count} mejores combinadas posibles. Usá los índices del pool. Re
 });
 
 // Generador IA: misma pipeline pero con knobs (riesgo, ligas, mercados, n combinadas)
+// v5.1: markets default ahora incluye TODOS los mercados analíticos también
+// (córners, tarjetas, goleadores, marcador exacto, etc.) para que el generador
+// produzca combinadas variadas en vez de "4 unders y un h2h".
 app.post('/api/generator', express.json(), async (req, res) => {
+  const ALL_MARKETS_DEFAULT = [
+    // Tradicionales (scrapeados de casas)
+    'h2h', 'totals', 'btts', 'dc', 'ah',
+    // Analíticos (predicciones del motor)
+    'corners-total', 'corners-ht', 'corners-team',
+    'cards-total', 'red-card', 'penalty', 'fouls-total', 'shots-on-target-total',
+    'goalscorer-anytime', 'first-goalscorer', 'first-team-score',
+    'exact-score', 'ht-result', 'totals-ht', 'dnb', 'result-btts',
+    // Por deporte
+    'totals-points', 'totals-points-team', 'totals-q1', 'overtime',
+    'player-points', 'player-rebounds', 'player-assists',
+    'tennis-totals-games', 'tennis-tiebreak', 'tennis-aces-total',
+    'nfl-totals', 'nfl-overtime',
+    'hockey-totals', 'hockey-totals-p1',
+    'mlb-totals', 'mlb-yrfi',
+    'mma-rounds', 'mma-method', 'mma-first-minute',
+    'esports-maps-total', 'esports-rounds-total', 'esports-kills-total'
+  ];
+
   const {
     sport = 'all', leagues = [], risk = 'eq', legs = 3, count = 3,
     minSharp = 0, skipInjured = false, skipBadWeather = false,
-    skipCorrelated = true, markets = ['h2h', 'totals', 'btts', 'dc'],
+    skipCorrelated = true, markets = ALL_MARKETS_DEFAULT,
     books = []
   } = req.body || {};
 
@@ -1071,13 +1150,14 @@ app.post('/api/generator', express.json(), async (req, res) => {
   for (const a of passing) {
     const evSelections = (a.selections || [])
       .filter(s => markets.includes(s.market))
-      .filter(s => !wantedBooks.length || wantedBooks.includes(s.book));
+      // Analytical picks NO se filtran por casa (no tienen book asignado)
+      .filter(s => s.analytical || !wantedBooks.length || wantedBooks.includes(s.book));
     for (const sel of evSelections) {
       pool.push({
         event: a.event,
         factors: a.factors,
         sel,
-        score: (sel.consensusEv || 0) + (sel.confidence || 0) * 5    // ranking compuesto
+        score: (sel.consensusEv || 0) + (sel.confidence || 0) * 5
       });
     }
   }
@@ -1111,18 +1191,26 @@ app.post('/api/generator', express.json(), async (req, res) => {
     const chosen = [];
     const usedByEvent = new Map();   // eventId → count
     const usedSports = new Set();
+    const usedMarkets = new Map();   // market → count (DIVERSITY)
+    // Diversity threshold: ningún market puede ocupar > 50% de las legs si hay 3+ legs
+    const maxLegsPerMarket = legs >= 3 ? Math.ceil(legs / 2) : legs;
+
     for (const p of candidates) {
       const evId = p.event.id;
       const cur = usedByEvent.get(evId) || 0;
       if (cur >= legsPerMatch) continue;
-      // Si pedimos mix sports y ya tenemos un leg del mismo deporte, lo
-      // intentamos pero priorizando diversidad
+      // Diversidad de mercado: skip si ya tenemos demasiados del mismo
+      const mktCount = usedMarkets.get(p.sel.market) || 0;
+      if (legs >= 3 && mktCount >= maxLegsPerMarket && candidates.some(c => (usedMarkets.get(c.sel.market) || 0) < maxLegsPerMarket && !usedByEvent.has(c.event.id))) {
+        continue;
+      }
       if (mixSports && usedSports.has(p.event.sport) && chosen.length < legs && candidates.some(c => !usedSports.has(c.event.sport))) {
-        continue;   // saltamos este; lo procesaremos en segunda pasada
+        continue;
       }
       chosen.push(p);
       usedByEvent.set(evId, cur + 1);
       usedSports.add(p.event.sport);
+      usedMarkets.set(p.sel.market, mktCount + 1);
       if (chosen.length >= legs) break;
     }
     // Segunda pasada: si quedaron slots vacíos y NO conseguimos diversidad,
@@ -1453,9 +1541,10 @@ app.post('/api/betsafe-ai/build', express.json(), async (req, res) => {
 Devolvés JSON estricto con este shape:
 {
   "legs": número de 2 a 8 (cuántos partidos quiere combinar),
-  "sport": "soccer" | "basketball" | "tennis" | "esports" | "amfootball" | "all",
-  "leagues": ["premier-league" | "la-liga" | "serie-a" | "bundesliga" | "ligue-1" | "ucl" | "uel" | "lpf" | "libertadores" | "sudamericana" | "brasileirao" | "liga-mx" | "mls" | "nba" | "ufc" | ...],
+  "sport": "soccer" | "basketball" | "tennis" | "esports" | "amfootball" | "hockey" | "baseball" | "mma" | "all",
+  "leagues": ["premier-league" | "la-liga" | "serie-a" | "bundesliga" | "ligue-1" | "ucl" | "uel" | "lpf" | "libertadores" | "sudamericana" | "brasileirao" | "liga-mx" | "mls" | "nba" | "nfl" | "nhl" | "mlb" | "ufc" | ...],
   "books": ["betano" | "bplay" | "betsson" | "codere" | "betwarrior" | "casino-magic" | ...],
+  "markets": ["h2h" | "totals" | "btts" | "ah" | "dc" | "corners-total" | "cards-total" | "goalscorer-anytime" | "exact-score" | "first-goalscorer" | "red-card" | "penalty" | "fouls-total" | "shots-on-target-total" | "player-points" | "ht-result" | "totals-ht" | "dnb" | "result-btts" | "first-team-score" | ...],
   "risk": "cons" (seguro) | "eq" (equilibrado) | "agg" (agresivo),
   "targetOdd": número o null (cuota total deseada),
   "minOddPerLeg": número o null,
@@ -1471,7 +1560,25 @@ REGLAS IMPORTANTES:
 - Si dice "agresiva" / "arriesgada" → risk: "agg".
 - Si dice "segura" / "tranqui" → risk: "cons".
 - Si NO menciona cantidad de legs → "legs": null (la decide la IA después).
-- Si no menciona algo, usá defaults razonables o null.`;
+
+DETECCIÓN DE MERCADOS — IMPORTANTE:
+- Si dice "córners" / "tiros de esquina" / "corners" → markets: ["corners-total"]
+- Si dice "tarjetas" / "amonestaciones" → markets: ["cards-total"]
+- Si dice "tarjeta roja" / "expulsión" → markets: ["red-card"]
+- Si dice "goleadores" / "que marque X" / "anota X" → markets: ["goalscorer-anytime"]
+- Si dice "primer goleador" / "abre el marcador X" → markets: ["first-goalscorer"]
+- Si dice "marcador exacto" / "resultado exacto" → markets: ["exact-score"]
+- Si dice "hándicap" / "handicap" → markets: ["ah"]
+- Si dice "ambos marcan" / "BTTS" → markets: ["btts"]
+- Si dice "más/menos goles" / "over/under" → markets: ["totals"]
+- Si dice "doble oportunidad" / "1X o X2" → markets: ["dc"]
+- Si dice "habrá penal" → markets: ["penalty"]
+- Si dice "tiros al arco" → markets: ["shots-on-target-total"]
+- Si dice "1er tiempo" / "medio tiempo" → markets: ["ht-result", "totals-ht"]
+- Si dice "puntos jugador NBA" / "Lebron puntos" → markets: ["player-points"]
+- Si dice "rebotes jugador" → markets: ["player-rebounds"]
+- Si dice "asistencias jugador" → markets: ["player-assists"]
+- Si no menciona mercado específico → markets: [] (todos disponibles)`;
 
   let parsed = null;
   try {
@@ -1485,6 +1592,7 @@ REGLAS IMPORTANTES:
     sport: typeof parsed?.sport === 'string' ? parsed.sport : 'all',
     leagues: Array.isArray(parsed?.leagues) ? parsed.leagues.map(String) : [],
     books: Array.isArray(parsed?.books) ? parsed.books.map(b => String(b).toLowerCase().trim()) : [],
+    markets: Array.isArray(parsed?.markets) ? parsed.markets.map(m => String(m).toLowerCase().trim()) : [],
     risk: ['cons', 'eq', 'agg'].includes(parsed?.risk) ? parsed.risk : 'eq',
     targetOdd: Number.isFinite(Number(parsed?.targetOdd)) ? Number(parsed.targetOdd) : null,
     minOddPerLeg: Number.isFinite(Number(parsed?.minOddPerLeg)) ? Number(parsed.minOddPerLeg) : null,
@@ -1507,6 +1615,34 @@ REGLAS IMPORTANTES:
     };
     for (const [key, re] of Object.entries(BOOK_KW)) {
       if (re.test(p)) filters.books.push(key);
+    }
+  }
+
+  // ── REGEX FALLBACK para markets específicos ──
+  if (!filters.markets.length) {
+    const p = prompt.toLowerCase();
+    const MARKET_KW = {
+      'corners-total':            /c[óo]rners?|tiros?\s+de\s+esquina/i,
+      'cards-total':              /tarjetas?(?!\s*roja)|amonestaci[óo]n/i,
+      'red-card':                 /tarjeta\s*roja|expulsi[óo]n|expulsado/i,
+      'goalscorer-anytime':       /goleadore?s?|anota|que\s*marque|marcar?\s*gol/i,
+      'first-goalscorer':         /primer\s*goleador|abre\s*el\s*marcador|primer\s*gol/i,
+      'exact-score':              /marcador\s*exacto|resultado\s*exacto/i,
+      'ah':                       /h[áa]ndicap|handicap/i,
+      'btts':                     /ambos\s*(equipos\s*)?(anotan|marcan)|btts|gol\s*y\s*gol/i,
+      'totals':                   /m[áa]s\s*\/?\s*menos|over\s*under|total\s*de?\s*goles/i,
+      'dc':                       /doble\s*oportunidad|1x\s*o\s*x2/i,
+      'penalty':                  /penal(?:ti|es)?\b/i,
+      'shots-on-target-total':    /tiros\s+al\s+arco|remates\s+al\s+arco/i,
+      'fouls-total':              /faltas\s+totales?/i,
+      'ht-result':                /(?:1er|primer)\s*tiempo|medio\s+tiempo/i,
+      'dnb':                      /empate\s*no\s*apuesta|draw\s*no\s*bet|dnb/i,
+      'player-points':            /puntos?\s+(de\s+)?(jugador|lebron|curry|durant|jokic)/i,
+      'player-rebounds':          /rebotes?\s+(de\s+)?(jugador|lebron|curry)/i,
+      'player-assists':           /asistencias?\s+(de\s+)?(jugador|lebron|curry)/i
+    };
+    for (const [key, re] of Object.entries(MARKET_KW)) {
+      if (re.test(p)) filters.markets.push(key);
     }
   }
 
@@ -1710,21 +1846,37 @@ REGLAS IMPORTANTES:
   for (const r of analyzed) {
     if (r.status !== 'fulfilled' || !r.value) continue;
     const a = r.value;
-    // Elegir el pick acorde al risk pedido
     const wantType = filters.risk;
-    let sel = (a.selections || []).find(s => s.type === wantType) ||
-              a.selections?.[0];
-    if (!sel || !sel.odd) continue;
-    // Si el user pidió casa específica, intentar override (puede descartar el sel)
-    if (filters.books.length) {
-      const overridden = tryBookOverride(sel, a.event);
-      if (!overridden) continue;
-      sel = overridden;
+
+    // ── Si el user pidió MERCADOS específicos (córners, tarjetas, goleadores,
+    // etc.), buscamos selections de ESOS mercados. Sino, usamos el sel por type.
+    const candidateSels = [];
+    if (filters.markets.length) {
+      // Modo "mercados específicos": tomar TODAS las selections que matcheen
+      // alguno de los mercados pedidos (puede ser tradicional o analítico).
+      for (const s of (a.selections || [])) {
+        if (filters.markets.includes(s.market)) candidateSels.push(s);
+      }
+    } else {
+      // Modo clásico: pick por type (cons/eq/agg)
+      const sel = (a.selections || []).find(s => s.type === wantType) ||
+                  a.selections?.[0];
+      if (sel) candidateSels.push(sel);
     }
-    // Validar minOdd/maxOdd por leg DESPUÉS del override (con la cuota real de la casa)
-    if (filters.minOddPerLeg && sel.odd < filters.minOddPerLeg) continue;
-    if (filters.maxOddPerLeg && sel.odd > filters.maxOddPerLeg) continue;
-    pool.push({ event: a.event, factors: a.factors, sel, llmKey: a.llmKeyFactor, llmSynth: a.llmSynthesis });
+
+    for (let sel of candidateSels) {
+      if (!sel || !sel.odd) continue;
+      // Si el user pidió casa específica Y el pick NO es analítico → intentar override.
+      // Los analíticos no se filtran por casa (no tienen book asignado).
+      if (filters.books.length && !sel.analytical) {
+        const overridden = tryBookOverride(sel, a.event);
+        if (!overridden) continue;
+        sel = overridden;
+      }
+      if (filters.minOddPerLeg && sel.odd < filters.minOddPerLeg) continue;
+      if (filters.maxOddPerLeg && sel.odd > filters.maxOddPerLeg) continue;
+      pool.push({ event: a.event, factors: a.factors, sel, llmKey: a.llmKeyFactor, llmSynth: a.llmSynthesis });
+    }
   }
 
   // ── MODO STRICT: si el usuario pidió liga específica + cantidad específica,

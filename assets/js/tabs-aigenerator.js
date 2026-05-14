@@ -98,80 +98,97 @@
             <legend class="field-label">Mercados a considerar</legend>
             ${[
               {
-                title:'Resultado',
+                title:'⚽ Resultado',
                 items:[
                   ['h2h','Resultado (1X2)'],
                   ['dc','Doble oportunidad'],
-                  ['dnb','Empate anula (DNB)'],
-                  ['ht','Resultado al descanso'],
-                  ['htft','Descanso / Final']
+                  ['dnb','Empate no apuesta'],
+                  ['ht-result','Resultado al descanso'],
+                  ['first-team-score','Equipo que marca 1ro']
                 ]
               },
               {
-                title:'Hándicap',
+                title:'⚽ Hándicap',
                 items:[
-                  ['ah','Hándicap asiático'],
-                  ['eh','Hándicap europeo']
+                  ['ah','Hándicap asiático']
                 ]
               },
               {
-                title:'Goles',
+                title:'⚽ Goles',
                 items:[
                   ['totals','Más / Menos goles'],
-                  ['totals_home','Goles del local'],
-                  ['totals_away','Goles del visitante'],
-                  ['totals_ht','Goles al descanso'],
+                  ['totals-ht','Goles al descanso'],
                   ['btts','Ambos equipos marcan'],
-                  ['btts_result','Ambos marcan + resultado'],
-                  ['exact_score','Marcador exacto']
+                  ['result-btts','Resultado + Ambos marcan'],
+                  ['exact-score','Marcador exacto']
                 ]
               },
               {
-                title:'Goleadores',
+                title:'⚽ Goleadores',
                 items:[
-                  ['scorer_any','Goleador en cualquier momento'],
-                  ['scorer_first','Primer goleador'],
-                  ['scorer_last','Último goleador'],
-                  ['scorer_2plus','Jugador con 2+ goles'],
-                  ['scorer_hat','Hat-trick (3+ goles)']
+                  ['goalscorer-anytime','Goleador anytime'],
+                  ['first-goalscorer','Primer goleador']
                 ]
               },
               {
-                title:'Tarjetas',
+                title:'⚽ Tarjetas / Disciplina',
                 items:[
-                  ['cards','Total de tarjetas'],
-                  ['cards_home','Tarjetas del local'],
-                  ['cards_away','Tarjetas del visitante'],
-                  ['card_player','Tarjeta a jugador específico'],
-                  ['first_card','Primera tarjeta (equipo)'],
-                  ['red_card','Roja en el partido (sí/no)']
+                  ['cards-total','Total de tarjetas'],
+                  ['red-card','Habrá tarjeta roja'],
+                  ['penalty','Habrá penal'],
+                  ['fouls-total','Faltas totales']
                 ]
               },
               {
-                title:'Córners',
+                title:'⚽ Córners',
                 items:[
-                  ['corners','Total de córners'],
-                  ['corners_home','Córners del local'],
-                  ['corners_away','Córners del visitante'],
-                  ['corners_handicap','Hándicap de córners'],
-                  ['first_corner','Primer córner']
+                  ['corners-total','Total de córners'],
+                  ['corners-ht','Córners 1er tiempo'],
+                  ['corners-team','Córners por equipo']
                 ]
               },
               {
-                title:'Tiros / disparos',
+                title:'⚽ Tiros',
                 items:[
-                  ['shots','Tiros totales'],
-                  ['shots_on_target','Tiros al arco'],
-                  ['shots_player','Tiros de un jugador']
+                  ['shots-on-target-total','Tiros al arco totales']
                 ]
               },
               {
-                title:'Stats de jugador',
+                title:'🏀 Básquet',
                 items:[
-                  ['player_stats','Estadísticas de jugador (general)'],
-                  ['player_assists','Asistencias'],
-                  ['player_passes','Pases completados'],
-                  ['player_tackles','Entradas / quites']
+                  ['totals-points','Total puntos'],
+                  ['totals-points-team','Puntos por equipo'],
+                  ['totals-q1','Total 1Q'],
+                  ['overtime','Prórroga'],
+                  ['player-points','Puntos jugador'],
+                  ['player-rebounds','Rebotes jugador'],
+                  ['player-assists','Asistencias jugador']
+                ]
+              },
+              {
+                title:'🎾 Tenis',
+                items:[
+                  ['tennis-totals-games','Total games'],
+                  ['tennis-tiebreak','Tiebreak'],
+                  ['tennis-aces-total','Aces totales']
+                ]
+              },
+              {
+                title:'🏈🏒⚾ NFL/NHL/MLB',
+                items:[
+                  ['nfl-totals','NFL: Total puntos'],
+                  ['hockey-totals','NHL: Total goles'],
+                  ['mlb-totals','MLB: Total carreras'],
+                  ['mlb-yrfi','MLB: Carrera 1ra entrada']
+                ]
+              },
+              {
+                title:'🥊🎮 MMA / eSports',
+                items:[
+                  ['mma-rounds','MMA: pasa rounds'],
+                  ['mma-method','MMA: método'],
+                  ['esports-maps-total','eSports: total mapas'],
+                  ['esports-rounds-total','eSports: rondas CS/Val']
                 ]
               }
             ].map(group => `
