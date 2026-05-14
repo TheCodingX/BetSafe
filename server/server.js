@@ -54,7 +54,7 @@ const { browserPool, sleep, normalizeTeam, log } = require('./lib');
 const pLimit = require('p-limit').default;
 const orchestrator = require('./lib/orchestrator');
 const { ArbitrageEngine } = require('./engines/arbitrage');
-const { analyzeMatch, groqJsonGeneric, geminiJsonGeneric } = require('./engines/ai-pipeline');
+const { analyzeMatch, groqJsonGeneric, geminiJsonGeneric, anthropicJsonGeneric, openrouterJsonGeneric } = require('./engines/ai-pipeline');
 
 // Helper: cascada GEMINI-FIRST (el user pidió explícitamente que Gemini sea
 // el motor principal — pagar Gemini 2.5 Flash no es problema, 1M context).
@@ -63,22 +63,43 @@ const { analyzeMatch, groqJsonGeneric, geminiJsonGeneric } = require('./engines/
 // algunos parsers, agregar acá entre los retries de Gemini y Groq.
 const HAS_GEMINI = !!(process.env.BS_GEMINI_API_KEY || process.env.GEMINI_API_KEY);
 const HAS_GROQ = !!(process.env.BS_GROQ_API_KEY || process.env.GROQ_API_KEY);
+const HAS_ANTHROPIC = !!process.env.BS_ANTHROPIC_API_KEY;
+const HAS_OPENROUTER = !!process.env.BS_OPENROUTER_API_KEY;
+/* CASCADA COMPLETA — el parsing y respuestas del Coach IA NUNCA debe caer
+ * en regex/text-matching: si Gemini falla, probamos Claude → Groq → OpenRouter.
+ * Si TODAS las IA fallan, throw y devolvemos error explícito al usuario.
+ * Cantidad de retries por proveedor calibrada para latencia razonable: ~10s peor caso. */
 async function preferredJson(systemPrompt, userPrompt, opts = {}) {
-  let lastErr = null;
-  if (HAS_GEMINI) {
-    for (let attempt = 1; attempt <= 3; attempt++) {
+  const errors = [];
+  const providers = [];
+  if (HAS_GEMINI)     providers.push({ name: 'gemini',     fn: () => geminiJsonGeneric(systemPrompt, userPrompt, opts),    retries: 3 });
+  if (HAS_ANTHROPIC)  providers.push({ name: 'claude',     fn: () => anthropicJsonGeneric(systemPrompt, userPrompt, opts), retries: 2 });
+  if (HAS_GROQ)       providers.push({ name: 'groq',       fn: () => groqJsonGeneric(systemPrompt, userPrompt, opts),      retries: 2 });
+  if (HAS_OPENROUTER) providers.push({ name: 'openrouter', fn: () => openrouterJsonGeneric(systemPrompt, userPrompt, opts),retries: 1 });
+  if (!providers.length) throw new Error('NO_LLM_AVAILABLE: configurá BS_GEMINI_API_KEY / BS_ANTHROPIC_API_KEY / BS_GROQ_API_KEY / BS_OPENROUTER_API_KEY');
+
+  for (const provider of providers) {
+    for (let attempt = 1; attempt <= provider.retries; attempt++) {
       try {
-        return await geminiJsonGeneric(systemPrompt, userPrompt, opts);
+        const result = await provider.fn();
+        if (result && typeof result === 'object') return result;
+        throw new Error('empty-or-invalid-json');
       } catch (e) {
-        lastErr = e;
-        // Backoff exponencial: 200ms, 600ms, 1800ms
-        if (attempt < 3) await new Promise(r => setTimeout(r, 200 * Math.pow(3, attempt - 1)));
+        const msg = `${provider.name}#${attempt}: ${e?.message?.slice(0, 100)}`;
+        errors.push(msg);
+        log(`[preferredJson] ${msg}`);
+        if (attempt < provider.retries) {
+          // Backoff exponencial: 200ms, 600ms, 1800ms
+          await new Promise(r => setTimeout(r, 200 * Math.pow(3, attempt - 1)));
+        }
       }
     }
-    log(`[preferredJson] gemini falló 3 veces: ${lastErr?.message?.slice(0,80)} — fallback a Groq`);
+    log(`[preferredJson] ${provider.name} agotó retries, pasando al siguiente proveedor`);
   }
-  if (HAS_GROQ) return groqJsonGeneric(systemPrompt, userPrompt, opts);
-  throw lastErr || new Error('Sin LLM disponible (configurá BS_GEMINI_API_KEY o BS_GROQ_API_KEY)');
+  const err = new Error(`ALL_LLM_FAILED: ${errors.join(' | ')}`);
+  err.providers = providers.map(p => p.name);
+  err.errors = errors;
+  throw err;
 }
 const { analyzeCombo, pairCorrelation } = require('./engines/correlation');
 const { buildFactors } = require('./factors');
@@ -1911,76 +1932,159 @@ ${enriched.map((l, i) => `  ${i+1}. [${l.sport || '?'} / ${l.league || '?'}] ${l
 app.post('/api/betsafe-ai/build', express.json(), async (req, res) => {
   const prompt = String(req.body?.prompt || '').slice(0, 1000).trim();
   if (!prompt) return res.status(400).json({ error: 'Necesitamos un prompt — escribí qué combinada querés' });
-  if (prompt.length < 10) return res.status(400).json({ error: 'Prompt muy corto — explicanos qué combinada querés con un poco más de detalle' });
+  if (prompt.length < 5) return res.status(400).json({ error: 'Prompt muy corto — explicanos qué combinada querés con un poco más de detalle' });
 
-  // 1) Parse con LLM (Gemini-primero, Groq fallback): extraer filtros estructurados
-  const parserSystem = `Sos un asistente que extrae filtros estructurados de un pedido de combinada de apuestas en español argentino.
-Devolvés JSON estricto con este shape:
+  // ═══════════════════════════════════════════════════════════════════════
+  // PARSE 100% LLM — sin regex/text-matching de ningún tipo.
+  // ═══════════════════════════════════════════════════════════════════════
+  // El parser del prompt debe ser puro LLM. Las variaciones humanas son
+  // infinitas: "x15", "que multiplique 15", "ganar 15 veces lo apostado",
+  // "cuota 15", "premio x15", "pagame 15 a 1", "para hoy", "esta noche",
+  // "el finde", typos, jerga regional, etc. Cualquier regex es un parche
+  // que va a fallar en la siguiente variación. La cascada Gemini → Claude →
+  // Groq → OpenRouter garantiza disponibilidad sin caer en text-matching.
+  // ═══════════════════════════════════════════════════════════════════════
+  // Pasamos contexto de fecha actual + ligas disponibles + casas activas
+  // para que el LLM entienda "hoy"/"mañana" sin ambigüedad.
+  const now = Date.now();
+  const today = new Date(now);
+  const days = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+  const months = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  const dateContext = `Fecha actual: ${days[today.getDay()]} ${today.getDate()} de ${months[today.getMonth()]} de ${today.getFullYear()} (timestamp: ${now}, ISO: ${today.toISOString()})`;
+
+  const parserSystem = `Sos un parser de pedidos de combinadas de apuestas deportivas en español argentino/latino.
+
+${dateContext}
+
+Tu única tarea: leer el pedido del usuario y devolver JSON estricto con los filtros estructurados. NO inventes datos: si algo no está claramente especificado, dejá el campo en su default.
+
+Shape EXACTO del JSON (todas las keys obligatorias):
 {
-  "legs": número de 2 a 8 (cuántos partidos quiere combinar),
+  "legs": número entero 2-8, o null si no se mencionó cantidad,
   "sport": "soccer" | "basketball" | "tennis" | "esports" | "amfootball" | "hockey" | "baseball" | "mma" | "all",
-  "leagues": ["premier-league" | "la-liga" | "serie-a" | "bundesliga" | "ligue-1" | "ucl" | "uel" | "lpf" | "libertadores" | "sudamericana" | "brasileirao" | "liga-mx" | "mls" | "nba" | "nfl" | "nhl" | "mlb" | "ufc" | ...],
-  "books": ["betano" | "bplay" | "betsson" | "codere" | "betwarrior" | "casino-magic" | ...],
-  "markets": ["h2h" | "totals" | "btts" | "ah" | "dc" | "corners-total" | "cards-total" | "goalscorer-anytime" | "exact-score" | "first-goalscorer" | "red-card" | "penalty" | "fouls-total" | "shots-on-target-total" | "player-points" | "ht-result" | "totals-ht" | "dnb" | "result-btts" | "first-team-score" | ...],
-  "risk": "cons" (seguro) | "eq" (equilibrado) | "agg" (agresivo),
-  "targetOdd": número o null (cuota total deseada),
+  "leagues": array de slugs (ver lista abajo) o [] si no se especificó,
+  "books": array de slugs de casa de apuestas o [] si no se especificó,
+  "markets": array de slugs de mercado o [] si no se especificó,
+  "risk": "cons" | "eq" | "agg",
+  "targetOdd": número de cuota total deseada, o null,
   "minOddPerLeg": número o null,
   "maxOddPerLeg": número o null,
   "timeWindow": "today" | "tomorrow" | "weekend" | "week" | "any",
   "preferTopTeams": true|false,
-  "userIntent": "<frase corta resumiendo qué quiere>"
+  "userIntent": "<una frase de 8-15 palabras resumiendo qué quiere el usuario>"
 }
-REGLAS IMPORTANTES:
-- Si el usuario dice "para Betano" / "en Betano" / "en bplay" → llenar "books" con esa casa en minúscula.
-- Si el usuario dice "cuota más de 3" / "cuota mayor a 3" → poner "minOddPerLeg": 3.
-- Si el usuario dice "cuota menos de 5" → poner "maxOddPerLeg": 5.
-- Si dice "agresiva" / "arriesgada" → risk: "agg".
-- Si dice "segura" / "tranqui" → risk: "cons".
-- Si NO menciona cantidad de legs → "legs": null (la decide la IA después).
 
-DETECCIÓN DE LIGAS — CRÍTICO no confundir:
-- "Liga Argentina" / "Liga Profesional Argentina" / "fútbol argentino" → leagues: ["lpf"] (NUNCA agregues "la-liga")
-- "La Liga" / "La Liga española" / "fútbol español" / "primera división española" → leagues: ["la-liga"]
-- "Liga MX" / "fútbol mexicano" → leagues: ["liga-mx"]
-- "Premier League" / "EPL" / "fútbol inglés" → leagues: ["premier-league"]
-- "Serie A" / "calcio italiano" → leagues: ["serie-a"]
-- "Bundesliga" → leagues: ["bundesliga"]
-- "Ligue 1" / "fútbol francés" → leagues: ["ligue-1"]
-- "Champions" / "Champions League" / "UCL" → leagues: ["ucl"]
-- "Europa League" / "UEL" → leagues: ["uel"]
-- "Libertadores" → leagues: ["libertadores"]
-- "Sudamericana" → leagues: ["sudamericana"]
-- "Brasileirao" / "Brasil" → leagues: ["brasileirao"]
-- "NBA" → leagues: ["nba"]
-- "UFC" / "MMA" → leagues: ["ufc"]
-NUNCA mezcles "la-liga" con "lpf" — son ligas distintas en países distintos.
+══ INTERPRETACIÓN SEMÁNTICA — esperamos que entiendas variaciones naturales ══
 
-DETECCIÓN DE MERCADOS — IMPORTANTE:
-- Si dice "córners" / "tiros de esquina" / "corners" → markets: ["corners-total"]
-- Si dice "tarjetas" / "amonestaciones" → markets: ["cards-total"]
-- Si dice "tarjeta roja" / "expulsión" → markets: ["red-card"]
-- Si dice "goleadores" / "que marque X" / "anota X" → markets: ["goalscorer-anytime"]
-- Si dice "primer goleador" / "abre el marcador X" → markets: ["first-goalscorer"]
-- Si dice "marcador exacto" / "resultado exacto" → markets: ["exact-score"]
-- Si dice "hándicap" / "handicap" → markets: ["ah"]
-- Si dice "ambos marcan" / "BTTS" → markets: ["btts"]
-- Si dice "más/menos goles" / "over/under" → markets: ["totals"]
-- Si dice "doble oportunidad" / "1X o X2" → markets: ["dc"]
-- Si dice "habrá penal" → markets: ["penalty"]
-- Si dice "tiros al arco" → markets: ["shots-on-target-total"]
-- Si dice "1er tiempo" / "medio tiempo" → markets: ["ht-result", "totals-ht"]
-- Si dice "puntos jugador NBA" / "Lebron puntos" → markets: ["player-points"]
-- Si dice "rebotes jugador" → markets: ["player-rebounds"]
-- Si dice "asistencias jugador" → markets: ["player-assists"]
-- Si no menciona mercado específico → markets: [] (todos disponibles)`;
+CUOTA TOTAL (targetOdd): Cualquier forma que indique multiplicador final:
+  "x15", "15x", "que pague x15", "que multiplique por 15", "cuota total 15",
+  "combinada de cuota 15", "ganar 15 veces", "pagame 15 a 1", "premio x15",
+  "que rinda 15", etc → targetOdd: 15
+
+VENTANA TEMPORAL (timeWindow):
+  "hoy", "esta noche", "esta tarde", "para hoy", "en el día" → "today"
+  "mañana", "para mañana" → "tomorrow"
+  "el finde", "fin de semana", "sábado", "domingo", "este sábado" → "weekend"
+  "esta semana", "los próximos días" → "week"
+  Sin mención temporal → "any"
+  IMPORTANTE: usá la "Fecha actual" que te di arriba como referencia.
+
+DEPORTE (sport): inferí del contexto. Si menciona Premier/La Liga/LPF/Champions → "soccer".
+  Si menciona NBA → "basketball". ATP/WTA/Roland Garros → "tennis". UFC → "mma".
+
+LIGAS (leagues) — slugs disponibles. NO mezcles ligas distintas:
+  - "lpf" → Liga Profesional Argentina, fútbol argentino, "liga argentina", LPF, AFA, equipos argentinos (River, Boca, Racing, Independiente, San Lorenzo, Vélez, Estudiantes, etc.)
+  - "copa-argentina" → Copa Argentina
+  - "primera-nacional" → Primera Nacional (Argentina B)
+  - "la-liga" → La Liga española, primera división de España, Real Madrid, Barcelona, Atlético de Madrid
+  - "premier-league" → Premier League inglesa, EPL, fútbol inglés
+  - "serie-a" → Serie A italiana, calcio
+  - "bundesliga" → Bundesliga alemana
+  - "ligue-1" → Ligue 1 francesa
+  - "ucl" → Champions League, UEFA Champions, UCL
+  - "uel" → Europa League, UEL
+  - "libertadores" → Copa Libertadores
+  - "sudamericana" → Copa Sudamericana
+  - "brasileirao" → Brasileirão, Brasileirao, fútbol brasileño
+  - "liga-mx" → Liga MX, fútbol mexicano
+  - "mls" → MLS, Major League Soccer
+  - "nba" → NBA
+  - "nfl" → NFL
+  - "nhl" → NHL
+  - "mlb" → MLB, beisbol
+  - "ufc" → UFC, MMA
+  - "copa-mundial" → Copa del Mundo, Mundial FIFA
+  CRÍTICO: "Liga Argentina"/"liga argentn[ai]"/"liga arg" SIEMPRE = "lpf", NUNCA = "la-liga".
+  Tolerá typos: "argentn", "argentn[ao]", "argentín[ao]" → "lpf".
+
+CASAS (books) — slugs disponibles:
+  betano, bplay, betsson, codere, betwarrior, casino-magic, bet365ar
+  "para Betano", "en Bplay", "en BetWarrior" → llenar books con esa casa.
+
+MERCADOS (markets) — slugs disponibles:
+  h2h (1X2 ganador)
+  totals (más/menos goles, over/under)
+  btts (ambos marcan, gol y gol)
+  ah (handicap asiático)
+  dc (doble oportunidad, 1X / X2)
+  corners-total (córners, tiros de esquina)
+  cards-total (tarjetas, amonestaciones)
+  red-card (tarjeta roja, expulsión)
+  goalscorer-anytime (goleadores, "que anote X", "marca gol")
+  first-goalscorer (primer goleador, abre el marcador)
+  exact-score (marcador exacto, resultado exacto)
+  penalty (habrá penal)
+  fouls-total (faltas)
+  shots-on-target-total (tiros al arco, remates)
+  ht-result (resultado 1er tiempo)
+  totals-ht (más/menos goles en 1er tiempo)
+  dnb (draw no bet, empate no apuesta)
+  result-btts (resultado + ambos marcan)
+  first-team-score (primer equipo en marcar)
+  player-points (puntos jugador NBA)
+  player-rebounds (rebotes)
+  player-assists (asistencias)
+  Si el usuario NO especifica mercado, dejá markets: [] (la IA elige después).
+
+RIESGO (risk):
+  "segura", "tranqui", "conservadora", "no tan riesgosa", "lo más seguro posible" → "cons"
+  "agresiva", "arriesgada", "alta cuota", "que pague mucho" → "agg"
+  Resto → "eq"
+
+LEGS (cantidad de partidos):
+  Si menciona explícitamente "5 partidos"/"combinada de 5"/"6 legs" → ese número.
+  Si NO menciona cantidad → null (la decide el motor según targetOdd).
+
+CASOS BORDE:
+- Si el usuario dice "que pague x15" sin mencionar cantidad de legs ni riesgo →
+  targetOdd: 15, legs: null, risk: "eq" (la cuota total define implícitamente el riesgo)
+- Si el usuario dice "lo más seguro posible que pague x15" → risk: "cons", targetOdd: 15
+  (la combinación es válida; el motor buscará la combinada de menor varianza que llegue a 15)
+- Si el usuario combina varios mercados ("corners y tarjetas") → markets: ["corners-total", "cards-total"]
+- Si dice "para Argentina" sin más contexto → leagues: ["lpf"], sport: "soccer"
+
+Devolvé el JSON, nada más. Sin markdown, sin texto antes/después.`;
 
   let parsed = null;
+  let llmFailure = null;
   try {
-    parsed = await preferredJson(parserSystem, prompt, { maxTokens: 700, temperature: 0.2 });
+    parsed = await preferredJson(parserSystem, prompt, { maxTokens: 800, temperature: 0.1 });
   } catch (e) {
-    log(`[betsafe-ai] parse err: ${e?.message?.slice(0, 100)}`);
+    llmFailure = e;
+    log(`[betsafe-ai] LLM cascade failure: ${e?.message?.slice(0, 200)}`);
   }
-  // Defaults si el parse falla
+
+  // Si TODAS las IA fallaron → error 502 explícito (NO regex fallback).
+  if (!parsed || typeof parsed !== 'object') {
+    return res.status(502).json({
+      ok: false,
+      error: 'AI_UNAVAILABLE',
+      message: 'No podemos entender tu pedido en este momento — todas las IA disponibles fallaron. Probá de nuevo en unos segundos.',
+      detail: llmFailure?.message?.slice(0, 300) || 'parser returned non-object',
+      providers: llmFailure?.providers || []
+    });
+  }
+
   const filters = {
     legs: Number.isFinite(Number(parsed?.legs)) ? clamp(Number(parsed.legs), 2, 8) : null,
     sport: typeof parsed?.sport === 'string' ? parsed.sport : 'all',
@@ -1996,179 +2100,11 @@ DETECCIÓN DE MERCADOS — IMPORTANTE:
     userIntent: String(parsed?.userIntent || prompt).slice(0, 250)
   };
 
-  // ── REGEX FALLBACK para books si el LLM no los extrajo ──
-  if (!filters.books.length) {
-    const p = prompt.toLowerCase();
-    const BOOK_KW = {
-      'betano':       /\bbetano\b/i,
-      'bplay':        /\b(bplay|b\s*play)\b/i,
-      'betsson':      /\bbetsson\b/i,
-      'codere':       /\bcodere\b/i,
-      'betwarrior':   /\b(bet\s*warrior|betwarrior|warrior)\b/i,
-      'casino-magic': /\bcasino\s*magic\b/i
-    };
-    for (const [key, re] of Object.entries(BOOK_KW)) {
-      if (re.test(p)) filters.books.push(key);
-    }
-  }
-
-  // ── REGEX FALLBACK para markets específicos ──
-  if (!filters.markets.length) {
-    const p = prompt.toLowerCase();
-    const MARKET_KW = {
-      'corners-total':            /c[óo]rners?|tiros?\s+de\s+esquina/i,
-      'cards-total':              /tarjetas?(?!\s*roja)|amonestaci[óo]n/i,
-      'red-card':                 /tarjeta\s*roja|expulsi[óo]n|expulsado/i,
-      'goalscorer-anytime':       /goleadore?s?|anota|que\s*marque|marcar?\s*gol/i,
-      'first-goalscorer':         /primer\s*goleador|abre\s*el\s*marcador|primer\s*gol/i,
-      'exact-score':              /marcador\s*exacto|resultado\s*exacto/i,
-      'ah':                       /h[áa]ndicap|handicap/i,
-      'btts':                     /ambos\s*(equipos\s*)?(anotan|marcan)|btts|gol\s*y\s*gol/i,
-      'totals':                   /m[áa]s\s*\/?\s*menos|over\s*under|total\s*de?\s*goles/i,
-      'dc':                       /doble\s*oportunidad|1x\s*o\s*x2/i,
-      'penalty':                  /penal(?:ti|es)?\b/i,
-      'shots-on-target-total':    /tiros\s+al\s+arco|remates\s+al\s+arco/i,
-      'fouls-total':              /faltas\s+totales?/i,
-      'ht-result':                /(?:1er|primer)\s*tiempo|medio\s+tiempo/i,
-      'dnb':                      /empate\s*no\s*apuesta|draw\s*no\s*bet|dnb/i,
-      'player-points':            /puntos?\s+(de\s+)?(jugador|lebron|curry|durant|jokic)/i,
-      'player-rebounds':          /rebotes?\s+(de\s+)?(jugador|lebron|curry)/i,
-      'player-assists':           /asistencias?\s+(de\s+)?(jugador|lebron|curry)/i
-    };
-    for (const [key, re] of Object.entries(MARKET_KW)) {
-      if (re.test(p)) filters.markets.push(key);
-    }
-  }
-
-  // ── REGEX FALLBACK para minOddPerLeg (NO confundir con cuota total) ──
-  // Solo si la frase contiene "cuota por leg" / "cada leg" / "mín por leg"
-  if (filters.minOddPerLeg == null) {
-    const m = prompt.match(/cuota\s+(?:mayor|m[áa]s)\s+(?:de|a|que)\s+(\d+(?:[.,]\d+)?)\s+(?:por|cada)\s+leg/i);
-    if (m) filters.minOddPerLeg = Number(m[1].replace(',', '.'));
-  }
-
-  // ── REGEX FALLBACK para targetOdd (cuota TOTAL) — CRÍTICO ──
-  // Capturamos las formas más comunes en castellano rioplatense:
-  //   "cuota total 15" / "cuota cerca de 15" / "cuota final 15"
-  //   "que pague 15" / "que pague x15" / "x15" / "15x" / "por 15"
-  //   "pagar X15" / "queremos 15" / "combinada de cuota 15"
-  if (filters.targetOdd == null) {
-    const patterns = [
-      /cuota\s+total\s+(?:de|cerca\s+de|alrededor\s+de|aprox(?:imada)?|sobre)?\s*(\d+(?:[.,]\d+)?)/i,
-      /cuota\s+(?:cerca\s+de|alrededor\s+de|aprox(?:imada)?|sobre)\s+(\d+(?:[.,]\d+)?)/i,
-      /cuota\s+(?:final|combinada|target|objetivo|de)\s+(?:de\s+)?(\d+(?:[.,]\d+)?)/i,
-      // "que pague x15" / "que pague 15" / "pague 15x"
-      /pa(?:gar|gue)n?\s+(?:x\s*)?(?:cerca\s+de\s+)?(\d+(?:[.,]\d+)?)\s*x?/i,
-      // "x15" o "x 15" o "15x" pegado a "pague/cuota/multiplicador"
-      /(?:^|\s)x\s*(\d+(?:[.,]\d+)?)\b/i,
-      /\b(\d+(?:[.,]\d+)?)\s*x(?:\s|$)/i,
-      /(?:cuota|paga|x|multiplicador|por)\s+(\d+(?:[.,]\d+)?)\s*(?:total|combinada|final)/i,
-      // "multiplique por 15" / "que multiplique 15"
-      /multiplicar?\s+(?:por\s+)?(\d+(?:[.,]\d+)?)/i
-    ];
-    for (const re of patterns) {
-      const m = prompt.match(re);
-      if (m) {
-        const v = Number(m[1].replace(',', '.'));
-        // Solo aceptar valores razonables (1.5 a 100) para evitar matches falsos
-        if (v >= 1.5 && v <= 100) { filters.targetOdd = v; break; }
-      }
-    }
-  }
-
-  // ── REGEX FALLBACK para timeWindow ──
-  // "hoy" / "para hoy" → today
-  // "mañana" / "para mañana" → tomorrow
-  // "fin de semana" / "este finde" → weekend
-  // "esta semana" → week
-  // Sin esto, "para hoy" se ignoraba y el motor devolvía partidos de TODA la semana.
-  if (parsed?.timeWindow == null) {
-    const p = prompt.toLowerCase();
-    if (/\b(hoy|esta\s*noche|esta\s*tarde|en\s*el\s*d[íi]a|para\s*el\s*d[íi]a\s+de\s+hoy)\b/i.test(p)) {
-      filters.timeWindow = 'today';
-    } else if (/\b(ma[ñn]ana|para\s*ma[ñn]ana)\b/i.test(p)) {
-      filters.timeWindow = 'tomorrow';
-    } else if (/\b(este\s*finde|fin\s*de\s*semana|s[áa]bado|domingo|este\s*s[áa]bado|este\s*domingo)\b/i.test(p)) {
-      filters.timeWindow = 'weekend';
-    } else if (/\b(esta\s*semana|los\s*pr[óo]ximos?\s*d[íi]as)\b/i.test(p)) {
-      filters.timeWindow = 'week';
-    }
-  }
-
-  // ── REGEX FALLBACK para legs si el LLM no lo extrajo ──
-  // Capturamos "5 partidos" / "5 legs" / "combinada de 5"
-  if (filters.legs == null) {
-    const m = prompt.match(/\b(\d+)\s*(?:partidos?|legs?|equipos?)\b/i) ||
-              prompt.match(/combinada\s+de\s+(\d+)/i);
-    if (m) {
-      const n = Number(m[1]);
-      if (n >= 2 && n <= 8) filters.legs = n;
-    }
-  }
-  // Default 3 si nada se detectó
+  // Default solo cuando el LLM no proporcionó legs (null) — el motor decide:
+  // si hay targetOdd, calcula la cantidad óptima de legs para llegar a esa cuota.
   if (filters.legs == null) filters.legs = 3;
 
-  // ── CRITICAL FIX: el LLM a veces confunde "Liga Argentina" con "la-liga".
-  // Si el prompt contiene CLARAMENTE "argentina"/"argentino" → forzar lpf
-  // y borrar la-liga si fue agregada incorrectamente.
-  // Tolerante a typos comunes: "argentn[ao]" (sin 'i'), "argentín[ao]" (con tilde)
-  const promptLower = prompt.toLowerCase();
-  const mentionsArg = /\bargen?t[ií]?n?[ao]?\b|liga\s*arg|liga\s*profesional|\blpf\b|primera\s*nacional|\bafa\b|river|boca|racing|independiente|san\s*lorenzo|estudiantes|v[ée]lez/i.test(promptLower);
-  const mentionsEsp = /espa[ñn]ol|laliga|la\s*liga\s*espa|primera\s*divisi[óo]n\s*esp|real\s*madrid|barcelon|atl[ée]tico\s*madrid/i.test(promptLower);
-  if (mentionsArg && !mentionsEsp) {
-    // El usuario QUIERE Liga Argentina. Si el LLM agregó la-liga, sacarla.
-    filters.leagues = filters.leagues.filter(l => l !== 'la-liga');
-    if (!filters.leagues.includes('lpf')) filters.leagues.push('lpf');
-  }
-  if (mentionsEsp && !mentionsArg) {
-    filters.leagues = filters.leagues.filter(l => l !== 'lpf');
-    if (!filters.leagues.includes('la-liga')) filters.leagues.push('la-liga');
-  }
-
-  // ── REGEX FALLBACK: si el LLM no extrajo leagues, hacemos detection manual
-  // por keywords en el prompt. Esto es CRÍTICO porque a veces el parser falla
-  // y el resultado son partidos random.
-  if (!filters.leagues.length) {
-    const p = prompt.toLowerCase();
-    // ORDEN IMPORTANTE: chequear "Liga Argentina"/lpf ANTES que "la-liga"
-    // (porque ambas contienen "liga"). Las regex de lpf son más específicas.
-    const KW_ORDERED = [
-      ['lpf',            /(liga\s*argentina|liga\s*profesional\s*argentina|primera\s*argentina|\blpf\b|liga\s*profesional\s*de\s*f[úu]tbol)/i],
-      ['copa-argentina', /(copa\s*argentina)/i],
-      ['primera-nacional', /(primera\s*nacional)/i],
-      ['premier-league', /(premier\s*league|premier(?:\s+inglesa)?|\bepl\b)/i],
-      ['la-liga',        /(la\s*liga\s*(?:espa)?|laliga|primera\s*divisi[óo]n\s*esp|liga\s*espa[ñn]ola)/i],
-      ['serie-a',        /(serie\s*a|seriea|italia(?:no)?\s*serie)/i],
-      ['bundesliga',     /(bundesliga|alemana)/i],
-      ['ligue-1',        /(ligue\s*[1u]|ligue1|francesa)/i],
-      ['ucl',            /(champions(?:\s*league)?|\bucl\b|uefa\s*champions)/i],
-      ['uel',            /(europa\s*league|\buel\b)/i],
-      ['libertadores',   /(libertadores|copa\s*libertadores)/i],
-      ['sudamericana',   /(sudamericana|copa\s*sudamericana)/i],
-      ['brasileirao',    /(brasileir[ãa]o|brasil(?:e[ñn]o)?)/i],
-      ['liga-mx',        /(liga\s*mx|liga\s*mexicana)/i],
-      ['mls',            /(\bmls\b|major\s*league\s*soccer)/i],
-      ['nba',            /(\bnba\b|baloncesto\s*nba)/i],
-      ['nfl',            /(\bnfl\b)/i],
-      ['nhl',            /(\bnhl\b)/i],
-      ['mlb',            /(\bmlb\b|major\s*league\s*baseball)/i],
-      ['ufc',            /(\bufc\b|mma)/i]
-    ];
-    for (const [key, re] of KW_ORDERED) {
-      if (re.test(p)) filters.leagues.push(key);
-    }
-  }
-  // Misma idea para deporte si no se detectó
-  if (filters.sport === 'all') {
-    const p = prompt.toLowerCase();
-    if (/futbol|fútbol|soccer|partid|premier|liga/i.test(p)) filters.sport = 'soccer';
-    else if (/básq|basket|nba/i.test(p)) filters.sport = 'basketball';
-    else if (/tenis|tennis|atp|wta/i.test(p)) filters.sport = 'tennis';
-    else if (/esports|cs:?go|valorant|dota|lol/i.test(p)) filters.sport = 'esports';
-  }
-
   // 2) Buscar eventos REALES del orchestrator que matcheen
-  const now = Date.now();
   const timeRange = {
     today:    [now, now + 24*3600*1000],
     tomorrow: [now + 16*3600*1000, now + 48*3600*1000],
