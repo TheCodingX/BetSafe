@@ -342,11 +342,16 @@
     renderOutput(panel);
 
     try {
+      // 180s timeout — Gemini analiza 14-20 partidos + curador final
+      const ctrl = new AbortController();
+      const timeoutId = setTimeout(() => ctrl.abort(), 180000);
       const res = await fetch('/api/betsafe-ai/build', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt })
+        body: JSON.stringify({ prompt }),
+        signal: ctrl.signal
       });
+      clearTimeout(timeoutId);
       const data = await res.json();
       if (!res.ok || data.error) {
         throw new Error(data.error || `HTTP ${res.status}`);

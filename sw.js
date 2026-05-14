@@ -1,5 +1,5 @@
 // BetSafe Service Worker — cache strategy: cache-first for assets, network-first for HTML/data
-const VERSION = 'betsafe-v5.2.0';   // PROPAGACIÓN MULTI-MERCADO: AI Picks (curated con diversidad forzada), Generador IA (markets array extendido + UI multi-select por categorías), BetSafe AI (parser detecta mercados específicos + pool admite analíticos + 12 prompts sugeridos).
+const VERSION = 'betsafe-v5.2.1';   // FIX URGENTE: JSON truncation Gemini (maxOutputTokens 1600→6000) + safeJsonParse con recovery de JSON truncado (repair + extractPartial) + frontend timeouts 60s→180s + prompt analyzeMatch reducido para evitar overflow.
 const STATIC_CACHE = `${VERSION}-static`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 

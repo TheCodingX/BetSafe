@@ -72,10 +72,10 @@
   // ── REST ────────────────────────────────────────────────────────────────
   async function jget(path, opts = {}) {
     const ctrl = new AbortController();
-    // Endpoints AI necesitan timeout largo (analizan N partidos con IA, 60-120s).
-    // El resto sigue con 12s (snapshot, sources, etc).
-    const isAiEndpoint = /\/api\/(picks|betsafe-ai|combo|daily-report|surebet\/.+\/explain|generator)/.test(path);
-    const timeoutMs = opts.timeoutMs || (isAiEndpoint ? 120000 : 12000);
+    // Endpoints AI necesitan timeout largo (analizan N partidos con IA).
+    // 180s deja margen suficiente para Gemini + Groq retries + curador.
+    const isAiEndpoint = /\/api\/(picks|betsafe-ai|combo|daily-report|surebet\/.+\/explain|generator|curated-combos)/.test(path);
+    const timeoutMs = opts.timeoutMs || (isAiEndpoint ? 180000 : 12000);
     const t = setTimeout(() => ctrl.abort(), timeoutMs);
     try {
       const res = await fetch(API_BASE + path, { signal: ctrl.signal, headers: { 'Accept': 'application/json' } });
@@ -469,7 +469,9 @@
 
   async function generate(opts) {
     const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 60000);   // generator puede tardar 30-50s con LLM
+    // 180s: con Gemini paid procesando 20 partidos + retries + curador LLM
+    // necesitamos margen suficiente. 60s era muy ajustado y se abortaba.
+    const t = setTimeout(() => ctrl.abort(), 180000);
     try {
       const res = await fetch(API_BASE + '/api/generator', {
         method: 'POST',

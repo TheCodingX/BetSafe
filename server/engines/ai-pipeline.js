@@ -417,37 +417,33 @@ async function llmStructured(factors, poisson, elo) {
   if (factors.market?.btts) availableMarkets.push('btts (Ambos marcan)');
   if (factors.market?.ah) availableMarkets.push('ah (Hándicap Asiático)');
 
-  const prompt = `Análisis cuantitativo SENIOR — generá 3 picks coherentes (cons/eq/agg) para este partido.
+  // Prompt OPTIMIZADO — corto y directo para que el JSON output entre en
+  // maxOutputTokens. Cada rationale max 80 palabras (~120 tokens). 3 picks
+  // × 120 tokens + sintaxis = ~450 tokens output. Con maxOutputTokens=6000
+  // tenemos margen MASIVO.
+  const tierLabel = tier >= 8 ? 'top mundial' : tier >= 6 ? 'regional' : tier >= 4 ? 'secundaria' : 'menor';
+  const prompt = `Generá 3 picks (cons/eq/agg) para este partido. Mercados disponibles: ${availableMarkets.join(', ')}. Liga ${tierLabel}.
 
-CONTEXTO DEL MOTOR:
-- BetSafe usa SOLO las 6 casas oficiales argentinas (Betano, bplay, Codere, BetWarrior, Betsson, Casino Magic).
-- Mercados DISPONIBLES para este partido: ${availableMarkets.join(', ')}
-- TIER de la liga: ${tier >= 8 ? '1 (top mundial)' : tier >= 6 ? '2 (regional fuerte)' : tier >= 4 ? '3 (secundaria)' : '4 (menor)'}
-- Ventaja de local: ${homeAdv.toFixed(2)}
+REGLAS:
+- cons: cuota baja, prob alta. Doble oportunidad o favorito sólido.
+- eq: cuota media, EV+. Favorito directo, AH leve, totals.
+- agg: combinada multi-leg del MISMO partido (favorito + over/under + BTTS según señales).
+- AH si favorito >65% (paga mejor cuota); AH+ si underdog 35-45%.
+- Rationale max 80 palabras, español argentino, NO digas "Poisson"/"Elo"/"lambda" — usá "goles esperados", "forma reciente", "valor vs cuota".
 
-REGLAS DE GENERACIÓN:
-1. cons (conservador): cuota MÁS BAJA + probabilidad ALTA. Usá doble oportunidad o ganador favorito sólido.
-2. eq (equilibrado): cuota MEDIA + EV positivo. Acá podés usar el favorito directo, AH leve (-0.5/-1), o totals con línea clara.
-3. agg (agresivo): combinada multi-leg del MISMO partido. Idealmente 2-3 legs correlacionadas POSITIVAMENTE (ej: favorito gana + over + BTTS yes si el partido pinta abierto).
+Devolvés JSON exacto:
+{
+  "selections": [
+    {"type":"cons","market":"...","outcome":"...","line":null,"modelProb":0.65,"rationale":"..."},
+    {"type":"eq","market":"...","outcome":"...","line":null,"modelProb":0.55,"rationale":"..."},
+    {"type":"agg","market":"...","outcome":"...","line":null,"modelProb":0.40,"rationale":"..."}
+  ],
+  "synthesis":"60-80 palabras de lectura general",
+  "keyFactor":"el factor más importante en 1 frase",
+  "marketEdge":"dónde ves valor vs el mercado en 1 frase"
+}
 
-USO ESTRATÉGICO DEL HÁNDICAP ASIÁTICO (si disponible):
-- Cuando el favorito tiene >65% prob, AH -0.5 o -1 paga MEJOR cuota con riesgo similar.
-- Cuando el underdog tiene chance real (35-45%), AH +0.5 o +1 protege contra empate.
-- NO uses AH si las líneas están bien ajustadas (margen >5%).
-
-CONTEXTO + DATOS REALES:
-- Considera SIEMPRE: clima (impacto en goles), lesiones (severidad propia y rival),
-  forma reciente (últimos 5), historial H2H, movimientos sharp del mercado.
-- Si hay LESIÓN crítica del favorito → reduce confianza o cambia pick.
-- Si CLIMA adverso → ajusta totals hacia under.
-- Si HISTORIAL H2H muestra patrón claro (ej: empates frecuentes) → considéralo.
-
-LENGUAJE — IMPORTANTE:
-- Tu rationale debe sonar como análisis PROFESIONAL de un periodista deportivo.
-- NO menciones "Poisson", "Elo", "Shin", "modelo cuantitativo", "ensemble", "lambda", "xG explícito".
-- Habla naturalmente: "goles esperados según xG", "forma reciente sólida", "movimiento del mercado pro", "ventaja de local marcada", "valor real vs cuota implícita", "matchup favorable".
-
-Datos:
+DATOS:
 ${userMsg}`;
 
   // ═══ CASCADA OPTIMIZADA: Gemini PRIMARY (gran rate limit) ════════════════
@@ -537,13 +533,95 @@ function safeJsonParse(text, defaultValue = {}) {
   if (firstBrace > 0 && lastBrace > firstBrace) {
     clean = clean.slice(firstBrace, lastBrace + 1);
   }
+  // Try direct parse first
   try {
     const parsed = JSON.parse(clean);
     return validateLlmOutput(parsed);
   } catch (e) {
-    log(`[ai] JSON parse fail: ${e?.message?.slice(0, 100)} · preview: ${text.slice(0, 200)}`);
-    return defaultValue;
+    // ── RECOVERY: si el JSON está truncado (Gemini cortó el output),
+    // intentamos repararlo cerrando llaves/corchetes/strings abiertos.
+    try {
+      const repaired = repairTruncatedJson(clean);
+      const parsed = JSON.parse(repaired);
+      log(`[ai] JSON recovered from truncation (${clean.length} chars → ${repaired.length})`);
+      return validateLlmOutput(parsed);
+    } catch (e2) {
+      // Last attempt: extract any partial "selections" array de manera tolerante
+      try {
+        const partial = extractPartialSelections(clean);
+        if (partial && Array.isArray(partial.selections) && partial.selections.length > 0) {
+          log(`[ai] JSON partial recovery: ${partial.selections.length} selections rescued`);
+          return validateLlmOutput(partial);
+        }
+      } catch (_) {}
+      log(`[ai] JSON parse fail: ${e?.message?.slice(0, 100)} · preview: ${text.slice(0, 200)}`);
+      return defaultValue;
+    }
   }
+}
+
+/* Repara JSON truncado cerrando estructuras abiertas.
+ * Útil cuando el LLM cortó output a mitad del último item. */
+function repairTruncatedJson(text) {
+  let s = text;
+  // Si termina con un string sin cerrar (con coma o no), cerrar
+  // Contar comillas no escapadas
+  let inString = false;
+  let escape = false;
+  let bracketStack = [];
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (escape) { escape = false; continue; }
+    if (c === '\\') { escape = true; continue; }
+    if (c === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (c === '{' || c === '[') bracketStack.push(c);
+    else if (c === '}' || c === ']') bracketStack.pop();
+  }
+  // Si quedó dentro de un string, cerrarlo
+  if (inString) s += '"';
+  // Cerrar arrays/objetos abiertos en orden inverso
+  while (bracketStack.length) {
+    const open = bracketStack.pop();
+    // Si la última coma quedó suelta (típico tras truncar mid-item), removerla
+    s = s.replace(/,\s*$/, '');
+    s += open === '{' ? '}' : ']';
+  }
+  return s;
+}
+
+/* Último recurso: extrae las selections que parsearon completas del JSON
+ * truncado. Si Gemini cortó después del 2do pick, salvamos los 2 primeros. */
+function extractPartialSelections(text) {
+  // Buscamos cada objeto "{...}" individual dentro del array de selections
+  const selectionsMatch = text.match(/"selections"\s*:\s*\[([\s\S]+)/);
+  if (!selectionsMatch) return null;
+  const arrayContent = selectionsMatch[1];
+  const items = [];
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  let start = -1;
+  for (let i = 0; i < arrayContent.length; i++) {
+    const c = arrayContent[i];
+    if (escape) { escape = false; continue; }
+    if (c === '\\') { escape = true; continue; }
+    if (c === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (c === '{') { if (depth === 0) start = i; depth++; }
+    else if (c === '}') {
+      depth--;
+      if (depth === 0 && start >= 0) {
+        try {
+          const item = JSON.parse(arrayContent.slice(start, i + 1));
+          items.push(item);
+        } catch (_) {}
+        start = -1;
+      }
+    }
+  }
+  if (!items.length) return null;
+  return { selections: items };
 }
 
 /* Valida + sanea la salida del LLM contra el schema esperado:
@@ -653,14 +731,17 @@ async function groqJsonGeneric(systemPrompt, userPrompt, opts = {}) {
 async function geminiJson(system, user) {
   if (!GEMINI_KEY) throw new Error('no-key');
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_KEY}`;
+  // 6000 tokens: el prompt expandido pide 3 picks con rationale profundo
+  // (~600-800 tokens cada uno) + synthesis + keyFactor + marketEdge.
+  // El old 1600 cortaba el JSON a mitad del primer pick.
   const res = await fetchWithTimeout(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      contents: [{ role: 'user', parts: [{ text: system + '\n\n' + user + '\n\nRespondé estrictamente en JSON, sin markdown.' }] }],
+      contents: [{ role: 'user', parts: [{ text: system + '\n\n' + user + '\n\nRespondé estrictamente en JSON válido, COMPLETO (cerrá todas las llaves), sin markdown.' }] }],
       generationConfig: {
         temperature: 0.4,
-        maxOutputTokens: 1600,
+        maxOutputTokens: 6000,
         responseMimeType: 'application/json'
       }
     })
@@ -682,10 +763,10 @@ async function geminiJsonGeneric(systemPrompt, userPrompt, opts = {}) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      contents: [{ role: 'user', parts: [{ text: systemPrompt + '\n\n' + userPrompt + '\n\nRespondé estrictamente en JSON, sin markdown.' }] }],
+      contents: [{ role: 'user', parts: [{ text: systemPrompt + '\n\n' + userPrompt + '\n\nRespondé estrictamente en JSON válido, COMPLETO (cerrá todas las llaves), sin markdown.' }] }],
       generationConfig: {
         temperature: opts.temperature ?? 0.3,
-        maxOutputTokens: opts.maxTokens || 1600,
+        maxOutputTokens: opts.maxTokens || 4000,
         responseMimeType: 'application/json'
       }
     })
