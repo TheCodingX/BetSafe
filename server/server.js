@@ -1820,7 +1820,10 @@ DETECCIÓN DE MERCADOS — IMPORTANTE:
     candidates = candidates.filter(e => {
       const name = String(e.leagueName || '');
       const slug = String(e.league || '');
-      return matchers.some(re => re.test(name)) || filters.leagues.includes(slug);
+      // CRÍTICO: NO usar slug fallback porque los events viejos del orchestrator
+      // pueden tener slug='lpf' incorrecto (cacheados antes del fix masivo de
+      // LEAGUE_MAP). Solo matcheamos por NOMBRE de liga vía regex stricto.
+      return matchers.some(re => re.test(name));
     });
     log(`[betsafe-ai] league filter ${filters.leagues.join(',')}: ${candidates.length} candidates`);
   }
