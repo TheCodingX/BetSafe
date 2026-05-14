@@ -218,7 +218,7 @@
   // ---- Reveal observer ----
   // Observer singleton compartido entre llamadas a bindReveal y el
   // MutationObserver global. Esto garantiza que cualquier elemento `.reveal`
-  // agregado dinámicamente al DOM (combos de Generador IA, AI Picks, BetSafe
+  // agregado dinámicamente al DOM (combos de Quant IA, AI Picks, BetSafe
   // AI, etc.) sea observado y se muestre cuando entra al viewport.
   let _revealIO = null;
   function getRevealIO() {

@@ -1,4 +1,4 @@
-/* BetSafe — BetSafe AI tab (VIP flagship)
+/* BetSafe — Coach IA tab (VIP flagship)
  * ============================================================================
  * Conversación natural → combinada armada por IA.
  *
@@ -95,7 +95,7 @@
       panel.innerHTML = `
         <div class="card card-vip card-pad-lg stack bsai-locked">
           <span class="badge-vip">VIP exclusivo</span>
-          <h2 class="h2">BetSafe AI</h2>
+          <h2 class="h2">Coach IA</h2>
           <p class="lead">Pedile a la IA que te arme combinadas a medida en lenguaje natural.</p>
           <p class="muted">Ejemplo: <em>"haceme una combinada de 4 partidos de mañana de la Premier League, cuota entre 5 y 8, dentro de todo segura"</em>. La IA analiza tu pedido, encuentra los partidos que cumplen tus criterios, busca la mejor casa por cada leg, y te arma la combinada óptima.</p>
           <ul class="bsai-locked-feats">
@@ -127,7 +127,7 @@
               </svg>
             </span>
             <div>
-              <h2 class="h2" style="margin:0">BetSafe AI <span class="badge-vip" style="vertical-align:middle">VIP</span></h2>
+              <h2 class="h2" style="margin:0">Coach IA <span class="badge-vip" style="vertical-align:middle">VIP</span></h2>
               <p class="muted tiny" style="margin:4px 0 0">Pedile combinadas a medida — la IA arma todo cumpliendo tus condiciones</p>
             </div>
           </div>
@@ -455,7 +455,7 @@
       <article class="bsai-combo-card">
         <header class="bsai-combo-head">
           <div class="bsai-combo-headline">
-            <span class="badge-vip">BetSafe AI</span>
+            <span class="badge-vip">Coach IA</span>
             <h3 class="h3" style="margin:4px 0 0">${BSUI.esc(r.headline)}</h3>
           </div>
           <div class="bsai-combo-stats">
@@ -610,7 +610,7 @@
     host.querySelector('#bsaiCopy')?.addEventListener('click', () => {
       const txt = `${r.headline}\n\nCuota total: ${r.totalOdd.toFixed(2)}\n\n${r.legs.map((l, i) =>
         `${i+1}. ${l.home.name} vs ${l.away.name} — ${l.label} @ ${l.odd.toFixed(2)} (${BSData.ALL_BOOKS.find(b => b.key === l.book)?.name || l.book})`
-      ).join('\n')}\n\n${r.narrative || ''}\n\n— Generado por BetSafe AI · betsafe.bet`;
+      ).join('\n')}\n\n${r.narrative || ''}\n\n— Generado por Coach IA · betsafe.bet`;
       navigator.clipboard?.writeText(txt).then(() => {
         BSUI.toast?.({ title: 'Combinada copiada', message: 'Ya podés pegarla donde quieras.', type: 'success' });
       });
@@ -635,10 +635,10 @@
     // ── SHARE: prefer Web Share API; fallback a clipboard link ──────
     host.querySelector('#bsaiShare')?.addEventListener('click', async () => {
       const shareData = {
-        title: 'Combinada BetSafe AI',
+        title: 'Combinada Coach IA',
         text: `${r.headline}\nCuota: ${r.totalOdd.toFixed(2)} · ${r.legs.length} legs\n\n${r.legs.map((l, i) =>
           `${i+1}. ${l.home.name} vs ${l.away.name} — ${l.label} @ ${l.odd.toFixed(2)}`
-        ).join('\n')}\n\nGenerada por BetSafe AI · betsafe.bet`,
+        ).join('\n')}\n\nGenerada por Coach IA · betsafe.bet`,
         url: location.href
       };
       try {

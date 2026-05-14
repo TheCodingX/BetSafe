@@ -26,7 +26,7 @@
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.5 5.5L19 10l-5.5 1.5L12 17l-1.5-5.5L5 10l5.5-1.5L12 3z"/><path d="M19 14l.8 2.7L22 17.5l-2.2.8L19 21l-.8-2.7L16 17.5l2.2-.8L19 14z"/></svg>
           </div>
           <div class="ov-whatsnew__body">
-            <strong class="ov-whatsnew__title">NUEVO · BetSafe AI</strong>
+            <strong class="ov-whatsnew__title">NUEVO · Coach IA</strong>
             <p class="ov-whatsnew__desc">Pedile combinadas a medida hablando o escribiendo. "Haceme una combinada de 4 partidos de la Premier con cuota cerca de 6, dentro de todo segura" — y la IA arma todo cumpliendo tus condiciones.</p>
           </div>
           <div class="ov-whatsnew__actions">
@@ -170,7 +170,7 @@
     // ---- Accesos rápidos ----
     const QUICK = [
       { id: 'ai',          label: 'AI Picks',     desc: 'Picks listos por la IA',         icon: 'bolt', accent: 'brand' },
-      { id: 'aigenerator', label: 'Generador IA', desc: 'Combinadas óptimas automáticas', icon: 'bolt', accent: 'gold', vip: true },
+      { id: 'aigenerator', label: 'Quant IA', desc: 'Combinadas óptimas automáticas', icon: 'bolt', accent: 'gold', vip: true },
       { id: 'builder',     label: 'Builder',      desc: 'Armá tu combinada paso a paso',  icon: 'list', accent: 'brand' },
       { id: 'arbitrage',   label: 'Arbitraje',    desc: 'Ganancia matemática sin riesgo', icon: 'arb',  accent: 'gold', vip: true },
       { id: 'worldcup',    label: 'Mundial 2026', desc: 'Todo el Mundial en un solo lugar', icon: 'cup',  accent: 'brand' }
@@ -200,7 +200,12 @@
     const host = panel.querySelector('#ovBrief');
     if (!host) return;
     try {
-      const res = await fetch('/api/daily-report');
+      // 60s timeout: daily-report puede hacer LLM call que tarde 20-40s
+      const API_BASE = (window.BSLive && window.BSLive.API_BASE) || '';
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 60000);
+      const res = await fetch(API_BASE + '/api/daily-report', { signal: ctrl.signal });
+      clearTimeout(t);
       if (!res.ok) throw new Error('http ' + res.status);
       const r = await res.json();
       const ai = r.aiNarrative || {};
@@ -250,8 +255,15 @@
         </div>
       `;
     } catch (e) {
-      // Silently hide brief if endpoint not available yet
-      host.style.display = 'none';
+      // Mostrar fallback útil en lugar de ocultar silenciosamente
+      host.innerHTML = `
+        <div class="ov-brief-card">
+          <div class="ov-brief-head">
+            <span class="ov-brief-eyebrow">📊 Brief del día</span>
+          </div>
+          <p class="muted tiny">${e?.name === 'AbortError' ? 'El motor IA está procesando el reporte diario — volvé en unos segundos.' : 'No pudimos generar el brief en este momento. Reintentando…'}</p>
+          <button class="btn btn-outline btn-sm" onclick="window.__bsOverviewRender && window.__bsOverviewRender(document.querySelector('[data-tab-panel=overview]'))">Reintentar</button>
+        </div>`;
     }
   }
 

@@ -6,8 +6,8 @@
   // porque es el punto de entrada natural de un usuario nuevo.
   const TABS_PRIMARY = [
     { id: 'overview',    label: 'Inicio',       icon: 'home', vipOnly: false, desc: 'Bienvenida y accesos' },
-    { id: 'aigenerator', label: 'Generador IA', icon: 'bolt', vipOnly: true,  desc: 'Combinadas óptimas auto' },
-    { id: 'betsafeai',   label: 'BetSafe AI',   icon: 'sparkle', vipOnly: true, desc: 'Combinadas a tu medida con IA',
+    { id: 'aigenerator', label: 'Quant IA', icon: 'bolt', vipOnly: true,  desc: 'Combinadas óptimas auto' },
+    { id: 'betsafeai',   label: 'Coach IA',   icon: 'sparkle', vipOnly: true, desc: 'Combinadas a tu medida con IA',
       flagshipVip: true },
     { id: 'ai',          label: 'AI Picks',     icon: 'bolt', vipOnly: false, desc: 'Picks listos por IA' },
     { id: 'builder',     label: 'Builder',      icon: 'list', vipOnly: false, desc: 'Armá tu combinada' },
@@ -266,8 +266,8 @@
   /* ───────────────────────────────────────────────────────────────────
    *  KEYBOARD SHORTCUTS — para power users
    *  ───────────────────────────────────────────────────────────────────
-   *   G O = Inicio          G G = Generador IA      G A = AI Picks
-   *   G B = Builder         G S = BetSafe AI        G R = Arbitraje
+   *   G O = Inicio          G G = Quant IA      G A = AI Picks
+   *   G B = Builder         G S = Coach IA        G R = Arbitraje
    *   G T = Tracker         G W = Mundial
    *   /   = Focus búsqueda  ?   = Mostrar ayuda     ESC = Cerrar modal
    */
@@ -321,10 +321,10 @@
       <p class="muted tiny mb-3">Las combos empiezan con <kbd>G</kbd> (de "go to") seguido de una letra:</p>
       <div class="kbd-shortcuts-grid">
         <div><kbd>G</kbd> <kbd>O</kbd></div><div>Inicio (Overview)</div>
-        <div><kbd>G</kbd> <kbd>G</kbd></div><div>Generador IA</div>
+        <div><kbd>G</kbd> <kbd>G</kbd></div><div>Quant IA</div>
         <div><kbd>G</kbd> <kbd>A</kbd></div><div>AI Picks</div>
         <div><kbd>G</kbd> <kbd>B</kbd></div><div>Builder</div>
-        <div><kbd>G</kbd> <kbd>S</kbd></div><div>BetSafe AI ✨</div>
+        <div><kbd>G</kbd> <kbd>S</kbd></div><div>Coach IA ✨</div>
         <div><kbd>G</kbd> <kbd>R</kbd></div><div>Arbitraje</div>
         <div><kbd>G</kbd> <kbd>T</kbd></div><div>Tracker</div>
         <div><kbd>G</kbd> <kbd>C</kbd></div><div>Comparador</div>

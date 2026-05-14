@@ -917,13 +917,22 @@ Generá las ${count} mejores combinadas posibles. Usá los índices del pool. Re
       // Evitar duplicados de mismo evento
       const seenEvents = new Set();
       const legs = [];
-      // DIVERSIDAD: contar markets distintos. Si tenemos 3+ legs y todas son
-      // del mismo market, REEMPLAZAMOS algunas con picks de otros mercados.
+      // v5.3: permitimos hasta 3 legs del mismo partido (multi-bet típico:
+      // goleador + córners + tarjetas del mismo match). Garantizamos que
+      // no se repita la misma selección y que market+outcome sean únicos.
+      const legsPerEvent = new Map();
+      const seenSelections = new Set();   // key = eventId+market+outcome+line
       const marketsInCombo = new Map();
       for (const i of indices) {
         const p = topPool[i];
-        if (seenEvents.has(p.event.id)) continue;
-        seenEvents.add(p.event.id);
+        const evId = p.event.id;
+        const cur = legsPerEvent.get(evId) || 0;
+        if (cur >= 3) continue;   // max 3 legs por partido
+        const selKey = `${evId}|${p.sel.market}|${p.sel.outcome}|${p.sel.line || ''}`;
+        if (seenSelections.has(selKey)) continue;
+        seenSelections.add(selKey);
+        legsPerEvent.set(evId, cur + 1);
+        seenEvents.add(evId);
         marketsInCombo.set(p.sel.market, (marketsInCombo.get(p.sel.market) || 0) + 1);
         legs.push({
           eventId: p.event.id,
@@ -1169,7 +1178,9 @@ app.post('/api/generator', express.json(), async (req, res) => {
   // targetOdd: objetivo de cuota total (null = libre)
   // mixSports: si true, busca diversidad de deporte
   // useAiBuilder: si true Y hay LLM disponible, pide a Groq que elija los combos
-  const legsPerMatch = Math.max(1, Math.min(3, Number(req.body?.legsPerMatch) || 1));
+  // v5.3: default 3 — permite multi-leg del mismo partido (corners + cards + goleador
+  // de un mismo match es la combinada profesional que el usuario pidió).
+  const legsPerMatch = Math.max(1, Math.min(5, Number(req.body?.legsPerMatch) || 3));
   const targetOdd = Number(req.body?.targetOdd) || null;
   const mixSports = req.body?.mixSports !== false;
   // useAiBuilder default TRUE — user pidió "TODO ANALISIS IA". Solo false si explícitamente lo apaga.

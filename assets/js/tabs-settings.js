@@ -48,7 +48,7 @@
             <span><kbd>G</kbd> <kbd>O</kbd> Inicio</span>
             <span><kbd>G</kbd> <kbd>A</kbd> AI Picks</span>
             <span><kbd>G</kbd> <kbd>B</kbd> Builder</span>
-            <span><kbd>G</kbd> <kbd>S</kbd> BetSafe AI</span>
+            <span><kbd>G</kbd> <kbd>S</kbd> Coach IA</span>
             <span><kbd>G</kbd> <kbd>R</kbd> Arbitraje</span>
             <span><kbd>G</kbd> <kbd>T</kbd> Tracker</span>
             <span><kbd>/</kbd> Buscar</span>

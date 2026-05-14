@@ -1,5 +1,5 @@
 // BetSafe Service Worker — cache strategy: cache-first for assets, network-first for HTML/data
-const VERSION = 'betsafe-v5.2.2';   // FIX BUGS REPORTADOS: (1) BetSafe AI parser confundía "Liga Argentina" con "la-liga" — ahora forzado lpf si menciona Argentina. (2) Generator priorizaba h2h sobre analíticos → score boost +3 a analíticos. (3) Synthesis venía null → SYSTEM_PROMPT reducido y alineado con user prompt + recovery rescata synthesis del JSON truncado.
+const VERSION = 'betsafe-v5.3.0';   // RENAME pro: BetSafe AI→Coach IA, Generador IA→Quant IA + fix Arbitraje surebets descartadas + AI Picks layout vertical (no más letras verticales) + comparador centrado + brief del día timeout 60s + multi-leg por mismo partido (default 3) en Quant IA y AI Picks curated.
 const STATIC_CACHE = `${VERSION}-static`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 

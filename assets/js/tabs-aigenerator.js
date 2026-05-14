@@ -1,4 +1,4 @@
-/* BetSafe — Generador IA (sección VIP completa)
+/* BetSafe — Quant IA (sección VIP completa)
  * ────────────────────────────────────────────────────────────────────
  * Spec del usuario:
  *  • Elegir un deporte
@@ -16,8 +16,8 @@
     if (!BSAuth.isVip()) {
       panel.innerHTML = `
         <div class="card card-vip card-pad-lg stack reveal" style="text-align:center">
-          <span class="badge-vip" style="align-self:center">VIP · Generador IA Pro</span>
-          <h2 class="h3">Generador IA es exclusivo VIP</h2>
+          <span class="badge-vip" style="align-self:center">VIP · Quant IA Pro</span>
+          <h2 class="h3">Quant IA es exclusivo VIP</h2>
           <p class="muted" style="max-width:560px;margin:0 auto">
             El motor cuántico que genera combinadas óptimas del día con todos los mercados disponibles
             (goles, corners, tarjetas, hándicap, BTTS, doble oportunidad), seleccionando las 3 casas
@@ -47,7 +47,7 @@
     panel.innerHTML = `
       <header class="agx-hero reveal">
         <div class="agx-hero__main">
-          <span class="badge-vip agx-hero__chip">VIP · Generador IA</span>
+          <span class="badge-vip agx-hero__chip">VIP · Quant IA</span>
           <h2 class="agx-hero__title">Combinadas óptimas del día, armadas por la IA</h2>
           <p class="agx-hero__sub">Elegí tus casas, los mercados, el nivel de riesgo y la IA arma las combinadas — con la casa argentina que mejor paga cada una.</p>
         </div>

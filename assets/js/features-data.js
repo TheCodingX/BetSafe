@@ -25,7 +25,7 @@ window.FEATURES_DATA = [
       { name: '3 picks por partido (cons / equilibrado / agresivo)', tier: 'standard' },
       { name: 'Análisis táctico explicado en 3 párrafos', tier: 'standard', desc: 'Probabilístico, contexto, riesgo' },
       { name: 'Justificación con datos: forma, lesiones, value', tier: 'standard' },
-      { name: 'Generador IA de combinadas 2/3/4 legs', tier: 'standard' },
+      { name: 'Quant IA de combinadas 2/3/4 legs', tier: 'standard' },
       { name: 'Detección de correlación entre legs', tier: 'vip', desc: 'Evitá combinadas trampa' },
       { name: 'Modelo Poisson xG (1X2, BTTS, Over 2.5)', tier: 'vip' },
       { name: 'Matriz de resultados exactos', tier: 'vip', desc: 'Hasta 5 goles' },
