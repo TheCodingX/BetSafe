@@ -1,5 +1,5 @@
 // BetSafe Service Worker — cache strategy: cache-first for assets, network-first for HTML/data
-const VERSION = 'betsafe-v4.9.0';   // OVERHAUL EXTREMO: Generador IA bug-fix (.reveal global) + Arbitraje pulido (sin histórico, paginación, indicadores coherentes) + AI Picks rebuild a combinadas curadas (2-5 legs, IA decide) + logos AR corregidos (Gimnasia LP, Barcelona FC) + preloader premium
+const VERSION = 'betsafe-v4.9.1';   // PLAN A: prompt LLM expandido + AH boost en eq picks + cache clear endpoint + banner roadmap mercados
 const STATIC_CACHE = `${VERSION}-static`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 

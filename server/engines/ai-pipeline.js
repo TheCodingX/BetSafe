@@ -398,9 +398,45 @@ async function llmStructured(factors, poisson, elo) {
     rendimientoForma: elo,
     analisisCuotas: factors.quantitative
   });
-  const prompt = `Análisis institucional — generá 3 picks coherentes (cons/eq/agg) favoreciendo la MISMA dirección. agg = combinada multi-leg del mismo partido (h2h + over/under + BTTS), NO outcome contrario.
+  // ── Prompt PRO: tres picks coherentes + análisis profundo de TODOS los
+  // mercados disponibles (h2h, dc, totals, btts, ah). Forzamos consideración
+  // del hándicap asiático para encontrar valor estructural.
+  const availableMarkets = [];
+  if (factors.market?.h2h) availableMarkets.push('h2h (Ganador)');
+  if (factors.market?.dc) availableMarkets.push('dc (Doble Oportunidad)');
+  if (factors.market?.totals) availableMarkets.push('totals (Más/Menos goles)');
+  if (factors.market?.btts) availableMarkets.push('btts (Ambos marcan)');
+  if (factors.market?.ah) availableMarkets.push('ah (Hándicap Asiático)');
 
-IMPORTANTE: tu rationale debe leerse como un análisis profesional NATURAL. NO menciones "Poisson", "Elo", "Shin", "modelo cuantitativo", "ensemble" ni nombres técnicos de modelos. Hablá en términos que entiende cualquier apostador: "goles esperados", "forma reciente", "movimiento del mercado", "ventaja de local", "valor en el pick", etc.
+  const prompt = `Análisis cuantitativo SENIOR — generá 3 picks coherentes (cons/eq/agg) para este partido.
+
+CONTEXTO DEL MOTOR:
+- BetSafe usa SOLO las 6 casas oficiales argentinas (Betano, bplay, Codere, BetWarrior, Betsson, Casino Magic).
+- Mercados DISPONIBLES para este partido: ${availableMarkets.join(', ')}
+- TIER de la liga: ${tier >= 8 ? '1 (top mundial)' : tier >= 6 ? '2 (regional fuerte)' : tier >= 4 ? '3 (secundaria)' : '4 (menor)'}
+- Ventaja de local: ${homeAdv.toFixed(2)}
+
+REGLAS DE GENERACIÓN:
+1. cons (conservador): cuota MÁS BAJA + probabilidad ALTA. Usá doble oportunidad o ganador favorito sólido.
+2. eq (equilibrado): cuota MEDIA + EV positivo. Acá podés usar el favorito directo, AH leve (-0.5/-1), o totals con línea clara.
+3. agg (agresivo): combinada multi-leg del MISMO partido. Idealmente 2-3 legs correlacionadas POSITIVAMENTE (ej: favorito gana + over + BTTS yes si el partido pinta abierto).
+
+USO ESTRATÉGICO DEL HÁNDICAP ASIÁTICO (si disponible):
+- Cuando el favorito tiene >65% prob, AH -0.5 o -1 paga MEJOR cuota con riesgo similar.
+- Cuando el underdog tiene chance real (35-45%), AH +0.5 o +1 protege contra empate.
+- NO uses AH si las líneas están bien ajustadas (margen >5%).
+
+CONTEXTO + DATOS REALES:
+- Considera SIEMPRE: clima (impacto en goles), lesiones (severidad propia y rival),
+  forma reciente (últimos 5), historial H2H, movimientos sharp del mercado.
+- Si hay LESIÓN crítica del favorito → reduce confianza o cambia pick.
+- Si CLIMA adverso → ajusta totals hacia under.
+- Si HISTORIAL H2H muestra patrón claro (ej: empates frecuentes) → considéralo.
+
+LENGUAJE — IMPORTANTE:
+- Tu rationale debe sonar como análisis PROFESIONAL de un periodista deportivo.
+- NO menciones "Poisson", "Elo", "Shin", "modelo cuantitativo", "ensemble", "lambda", "xG explícito".
+- Habla naturalmente: "goles esperados según xG", "forma reciente sólida", "movimiento del mercado pro", "ventaja de local marcada", "valor real vs cuota implícita", "matchup favorable".
 
 Datos:
 ${userMsg}`;
@@ -869,10 +905,18 @@ function mergeSelections(event, factors, quant, poisson, elo, llm) {
     });
   }
 
-  // ── PASO 3b: EQUILIBRADO — h2h sobre el favorito ──
+  // ── PASO 3b: EQUILIBRADO — AH si valor mejor, sino h2h favorito ──
+  // BOOST de AH: cuando el favorito tiene >62% prob, el AH -0.5 paga mejor
+  // cuota con MISMO riesgo de victoria. Comparamos EV de h2h vs AH -0.5 y
+  // tomamos la de mayor EV. Esto explota mejor el mercado AH que estaba
+  // infrautilizado.
   if (favoredOdd) {
+    let eqPick = null;
+
+    // ── Candidato 1: h2h directo favorito ──
     const llmS = llmSelections['h2h:' + favored];
-    out.push({
+    const h2hEv = (favoredProb * favoredOdd - 1);
+    const h2hCandidate = {
       type: 'eq',
       market: 'h2h',
       outcome: favored,
@@ -888,11 +932,56 @@ function mergeSelections(event, factors, quant, poisson, elo, llm) {
       kellyHalf: quant.kellyHalf?.[favored === 'home' ? idxHome : favored === 'away' ? idxAway : idxDraw],
       rationale: llmS?.rationale || `Lectura del partido: ${favoredTeam} es el favorito claro. Nuestro análisis estima ${(favoredProb * 100).toFixed(0)}% de probabilidad real de victoria, contra el ${(100 / favoredOdd).toFixed(0)}% que implica la cuota del mercado. La diferencia entre ambos números define el edge sobre la casa: si el modelo es correcto, el value está acá.`,
       warnings: llmS?.warnings || [],
-      factors: buildFactorList({ outcome: favored }, factors)
-    });
+      factors: buildFactorList({ outcome: favored }, factors),
+      _ev: h2hEv
+    };
+    eqPick = h2hCandidate;
+
+    // ── Candidato 2: AH cuando favorito MUY claro (>62% prob) ──
+    // Si AH -0.5 o -1 tiene mejor EV → preferirlo. Probabilidad ajustada
+    // realistically: AH -0.5 cae ~10% del favoredProb, AH -1 cae ~22%.
+    if (favoredProb >= 0.62 && factors.market.ah && (favored === 'home' || favored === 'away')) {
+      const ahMap = factors.market.ah;
+      // Buscar la mejor línea (0.5 → 1 → 1.5)
+      const ahLines = Object.keys(ahMap).map(Number).filter(Number.isFinite).sort();
+      for (const line of ahLines) {
+        if (line < 0.5 || line > 2) continue;
+        const ahEntry = ahMap[line];
+        if (!ahEntry) continue;
+        const useHome = favored === 'home';
+        const ahOdd = useHome ? ahEntry.home_minus : ahEntry.away_minus;
+        const ahBook = useHome ? ahEntry.home_minusBook : ahEntry.away_minusBook;
+        if (!Number.isFinite(ahOdd) || ahOdd < 1.30) continue;
+        // Adjustment: AH -0.5 ~ 10% drop, AH -1 ~ 22%, AH -1.5 ~ 35%, AH -2 ~ 48%
+        const probAdj = line === 0.5 ? 0.90 : line === 1 ? 0.78 : line === 1.5 ? 0.65 : 0.52;
+        const ahProb = favoredProb * probAdj;
+        const ahEv = (ahProb * ahOdd - 1);
+        if (ahEv > h2hEv + 0.02) {  // AH gana solo si EV mejora >2%
+          eqPick = {
+            type: 'eq',
+            market: 'ah',
+            outcome: useHome ? 'home_minus' : 'away_minus',
+            line,
+            label: `${favoredTeam} hándicap -${line}`,
+            odd: ahOdd,
+            book: ahBook || favoredBook,
+            consensusProb: ahProb,
+            fairProb: ahProb,
+            confidence: Math.max(0.4, baseConfidence - 0.05),
+            rationale: `Pick equilibrado en hándicap asiático: ${favoredTeam} llega como favorito muy claro (${(favoredProb*100).toFixed(0)}% de victoria). El hándicap -${line} paga ${ahOdd} (vs ${favoredOdd} del ganador directo). Probabilidad ajustada de cubrir el hándicap: ${(ahProb*100).toFixed(0)}%. EV neto +${(ahEv*100).toFixed(1)}% vs +${(h2hEv*100).toFixed(1)}% del ganador directo — el hándicap explota mejor el favoritismo.`,
+            factors: buildFactorList({ outcome: favored }, factors),
+            _ev: ahEv,
+            _ahLine: line
+          };
+          break;  // tomamos la primera línea que mejora EV
+        }
+      }
+    }
+
+    out.push(eqPick);
     brierTracker.recordPrediction({
-      id: event?.id, sport: event?.sport, market: 'h2h', outcome_pick: favored, odd: favoredOdd,
-      preds: { consensus: favoredProb, poisson: favored === 'home' ? poisson.pHomeWin : favored === 'away' ? poisson.pAwayWin : poisson.pDraw }
+      id: event?.id, sport: event?.sport, market: eqPick.market, outcome_pick: eqPick.outcome, odd: eqPick.odd,
+      preds: { consensus: eqPick.consensusProb, poisson: favored === 'home' ? poisson.pHomeWin : favored === 'away' ? poisson.pAwayWin : poisson.pDraw }
     });
   }
 
@@ -1175,5 +1264,19 @@ function outcomeLabel(outcome, event) {
 analyzeMatch.clearCacheOffline = (eventId) => {
   if (eventId) cache.delete(eventId);
 };
+
+/* Limpia TODO el cache de análisis. Útil cuando el LLM cambia (ej: pasamos
+ * de free a paid) y queremos forzar re-análisis con la nueva calidad. */
+analyzeMatch.clearAllCache = () => {
+  const size = cache.size;
+  cache.clear();
+  return size;
+};
+
+/* Stats del cache (debug). */
+analyzeMatch.cacheStats = () => ({
+  size: cache.size,
+  max: cache.max
+});
 
 module.exports = { analyzeMatch, groqJsonGeneric, geminiJsonGeneric };

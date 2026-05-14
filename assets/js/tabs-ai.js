@@ -84,6 +84,26 @@
         </div>
       </div>
 
+      <!-- Roadmap: nuevos mercados próximamente -->
+      <details class="card card-tinted card-pad-sm mb-3" style="border-left:3px solid var(--brand-500);background:rgba(30,75,200,0.04)">
+        <summary style="cursor:pointer;display:flex;align-items:center;gap:8px;font-weight:600;font-size:.88rem">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          Mercados próximamente — la IA va a poder analizar mucho más
+        </summary>
+        <div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.06)">
+          <p class="tiny muted" style="margin-bottom:8px">Hoy la IA analiza <strong>ganador, doble oportunidad, más/menos goles, ambos marcan</strong> y <strong>hándicap asiático</strong> en las 6 casas oficiales argentinas. Próximos mercados en construcción:</p>
+          <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;font-size:.78rem">
+            <div style="display:flex;align-items:center;gap:6px"><span class="badge badge-warning tiny" style="padding:2px 6px">v5.0</span> Goleadores · Anota cualquier momento</div>
+            <div style="display:flex;align-items:center;gap:6px"><span class="badge badge-warning tiny" style="padding:2px 6px">v5.0</span> Córners totales / por equipo</div>
+            <div style="display:flex;align-items:center;gap:6px"><span class="badge badge-warning tiny" style="padding:2px 6px">v5.0</span> Tarjetas totales / por equipo</div>
+            <div style="display:flex;align-items:center;gap:6px"><span class="badge badge-warning tiny" style="padding:2px 6px">v5.1</span> Tiros / Remates por jugador</div>
+            <div style="display:flex;align-items:center;gap:6px"><span class="badge badge-warning tiny" style="padding:2px 6px">v5.1</span> Asistencias · Pases · Faltas</div>
+            <div style="display:flex;align-items:center;gap:6px"><span class="badge badge-warning tiny" style="padding:2px 6px">v5.1</span> Hándicap Europeo (3 vías)</div>
+          </div>
+          <p class="tiny muted" style="margin-top:8px;line-height:1.5">Cada nuevo mercado requiere scraping específico por casa (cada una expone los datos distinto). Lo armamos por fases para garantizar calidad — preferimos 5 mercados <em>perfectos</em> que 15 mediocres.</p>
+        </div>
+      </details>
+
       <div id="aiPicks" class="stack-md"></div>
     `;
   }

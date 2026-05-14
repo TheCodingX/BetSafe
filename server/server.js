@@ -338,6 +338,25 @@ app.get('/api/debug/scrape-now/:name', async (req, res) => {
 
 // Diagnóstico profundo: chequea por qué analyzeMatch cae a offline aunque
 // algún provider esté OK. Devuelve traza del cascade + payload sample.
+/* POST /api/debug/clear-ai-cache — Limpia LRU cache de analyzeMatch.
+ * Útil después de upgrade de provider (free → paid) para forzar re-análisis
+ * con la nueva calidad. */
+app.post('/api/debug/clear-ai-cache', express.json(), async (req, res) => {
+  if (process.env.DEBUG_KEY && req.body?.key !== process.env.DEBUG_KEY) {
+    // Sin DEBUG_KEY configurada, permitir libre. Con DEBUG_KEY, requiere coincidir.
+    if (process.env.DEBUG_KEY) return res.status(401).json({ error: 'unauthorized' });
+  }
+  try {
+    const cleared = typeof analyzeMatch.clearAllCache === 'function'
+      ? analyzeMatch.clearAllCache()
+      : 0;
+    log(`[admin] AI cache cleared (${cleared} entries)`);
+    res.json({ ok: true, cleared, message: `Cache de ${cleared} análisis limpiado. Próximas requests re-analizan con LLM actual.` });
+  } catch (e) {
+    res.status(500).json({ error: e?.message });
+  }
+});
+
 app.get('/api/debug/llm-trace', async (req, res) => {
   const out = { providers: {}, casks: [] };
   try {
