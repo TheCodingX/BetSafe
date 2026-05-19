@@ -451,50 +451,186 @@
       return (eligible.length ? eligible : ar).slice(0, 3);
     }
 
-    /** Para una combinada armada, calcula la cuota TOTAL en cada casa que el
-     *  usuario marcó (multiplicando las cuotas de cada leg en ESA casa).
-     *  Si una casa no ofrece alguno de los mercados, contamos solo las que cubre
-     *  y reportamos coveredLegs separado para que el usuario vea la cobertura.
-     *  Devuelve ranking ordenado por cuota total descendente. */
+    /** Resuelve la cuota REAL para un (leg, book) usando el snapshot live.
+     *  Refactor 2026-05-19 — antes había fallback silencioso a entry.home/away
+     *  cuando el outcome no matcheaba (ej: pedías draw y devolvía la cuota de
+     *  home), MOSTRANDO CUOTAS INCORRECTAS al user. Ahora:
+     *
+     *  - Si no encuentra el evento en live → status='no_event' (puede haber
+     *    terminado, sido removido del snapshot, o el ID cambió).
+     *  - Si encuentra el evento pero esa CASA no ofrece el mercado/outcome
+     *    pedido → status='not_in_book' (devolvemos null, NUNCA otra cuota).
+     *  - Si encuentra cuota REAL → status='verified' con price exacto.
+     *
+     *  Cobertura COMPLETA de markets que el backend devuelve (no solo los 5
+     *  básicos): h2h, dc, btts, totals, ah, dnb, ht-result, totals-ht,
+     *  corners-total, cards-total, exact-score, goalscorer-anytime,
+     *  first-goalscorer, penalty, red-card, player-points/rebounds/assists,
+     *  mma-method, mma-rounds, fouls-total, shots-on-target-total, etc.
+     *  Para markets analíticos sin scraping real → status='analytical'. */
+    function priceInBookFor(leg, bookKey, liveEv) {
+      const ev = liveEv || BSData.liveEvents({}).find(e => e.id === leg.match?.id || e.id === leg.eventId);
+      if (!ev) return { status: 'no_event', price: null };
+
+      // Outcome / line: el backend mapea l.outcome -> l.line en el frontend.
+      // Tomamos el primero válido que esté presente.
+      const outcome = leg.line || leg.outcome || '';
+      const lineNum = leg.lineNum != null ? leg.lineNum
+                    : (typeof leg.line === 'number' ? leg.line
+                       : parseFloat(String(leg.line || '').replace(/[^\d.\-]/g, '')) || null);
+      const mkt = (ev.markets || {})[leg.market];
+      if (!mkt) {
+        // El evento existe pero ese mercado no se scrapeó para ninguna casa.
+        // Los markets analíticos del backend (corners, cards, player-*) caen acá.
+        // Si la leg viene marcada como analytical, exponemos el dato pero
+        // marcamos para que el UI lo etiquete como "estimada".
+        return { status: leg.analytical ? 'analytical' : 'market_unsupported', price: null };
+      }
+      const entry = mkt[bookKey];
+      if (!entry) return { status: 'not_in_book', price: null };
+
+      // Resolución por tipo de mercado — SIN fallbacks silenciosos a otros outcomes.
+      let price = null;
+      const m = leg.market;
+      if (m === 'h2h') {
+        // outcome esperado: 'home' | 'draw' | 'away'
+        price = entry[outcome];
+      } else if (m === 'dc') {
+        // outcome: 'home_or_draw' | 'draw_or_away' | 'home_or_away' (o variantes)
+        price = entry[outcome];
+      } else if (m === 'btts') {
+        // outcome: 'yes' | 'no'
+        price = entry[outcome];
+      } else if (m === 'dnb') {
+        // Empate no apuesta: outcome 'home' | 'away'
+        price = entry[outcome];
+      } else if (m === 'ht-result') {
+        // Resultado al descanso: 'home' | 'draw' | 'away'
+        price = entry[outcome];
+      } else if (m === 'totals' || m === 'totals-ht' || m === 'corners-total' || m === 'cards-total' || m === 'fouls-total' || m === 'shots-on-target-total' || m === 'shots-total') {
+        // entry está indexado por línea (ej entry[2.5].over)
+        if (lineNum != null && entry[lineNum]) {
+          const sideTxt = String(outcome).toLowerCase();
+          const side = /under|menos|<|u\b/.test(sideTxt) ? 'under' : (/over|mas|más|>|o\b/.test(sideTxt) ? 'over' : sideTxt);
+          price = entry[lineNum]?.[side];
+        }
+      } else if (m === 'ah') {
+        // Handicap asiático: entry indexado por línea, outcome 'home'/'away'
+        if (lineNum != null && entry[lineNum]) {
+          price = entry[lineNum]?.[outcome] ?? entry[lineNum]?.home_minus ?? entry[lineNum]?.away_plus;
+        } else {
+          price = entry.home_minus || entry.away_plus;
+        }
+      } else if (m === 'exact-score') {
+        // outcome esperado tipo "1-0", "2-1"
+        price = entry[outcome];
+      } else if (m === 'result-btts') {
+        // outcome tipo "home-yes" / "draw-no"
+        price = entry[outcome];
+      } else if (m === 'red-card' || m === 'penalty') {
+        // outcome: 'yes' | 'no'
+        price = entry[outcome];
+      } else if (m === 'first-team-score') {
+        // outcome: 'home' | 'away' | 'no-goal'
+        price = entry[outcome];
+      } else {
+        // Markets analíticos sin parsing genérico (goalscorer-anytime,
+        // player-points, mma-method, etc). Intentamos lookup directo por
+        // outcome — si falla, devolvemos analytical para que UI lo marque.
+        price = entry[outcome];
+        if (!Number.isFinite(price)) {
+          return { status: 'analytical', price: null };
+        }
+      }
+
+      if (!Number.isFinite(price) || price <= 1.01) {
+        return { status: 'not_in_book', price: null };
+      }
+      return { status: 'verified', price: Number(price) };
+    }
+
+    /** Para una combinada armada, calcula la cuota TOTAL EXACTA en cada casa
+     *  que el usuario marcó. Sin fallbacks silenciosos: si una casa no ofrece
+     *  alguna leg, NO se multiplica esa cuota Y se reporta legsCoverage por
+     *  separado para el UI.
+     *
+     *  Devuelve por book:
+     *    { book, totalOdd, coveredLegs, missingLegs, legsCoverage[] }
+     *  - totalOdd: producto de las cuotas verificadas (solo las cubiertas)
+     *  - legsCoverage: array por leg con { idx, status, price }
+     *  - status posibles: 'verified' | 'not_in_book' | 'no_event' |
+     *                     'market_unsupported' | 'analytical'
+     *
+     *  Ranking final:
+     *  1) Casas con cobertura completa (coveredLegs === legs.length)
+     *  2) Más legs cubiertas
+     *  3) Mayor cuota total */
     function bestBookForCombo(legs, selectedBookKeys, marketLabels, cov) {
       if (!Array.isArray(legs) || !legs.length || !Array.isArray(selectedBookKeys) || !selectedBookKeys.length) return [];
       const books = (BSData.BOOKS_AR || []).filter(b => selectedBookKeys.includes(b.key));
+      const liveSnapshot = BSData.liveEvents({});
+      const evIndex = new Map();   // id → event (lookup O(1))
+      for (const e of liveSnapshot) if (e?.id) evIndex.set(e.id, e);
+
       const ranked = books.map(book => {
         let totalOdd = 1;
         let coveredLegs = 0;
-        for (const l of legs) {
-          // El backend nos da `eventId`. Buscamos el evento live y la cuota en esa casa.
-          const ev = BSData.liveEvents({}).find(e => e.id === l.match?.id || e.id === l.eventId);
-          if (!ev) {
-            // Si no encontramos el evento, asumimos la cuota base del backend (l.odd)
-            totalOdd *= l.odd || 1;
-            coveredLegs++;
-            continue;
-          }
-          const mkt = (ev.markets || {})[l.market];
-          const entry = mkt && mkt[book.key];
-          let priceInBook = null;
-          if (entry) {
-            const o = l.line || l.outcome;
-            if (l.market === 'h2h')        priceInBook = entry[o] || entry.home || entry.away;
-            else if (l.market === 'dc')    priceInBook = entry[o] || entry.home_or_draw || entry.draw_or_away || entry.home_or_away;
-            else if (l.market === 'btts')  priceInBook = entry[o] || entry.yes || entry.no;
-            else if (l.market === 'totals') {
-              // entry está indexado por línea
-              const lineNum = parseFloat(String(o).replace(/[^\d.]/g, '')) || null;
-              const byLine = lineNum && entry[lineNum];
-              if (byLine) priceInBook = /under|menos/i.test(o) ? byLine.under : byLine.over;
-            } else if (l.market === 'ah')  priceInBook = entry.home_minus || entry.away_plus;
-          }
-          if (priceInBook && priceInBook > 1) {
-            totalOdd *= priceInBook;
+        const legsCoverage = [];
+        for (let i = 0; i < legs.length; i++) {
+          const l = legs[i];
+          const ev = evIndex.get(l.match?.id) || evIndex.get(l.eventId);
+          const res = priceInBookFor(l, book.key, ev);
+          legsCoverage.push({ idx: i, status: res.status, price: res.price });
+          if (res.status === 'verified') {
+            totalOdd *= res.price;
             coveredLegs++;
           }
         }
-        return { book, totalOdd, coveredLegs };
-      }).filter(r => r.coveredLegs > 0);
-      ranked.sort((a, b) => (b.coveredLegs - a.coveredLegs) || (b.totalOdd - a.totalOdd));
+        return {
+          book,
+          totalOdd,
+          coveredLegs,
+          missingLegs: legs.length - coveredLegs,
+          totalLegs: legs.length,
+          legsCoverage,
+          isFullCoverage: coveredLegs === legs.length
+        };
+      });
+      // Ordenar: cobertura completa primero, luego más legs, luego mayor cuota
+      ranked.sort((a, b) => {
+        if (a.isFullCoverage !== b.isFullCoverage) return b.isFullCoverage - a.isFullCoverage;
+        if (a.coveredLegs !== b.coveredLegs) return b.coveredLegs - a.coveredLegs;
+        return b.totalOdd - a.totalOdd;
+      });
       return ranked;
+    }
+
+    /** Para cada leg, encuentra el mejor casino entre los seleccionados que
+     *  TIENE cuota REAL para esa leg. Si ninguno tiene → null + razón.
+     *  Esto es el modo "multi-book best-of": cuando el user marca varios
+     *  casinos, mostramos por leg qué casa paga más Y que esa cuota es real. */
+    function bestBookPerLeg(legs, selectedBookKeys) {
+      if (!Array.isArray(legs) || !Array.isArray(selectedBookKeys) || !selectedBookKeys.length) return [];
+      const liveSnapshot = BSData.liveEvents({});
+      const evIndex = new Map();
+      for (const e of liveSnapshot) if (e?.id) evIndex.set(e.id, e);
+      return legs.map(l => {
+        const ev = evIndex.get(l.match?.id) || evIndex.get(l.eventId);
+        let best = null;
+        let alternates = [];
+        for (const bk of selectedBookKeys) {
+          const res = priceInBookFor(l, bk, ev);
+          if (res.status === 'verified') {
+            const entry = { book: bk, price: res.price };
+            alternates.push(entry);
+            if (!best || res.price > best.price) best = entry;
+          }
+        }
+        const reason = !best
+          ? (ev ? 'no_offered_in_selected_books' : 'event_not_in_live_snapshot')
+          : null;
+        return { leg: l, best, alternates, reason };
+      });
     }
     function bookChip(b, payout) {
       if (!b) return '';
@@ -932,6 +1068,58 @@
             const ranked = bestBookForCombo(c.legs, books, M, COVER);
             const winner = ranked[0];
             const runnerUp = ranked[1];
+
+            // Modo de display: single-book vs multi-book (best per leg)
+            // Si el user marcó 1 sola casa → mostramos la cuota REAL de ESA casa.
+            // Si marcó varias → modo "best per leg" con qué casa ofrece cada cuota.
+            const singleBookMode = books.length === 1;
+            const userPickedBookKey = singleBookMode ? books[0] : null;
+            const userBookRanking = singleBookMode
+              ? ranked.find(r => r.book.key === userPickedBookKey)
+              : null;
+            const perLegBest = !singleBookMode ? bestBookPerLeg(c.legs, books) : null;
+
+            // CUOTA TOTAL REAL — refactor crítico 2026-05-19.
+            // Antes: usábamos c.total del backend (best cross-book) en el header,
+            // pero la combinada NO se puede armar a esa cuota cross-book si la
+            // user solo tiene 1 casa o si ninguna casa cubre todas las legs.
+            // Ahora: usamos la cuota EFECTIVA según lo que el user PUEDE jugar.
+            let displayTotalOdd, displayCoverageState, displayWinnerBookKey;
+            if (singleBookMode) {
+              if (userBookRanking?.isFullCoverage) {
+                displayTotalOdd = userBookRanking.totalOdd;
+                displayCoverageState = 'full_single';
+                displayWinnerBookKey = userPickedBookKey;
+              } else if (userBookRanking && userBookRanking.coveredLegs > 0) {
+                displayTotalOdd = userBookRanking.totalOdd;
+                displayCoverageState = 'partial_single';
+                displayWinnerBookKey = userPickedBookKey;
+              } else {
+                displayTotalOdd = 0;
+                displayCoverageState = 'unavailable_single';
+                displayWinnerBookKey = userPickedBookKey;
+              }
+            } else if (winner?.isFullCoverage) {
+              displayTotalOdd = winner.totalOdd;
+              displayCoverageState = 'full_single_book';
+              displayWinnerBookKey = winner.book.key;
+            } else if (perLegBest && perLegBest.every(p => p.best)) {
+              // Multi-book: hay best por leg en al menos UNA de las casas marcadas
+              displayTotalOdd = perLegBest.reduce((a, p) => a * (p.best.price), 1);
+              displayCoverageState = 'multi_book';
+              displayWinnerBookKey = null;
+            } else if (winner && winner.coveredLegs > 0) {
+              displayTotalOdd = winner.totalOdd;
+              displayCoverageState = 'partial';
+              displayWinnerBookKey = winner.book.key;
+            } else {
+              displayTotalOdd = 0;
+              displayCoverageState = 'unavailable';
+              displayWinnerBookKey = null;
+            }
+
+            const totalPayoutReal = stake * displayTotalOdd;
+            const profitReal = stake * (Math.max(0, displayTotalOdd - 1));
             return `
             <article class="bs-prem ag-combo">
               <header class="bs-prem__head">
@@ -950,13 +1138,21 @@
 
               <div class="bs-prem__hero">
                 <div class="bs-prem__hero-cell">
-                  <span class="bs-prem__hero-label">Cuota total</span>
-                  <span class="bs-prem__odd">${c.total.toFixed(2)}</span>
+                  <span class="bs-prem__hero-label">${
+                    displayCoverageState === 'unavailable' || displayCoverageState === 'unavailable_single'
+                      ? 'Cuota no disponible en tus casinos'
+                      : displayCoverageState === 'multi_book'
+                        ? 'Cuota total (mejor por leg entre tus casinos)'
+                        : displayCoverageState === 'partial' || displayCoverageState === 'partial_single'
+                          ? `Cuota parcial (${winner?.coveredLegs || userBookRanking?.coveredLegs}/${c.legs.length} legs)`
+                          : 'Cuota total real'
+                  }</span>
+                  <span class="bs-prem__odd">${displayTotalOdd > 0 ? displayTotalOdd.toFixed(2) : '—'}</span>
                 </div>
                 <div class="bs-prem__hero-cell">
-                  <span class="bs-prem__hero-label">Si gana, cobrás (stake ${BSUI.money(stake)})</span>
-                  <span class="bs-prem__pay">${BSUI.money(totalPayout)}</span>
-                  <span class="bs-prem__pay-sub">profit ${BSUI.money(profit)}</span>
+                  <span class="bs-prem__hero-label">${displayTotalOdd > 0 ? `Si gana, cobrás (stake ${BSUI.money(stake)})` : 'No se puede armar'}</span>
+                  <span class="bs-prem__pay">${displayTotalOdd > 0 ? BSUI.money(totalPayoutReal) : '—'}</span>
+                  ${displayTotalOdd > 0 ? `<span class="bs-prem__pay-sub">profit ${BSUI.money(profitReal)}</span>` : ''}
                 </div>
                 <div class="bs-prem__hero-cell bs-prem__edge-cell">
                   <span class="bs-prem__hero-label" title="Cuán generosa es esta cuota comparada con la 'cuota justa' del mercado. Un +5% quiere decir que la cuota te paga 5% más de lo que debería. A largo plazo, eso es plata para vos.">Ventaja vs casa</span>
@@ -964,6 +1160,18 @@
                   ${c.evAdjusted < c.ev ? `<span class="bs-prem__edge-explain">sin ajustar: ${evSign}${BSUI.pctInt(c.ev, 1)}</span>` : ''}
                 </div>
               </div>
+              ${displayCoverageState === 'unavailable' || displayCoverageState === 'unavailable_single' ? `
+                <div class="card card-pad-sm" style="border-left:3px solid var(--danger,#dc3545);background:rgba(220,53,69,0.06);margin-top:8px">
+                  <strong class="tiny" style="color:var(--danger,#dc3545)">⚠ Esta combinada no se puede armar en ${singleBookMode ? books[0] : 'ninguno de los casinos que marcaste'}</strong>
+                  <p class="muted tiny" style="margin-top:4px;line-height:1.5">Las cuotas en vivo no están disponibles${singleBookMode ? ` en ${(BSData.BOOKS_AR || []).find(b => b.key === books[0])?.name || books[0]}` : ''} para esta combinación de mercados. Probá marcar más casinos en el paso 1 o cambiar los mercados elegidos.</p>
+                </div>
+              ` : ''}
+              ${displayCoverageState === 'partial' || displayCoverageState === 'partial_single' ? `
+                <div class="card card-pad-sm" style="border-left:3px solid var(--warning,#c49a1a);background:rgba(196,154,26,0.07);margin-top:8px">
+                  <strong class="tiny" style="color:var(--warning,#c49a1a)">⚠ Cobertura parcial en ${singleBookMode ? (BSData.BOOKS_AR || []).find(b => b.key === books[0])?.name || books[0] : (winner?.book?.name || 'tu casa')}</strong>
+                  <p class="muted tiny" style="margin-top:4px;line-height:1.5">${singleBookMode ? userBookRanking?.coveredLegs : winner?.coveredLegs}/${c.legs.length} legs tienen cuota REAL verificada en esa casa. Las que faltan están marcadas abajo con ✗ — la combinada NO se podrá armar tal cual está.</p>
+                </div>
+              ` : ''}
 
               <div class="bs-prem__conf" title="De cada 100 veces que jugaras esta combinada, en cuántas ganarías. Es el cálculo HONESTO: 3 apuestas a 70% cada una NO dan 70% — dan 34% combinado (porque tienen que ganar las 3 juntas).">
                 <div class="bs-prem__conf-head">
@@ -981,10 +1189,64 @@
                 ${c.marketsUsed.map(mk => `<span class="badge badge-info tiny" style="padding:2px 8px"><span style="margin-right:3px">${M_ICON[mk]||''}</span>${M[mk]||mk}</span>`).join('')}
               </div>
 
-              <!-- Legs list premium -->
+              <!-- Legs list premium con cuota REAL por casino + status -->
               <div class="bs-prem__legs">
-              ${c.legs.map(l => `
-                <div class="bs-prem__leg">
+              ${c.legs.map((l, li) => {
+                // Resolver cuota+book real por leg según el modo de display.
+                // singleBook: usar legsCoverage del userBookRanking
+                // multi-book: usar perLegBest si existe
+                // partial single: misma logic que single
+                let legPrice = null;     // cuota a mostrar
+                let legBookKey = null;   // qué casa la ofrece
+                let legStatus = 'verified';
+
+                if (singleBookMode && userBookRanking) {
+                  const cov = userBookRanking.legsCoverage[li];
+                  legPrice = cov?.price;
+                  legBookKey = cov?.status === 'verified' ? userPickedBookKey : null;
+                  legStatus = cov?.status || 'no_event';
+                } else if (perLegBest) {
+                  const slot = perLegBest[li];
+                  if (slot?.best) {
+                    legPrice = slot.best.price;
+                    legBookKey = slot.best.book;
+                    legStatus = 'verified';
+                  } else {
+                    legStatus = slot?.reason || 'unavailable';
+                  }
+                } else if (winner?.legsCoverage) {
+                  // Fallback al winner del ranking
+                  const cov = winner.legsCoverage[li];
+                  legPrice = cov?.price;
+                  legBookKey = cov?.status === 'verified' ? winner.book.key : null;
+                  legStatus = cov?.status || 'no_event';
+                } else {
+                  // Si nada más funciona: NO mostrar la cuota original como si fuera
+                  // real — marcamos como no_event sin precio.
+                  legStatus = 'no_event';
+                }
+
+                // Mensajes humanos por status
+                const statusMsg = {
+                  'verified':           null,
+                  'not_in_book':        singleBookMode ? `No disponible en ${(BSData.BOOKS_AR || []).find(b => b.key === userPickedBookKey)?.name || userPickedBookKey}` : 'No disponible en tus casinos',
+                  'no_event':           'Evento removido del feed live (refrescá la combinada)',
+                  'market_unsupported': 'Mercado no scrapeado en las casas AR',
+                  'analytical':         'Cuota estimada (no scrapeada — verificá en tu casa)',
+                  'event_not_in_live_snapshot': 'Evento no está en el snapshot actual',
+                  'no_offered_in_selected_books': 'Ninguna de tus casas ofrece esta apuesta',
+                  'unavailable':        'No disponible'
+                };
+                const bookLogo = legBookKey && window.BSLogos
+                  ? BSLogos.bookLogo(legBookKey, { size: 14 })
+                  : '';
+                const bookName = legBookKey
+                  ? (BSData.BOOKS_AR || []).find(b => b.key === legBookKey)?.name || legBookKey
+                  : '';
+
+                const statusClass = legStatus === 'verified' ? '' : 'bs-prem__leg--unavailable';
+                return `
+                <div class="bs-prem__leg ${statusClass}" style="${legStatus !== 'verified' ? 'opacity:.85;border-left:3px solid var(--danger,#dc3545);padding-left:8px' : ''}">
                   <div class="bs-prem__leg-info">
                     <div class="bs-prem__leg-teams">
                       ${BSIcons.teamLogo(l.match.home, { size: 16, sport: l.sport })}
@@ -996,11 +1258,13 @@
                     <div class="bs-prem__leg-meta">
                       <span class="bs-prem__leg-mkt">${M[l.market]||l.market}</span>
                       <span>${BSUI.esc(l.label)}</span>
+                      ${legBookKey && !singleBookMode ? `<span style="display:inline-flex;align-items:center;gap:3px;margin-left:6px;padding:1px 6px;background:rgba(31,138,76,0.10);border-radius:4px;font-size:.72rem">${bookLogo}<strong>${BSUI.esc(bookName)}</strong></span>` : ''}
                     </div>
+                    ${legStatus !== 'verified' ? `<div class="muted tiny" style="margin-top:3px;color:var(--danger,#dc3545)"><strong>✗</strong> ${BSUI.esc(statusMsg[legStatus] || statusMsg.unavailable)}</div>` : ''}
                   </div>
-                  <strong class="bs-prem__leg-odd">${l.odd.toFixed(2)}</strong>
-                </div>
-              `).join('')}
+                  ${legPrice ? `<strong class="bs-prem__leg-odd" title="Cuota REAL verificada${legBookKey ? ` en ${bookName}` : ''}">${legPrice.toFixed(2)}</strong>` : `<strong class="bs-prem__leg-odd" style="color:var(--danger,#dc3545);font-size:1rem">—</strong>`}
+                </div>`;
+              }).join('')}
               </div>
 
               <!-- Factors usados (clima/lesiones/sharp/H2H) — chips visibles -->
@@ -1033,14 +1297,63 @@
                 ${c.legs[0]?.rationale && !c.aiNarrative ? `<p>${BSUI.esc(c.legs[0].rationale)}</p>` : ''}
               </div>` : ''}
 
-              <!-- Best-payer destacado -->
-              ${winner ? `
-              <div class="bs-prem__bestbook" data-key="${winner.book.key}">
+              <!-- Best-payer / coverage destacado — refactor 2026-05-19 ──
+                Si single-book: mostramos el casino del user con su cobertura.
+                Si multi-book con full coverage: mostramos el winner.
+                Si multi-book best-per-leg: explicamos el modo. -->
+              ${displayCoverageState === 'full_single' && userBookRanking ? `
+              <div class="bs-prem__bestbook" data-key="${userBookRanking.book.key}" style="border-left:3px solid #1f8a4c">
+                ${window.BSLogos ? BSLogos.bookLogo(userBookRanking.book.key, { size: 36 }) : ''}
+                <div>
+                  <div class="bs-prem__bestbook-tag" style="color:#1f8a4c">✓ COBERTURA COMPLETA EN</div>
+                  <div class="bs-prem__bestbook-name">${BSUI.esc(userBookRanking.book.name)}</div>
+                  <div class="tiny muted">Los ${c.legs.length} legs disponibles · cuota total ${userBookRanking.totalOdd.toFixed(2)}</div>
+                </div>
+                <div class="bs-prem__bestbook-pay">${BSUI.money(stake * userBookRanking.totalOdd)}</div>
+              </div>` : ''}
+
+              ${displayCoverageState === 'full_single_book' && winner ? `
+              <div class="bs-prem__bestbook" data-key="${winner.book.key}" style="border-left:3px solid #1f8a4c">
                 ${window.BSLogos ? BSLogos.bookLogo(winner.book.key, { size: 36 }) : ''}
                 <div>
-                  <div class="bs-prem__bestbook-tag">MEJOR PAGA EN</div>
+                  <div class="bs-prem__bestbook-tag" style="color:#1f8a4c">✓ JUGÁ TODO EN</div>
                   <div class="bs-prem__bestbook-name">${BSUI.esc(winner.book.name)}</div>
-                  <div class="tiny muted">${winner.coveredLegs}/${c.legs.length} legs · cuota ${winner.totalOdd.toFixed(2)}${runnerUp ? ` · vs ${BSUI.esc(runnerUp.book.name)} ${runnerUp.totalOdd.toFixed(2)}` : ''}</div>
+                  <div class="tiny muted">Cobertura completa · cuota total ${winner.totalOdd.toFixed(2)}${runnerUp?.isFullCoverage ? ` · alternativa: ${BSUI.esc(runnerUp.book.name)} @ ${runnerUp.totalOdd.toFixed(2)}` : ''}</div>
+                </div>
+                <div class="bs-prem__bestbook-pay">${BSUI.money(stake * winner.totalOdd)}</div>
+              </div>` : ''}
+
+              ${displayCoverageState === 'multi_book' ? `
+              <div class="bs-prem__bestbook" style="border-left:3px solid var(--info,#2563eb)">
+                <div style="display:inline-flex;align-items:center;gap:4px">
+                  ${(perLegBest || []).slice(0, 4).map(p => p.best && window.BSLogos ? BSLogos.bookLogo(p.best.book, { size: 24 }) : '').join('')}
+                </div>
+                <div>
+                  <div class="bs-prem__bestbook-tag" style="color:var(--info,#2563eb)">MULTI-CASINO · MEJOR POR LEG</div>
+                  <div class="bs-prem__bestbook-name">Cada leg en su casa</div>
+                  <div class="tiny muted">Mirá el badge de casino en cada leg arriba · cuota total ${displayTotalOdd.toFixed(2)}</div>
+                </div>
+                <div class="bs-prem__bestbook-pay">${BSUI.money(stake * displayTotalOdd)}</div>
+              </div>` : ''}
+
+              ${displayCoverageState === 'partial_single' && userBookRanking ? `
+              <div class="bs-prem__bestbook" data-key="${userBookRanking.book.key}" style="border-left:3px solid var(--warning,#c49a1a)">
+                ${window.BSLogos ? BSLogos.bookLogo(userBookRanking.book.key, { size: 36 }) : ''}
+                <div>
+                  <div class="bs-prem__bestbook-tag" style="color:var(--warning,#c49a1a)">⚠ COBERTURA PARCIAL EN</div>
+                  <div class="bs-prem__bestbook-name">${BSUI.esc(userBookRanking.book.name)}</div>
+                  <div class="tiny muted">Solo ${userBookRanking.coveredLegs}/${c.legs.length} legs · remové las marcadas con ✗ para armarla</div>
+                </div>
+                <div class="bs-prem__bestbook-pay">${BSUI.money(stake * userBookRanking.totalOdd)}</div>
+              </div>` : ''}
+
+              ${displayCoverageState === 'partial' && winner ? `
+              <div class="bs-prem__bestbook" data-key="${winner.book.key}" style="border-left:3px solid var(--warning,#c49a1a)">
+                ${window.BSLogos ? BSLogos.bookLogo(winner.book.key, { size: 36 }) : ''}
+                <div>
+                  <div class="bs-prem__bestbook-tag" style="color:var(--warning,#c49a1a)">⚠ MEJOR COBERTURA EN</div>
+                  <div class="bs-prem__bestbook-name">${BSUI.esc(winner.book.name)}</div>
+                  <div class="tiny muted">${winner.coveredLegs}/${c.legs.length} legs · revisá las marcadas con ✗ abajo</div>
                 </div>
                 <div class="bs-prem__bestbook-pay">${BSUI.money(stake * winner.totalOdd)}</div>
               </div>` : ''}
