@@ -26,12 +26,51 @@
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
+  // Map de páginas/secciones internas → nombre amigable que ve el usuario.
+  // El href del link sigue apuntando al .html real; solo cambia el texto visible.
+  const PAGE_LABELS = {
+    'index.html': 'Inicio',
+    'dashboard.html': 'Dashboard',
+    'dashboard.html#overview': 'Dashboard',
+    'dashboard.html#comparator': 'Comparador',
+    'dashboard.html#ai': 'Quant IA',
+    'dashboard.html#aigenerator': 'Coach IA',
+    'dashboard.html#arbitrage': 'Arbitraje',
+    'dashboard.html#builder': 'Builder',
+    'dashboard.html#calcpro': 'Calculadora Pro',
+    'dashboard.html#tracker': 'Tracker',
+    'dashboard.html#worldcup': 'Mundial 2026',
+    'dashboard.html#settings': 'Configuración',
+    'pricing.html': 'Precios',
+    'contacto.html': 'Contacto',
+    'features.html': 'Funciones',
+    'tools.html': 'Herramientas',
+    'learn.html': 'Academia',
+    'bonos.html': 'Bonos',
+    'responsable.html': 'Juego Responsable',
+    'terminos.html': 'Términos',
+    'privacidad.html': 'Privacidad',
+    'cookies.html': 'Cookies',
+    'login.html': 'Ingresar',
+    'signup.html': 'Crear cuenta',
+    'about.html': 'Nosotros'
+  };
+
+  function labelFor(href) {
+    const key = href.toLowerCase();
+    return PAGE_LABELS[key] || href.replace(/\.html(#.+)?$/, '');
+  }
+
   // Markdown mínimo: **bold**, `code`, líneas → <br>, enlaces .html relativos
+  // con nombre amigable (Precios, Contacto, Quant IA…) en lugar del filename.
   function fmt(text) {
     let s = esc(text);
     s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
     s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
-    s = s.replace(/\b([a-z0-9_-]+\.html(?:#[a-z0-9_-]+)?)\b/gi, '<a href="$1">$1</a>');
+    // Capturamos el .html (con hash opcional) y reemplazamos por <a> con label
+    s = s.replace(/\b([a-z0-9_-]+\.html(?:#[a-z0-9_-]+)?)\b/gi, (_, href) => {
+      return `<a href="${href}">${esc(labelFor(href))}</a>`;
+    });
     s = s.replace(/\n/g, '<br>');
     return s;
   }

@@ -1589,9 +1589,29 @@ ESTILO DE RESPUESTA:
 - Sin emojis salvo que el user los use primero.
 - Si la pregunta es ambigua, pedí una sola aclaración.
 - Si no sabés algo concreto del producto (precios exactos, tickets de soporte),
-  derivá a contacto.html en vez de inventar.
-- Links a páginas internas como references claras (ej: "Mirá pricing.html").
+  derivá a Contacto en vez de inventar.
 - Máximo ~120 palabras por respuesta salvo que el user pida detalle.
+
+REFERENCIAS A SECCIONES (REGLA CRÍTICA):
+NUNCA escribas el filename ".html" en la respuesta visible. Usá SIEMPRE el
+nombre amigable de la sección. El frontend los convierte en links automáticamente.
+
+Mapeo OBLIGATORIO (escribí solo el nombre, NO el .html):
+  Inicio · Dashboard · Comparador · Quant IA · Coach IA · Builder · Arbitraje ·
+  Calculadora Pro · Tracker · Mundial 2026 · Configuración · Precios · Contacto ·
+  Funciones · Herramientas · Academia · Bonos · Juego Responsable · Términos ·
+  Privacidad · Cookies · Ingresar · Crear cuenta · Nosotros.
+
+Ejemplos correctos:
+  ✓ "Lo encontrás en Precios."
+  ✓ "Escribinos desde Contacto y te respondemos."
+  ✓ "Probá Coach IA para armar combinadas."
+  ✓ "Mirá el Comparador para ver qué casino paga más."
+
+Ejemplos INCORRECTOS (NO HACER):
+  ✗ "Lo encontrás en pricing.html"
+  ✗ "Escribinos a contacto.html"
+  ✗ "Andá a dashboard.html#aigenerator"
 `;
 
 app.post('/api/support/ask', express.json({ limit: '32kb' }), async (req, res) => {

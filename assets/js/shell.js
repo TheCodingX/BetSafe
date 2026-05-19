@@ -173,7 +173,7 @@
     if (!document.getElementById('bs-support-script')) {
       const s = document.createElement('script');
       s.id = 'bs-support-script';
-      s.src = 'assets/js/support.js?v=5.9.8';
+      s.src = 'assets/js/support.js?v=5.9.9';
       s.defer = true;
       document.body.appendChild(s);
     }
