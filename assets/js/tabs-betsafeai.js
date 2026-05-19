@@ -330,11 +330,15 @@
     // pero no se muestra UI.
   }
 
-  async function buildCombo(panel, prompt) {
+  async function buildCombo(panel, prompt, opts = {}) {
     state.loading = true;
     state.error = null;
     state.lastPrompt = prompt;
     renderOutput(panel);
+
+    // forceInclude: array de eventIds para forzar la inclusión de partidos
+    // que la IA marcó como riesgosos (toque del botón "Agregar igualmente").
+    const forceInclude = Array.isArray(opts.forceInclude) ? opts.forceInclude : [];
 
     try {
       // 180s timeout — Gemini analiza 14-20 partidos + curador final
@@ -343,7 +347,7 @@
       const res = await fetch('/api/betsafe-ai/build', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt }),
+        body: JSON.stringify({ prompt, forceInclude }),
         signal: ctrl.signal
       });
       clearTimeout(timeoutId);
@@ -478,6 +482,95 @@
     bindComboActions(host, r);
   }
 
+  /* Render del panel "Tus partidos pedidos" — coherencia total entre el
+   * pedido del usuario y la combinada armada (refactor 2026-05-19).
+   *
+   * Para cada partido que el user mencionó explícitamente en el prompt,
+   * muestra status visual: ✓ incluido / ⚠ no apto (con botón "Agregar
+   * igualmente") / ✗ no existe en catálogo / ✗ error analítico.
+   *
+   * Reemplaza el warning genérico viejo que decía "no se encontraron picks
+   * con valor" mientras la combinada incluía OTROS partidos con esos teams. */
+  function renderSpecificMatchesPanel(r) {
+    if (!Array.isArray(r.specificMatchesStatus) || !r.specificMatchesStatus.length) return '';
+
+    const included      = r.specificMatchesStatus.filter(s => s.status === 'included');
+    const unfit         = r.specificMatchesStatus.filter(s => s.status === 'analyzed_unfit');
+    const notInCatalog  = r.specificMatchesStatus.filter(s => s.status === 'not_in_catalog');
+    const failed        = r.specificMatchesStatus.filter(s => s.status === 'analyzed_failed');
+
+    const rows = r.specificMatchesStatus.map(s => {
+      // Estilo visual por status
+      const config = {
+        'included':         { color: '#1f8a4c', bg: 'rgba(31,138,76,0.10)', icon: '✓', label: 'Incluido' },
+        'analyzed_unfit':   { color: '#c49a1a', bg: 'rgba(196,154,26,0.10)', icon: '⚠', label: 'No apto' },
+        'not_in_catalog':   { color: '#dc3545', bg: 'rgba(220,53,69,0.08)',  icon: '✗', label: 'No existe' },
+        'analyzed_failed':  { color: '#6b7280', bg: 'rgba(107,114,128,0.10)',icon: '⚠', label: 'Sin data' }
+      }[s.status] || { color: '#6b7280', bg: 'rgba(107,114,128,0.08)', icon: '?', label: '?' };
+
+      // Header del row: status + teams (si conocemos) + meta
+      let teamsHtml;
+      if (s.home && s.away) {
+        teamsHtml = `<strong>${BSUI.esc(s.home.name)}</strong> <span class="muted">vs</span> <strong>${BSUI.esc(s.away.name)}</strong>`;
+      } else {
+        teamsHtml = `<strong>${BSUI.esc(s.requested)}</strong>`;
+      }
+      const dateStr = s.start
+        ? new Date(s.start).toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+        : '';
+
+      // Para 'included': mostrar el mercado elegido
+      const legInfo = s.status === 'included'
+        ? `<div class="muted tiny" style="margin-top:4px"><strong style="color:${config.color}">${BSUI.esc(BSData.prettyMarket?.(s.legMarket) || s.legMarket || '')}:</strong> ${BSUI.esc(s.legLabel || '')} @ ${s.legOdd?.toFixed?.(2) || '—'}</div>`
+        : '';
+
+      // Para 'analyzed_unfit': mostrar análisis breve + botón
+      const analysisInfo = s.status === 'analyzed_unfit' && s.analysis
+        ? `<div class="muted tiny" style="margin-top:4px">Mejor pick análitico: <strong>${BSUI.esc(s.analysis.label || s.analysis.outcome || '')}</strong> @ ${s.analysis.odd?.toFixed?.(2) || '—'} · EV ${s.analysis.ev != null ? (s.analysis.ev > 0 ? '+' : '') + s.analysis.ev.toFixed(2) + '%' : '—'} · Confianza ${s.analysis.confidence != null ? Math.round(s.analysis.confidence * 100) + '%' : '—'}</div>`
+        : '';
+
+      const actionBtn = s.canForceInclude
+        ? `<button class="btn btn-outline btn-sm" data-force-include-event="${BSUI.esc(s.eventId)}" style="margin-top:8px;font-size:.78rem;padding:6px 12px">
+             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;vertical-align:-2px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+             Agregar partido igualmente
+           </button>
+           <div class="muted tiny" style="margin-top:4px;font-size:.72rem">Podés agregar igualmente este partido entendiendo los riesgos detectados por la IA.</div>`
+        : '';
+
+      return `
+        <div class="bsai-match-row" style="display:flex;gap:12px;padding:12px 14px;background:${config.bg};border-left:3px solid ${config.color};border-radius:8px;margin-bottom:8px;align-items:flex-start">
+          <span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:${config.color};color:#fff;font-weight:800;font-size:.86rem;flex-shrink:0">${config.icon}</span>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;flex-wrap:wrap">
+              <div style="font-size:.94rem;line-height:1.35">${teamsHtml}</div>
+              <span style="font-size:.66rem;font-weight:700;letter-spacing:.10em;text-transform:uppercase;color:${config.color};white-space:nowrap">${config.label}</span>
+            </div>
+            ${dateStr ? `<div class="muted tiny" style="margin-top:3px">${BSUI.esc(dateStr)}${s.leagueName ? ` · ${BSUI.esc(s.leagueName)}` : ''}</div>` : ''}
+            ${legInfo}
+            ${analysisInfo}
+            <p class="muted tiny" style="margin:6px 0 0;line-height:1.5">${BSUI.esc(s.message)}</p>
+            ${actionBtn}
+          </div>
+        </div>`;
+    }).join('');
+
+    // Resumen en header del panel
+    const counts = [];
+    if (included.length)     counts.push(`<span style="color:#1f8a4c"><strong>${included.length}</strong> incluido${included.length !== 1 ? 's' : ''}</span>`);
+    if (unfit.length)        counts.push(`<span style="color:#c49a1a"><strong>${unfit.length}</strong> no apto${unfit.length !== 1 ? 's' : ''}</span>`);
+    if (notInCatalog.length) counts.push(`<span style="color:#dc3545"><strong>${notInCatalog.length}</strong> no existe${notInCatalog.length !== 1 ? 'n' : ''}</span>`);
+    if (failed.length)       counts.push(`<span style="color:#6b7280"><strong>${failed.length}</strong> sin data</span>`);
+
+    return `
+      <section class="bsai-specific-matches" style="margin:0 0 16px;padding:14px 16px;background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:12px">
+        <header style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+          <strong style="font-size:.92rem;letter-spacing:-.008em">Partidos que pediste</strong>
+          <span class="muted tiny" style="font-size:.74rem">${counts.join(' · ')}</span>
+        </header>
+        ${rows}
+      </section>`;
+  }
+
   function renderCombo(r) {
     const stake = 10000;
     const totalPayout = stake * r.totalOdd;
@@ -523,6 +616,8 @@
             </div>
           </div>
         </header>
+
+        ${renderSpecificMatchesPanel(r)}
 
         ${r.narrative ? `
           <div class="bsai-narrative">
@@ -657,6 +752,33 @@
         if (!alts) return;
         alts.hidden = !alts.hidden;
         btn.classList.toggle('is-open', !alts.hidden);
+      });
+    });
+
+    // ── BOTÓN "Agregar partido igualmente" — coherencia con partidos pedidos ──
+    // Al tocarlo, re-llamamos al endpoint con forceInclude conteniendo el
+    // eventId del partido riesgoso. El backend lo agrega a la combinada y
+    // recalcula cuota total, EV, confianza y el resto de las legs.
+    // Acumula con cualquier otro forceInclude que ya hayamos aplicado en
+    // este resultado (para que el user pueda agregar varios sin perder los
+    // anteriores).
+    const panel = host.closest('.bsai-shell')?.parentElement || host.parentElement || host;
+    host.querySelectorAll('[data-force-include-event]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const evId = btn.dataset.forceIncludeEvent;
+        if (!evId) return;
+        // Acumular forceIncludes ya aplicados (eco del backend)
+        const prev = Array.isArray(r.forceIncludeApplied) ? r.forceIncludeApplied : [];
+        const next = [...new Set([...prev, evId])];
+        // Disable el botón inmediatamente para evitar doble click
+        btn.disabled = true;
+        btn.innerHTML = `<span class="muted">Recalculando combinada…</span>`;
+        BSUI.toast?.({
+          title: 'Agregando partido a la combinada',
+          message: 'Recalculo cuota total, EV y resto de legs…',
+          type: 'info'
+        });
+        buildCombo(panel, state.lastPrompt, { forceInclude: next });
       });
     });
     // Copy combo as text

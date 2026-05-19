@@ -2183,6 +2183,15 @@ app.post('/api/betsafe-ai/build', express.json(), async (req, res) => {
   const VALID_BOOKS = new Set(['bplay','betano','betwarrior','bet365ar','codere','betsson','casino-magic']);
   const lockedBook = VALID_BOOKS.has(preferredBook) ? preferredBook : null;
 
+  // forceInclude (NUEVO 2026-05-19): array de eventIds que el frontend pide
+  // forzar dentro de la combinada. Se usa cuando el user toca "Agregar
+  // partido igualmente" sobre un partido que la IA marcó como riesgoso
+  // (status: analyzed_but_unfit) en el panel de "partidos pedidos".
+  // El backend los inserta en enrichedLegs aún si su score no es óptimo.
+  const forceInclude = Array.isArray(req.body?.forceInclude)
+    ? req.body.forceInclude.map(String).filter(Boolean).slice(0, 5)
+    : [];
+
   if (!prompt) return res.status(400).json({ error: 'Necesitamos un prompt — escribí qué combinada querés' });
   if (prompt.length < 10) return res.status(400).json({ error: 'Prompt muy corto — explicanos qué combinada querés con un poco más de detalle' });
 
@@ -2570,23 +2579,93 @@ INSTRUCCIONES FINALES:
     log(`[betsafe-ai] excludeLeagues[${filters.excludeLeagues.join(',')}]: ${before} → ${candidates.length}`);
   }
 
-  // ── SPECIFIC MATCHES (force include / boost) ──
-  // Si user pidió "que incluya Boca vs River", marcamos esos eventos como PRIORITY=999
-  // para que SIEMPRE se elijan primero (siempre que tengan picks válidos).
+  // ── SPECIFIC MATCHES — búsqueda GLOBAL + coherencia status ────────────────
+  // Refactor 2026-05-19 (bug crítico de coherencia reportado):
+  //
+  // Antes: el matching solo buscaba dentro de `candidates` (post date+sport+
+  // league filter) por substring directo del nombre. Si el partido pedido
+  // existía pero estaba excluido por otros filtros (ej user pidió Boca vs
+  // Cruzeiro sin liga → el LLM marcó lpf, así Cruzeiro de Brasilerão se
+  // filtraba), o si el partido NO existía en absoluto, igual se mostraba
+  // un warning genérico "no se encontraron picks" mientras la combinada
+  // armada incluía OTROS partidos con Boca y Cruzeiro por separado.
+  //
+  // Ahora: hacemos búsqueda EXHAUSTIVA en TODO el catálogo (orchestrator
+  // sport=all, sin date filter), con team-name matching robusto usando
+  // normalizeTeam (alias + accent fold). Resultado: specificMatchEvents[req]
+  // = evento real | null. Esto alimenta:
+  //   1) re-injection de events en candidates (sobrepasa filtros para que
+  //      lleguen al pool análisis)
+  //   2) specificMatchesStatus[] que el frontend renderiza arriba con el
+  //      status REAL de cada partido pedido (incluido / no apto / no existe).
+  const specificMatchEvents = {};   // requested string → orchestrator event | null
   if (filters.specificMatches.length) {
-    const matchTerms = filters.specificMatches.map(s => s.toLowerCase());
-    candidates.forEach(e => {
-      const blob = `${e.home?.name || ''} vs ${e.away?.name || ''}`.toLowerCase();
-      if (matchTerms.some(t => {
-        // Soporta "Boca vs River" o solo "Boca"
-        const parts = t.split(/\s+vs?\s+/);
-        return parts.every(p => blob.includes(p.trim()));
-      })) {
-        e._coachSpecificMatch = true;
+    const allEventsGlobal = orchestrator.events({ sport: 'all' });
+    // Helper: dado un term "Boca Juniors vs Cruzeiro", buscar event que
+    // matchee ambos teams en cualquier orden, con normalizeTeam.
+    function findSpecificEvent(term) {
+      const lower = term.toLowerCase().trim();
+      const parts = lower.split(/\s+vs?\s+/).map(p => p.trim()).filter(Boolean);
+      if (!parts.length) return null;
+      // Caso A: "TeamA vs TeamB" → buscar event con ambos teams
+      if (parts.length >= 2) {
+        const idA = normalizeTeam(parts[0])?.id || '';
+        const idB = normalizeTeam(parts[1])?.id || '';
+        if (idA && idB) {
+          // Match estricto: ambos IDs deben matchear (cualquier orden)
+          let found = allEventsGlobal.find(e => {
+            const hId = normalizeTeam(e.home?.name || '')?.id || '';
+            const aId = normalizeTeam(e.away?.name || '')?.id || '';
+            return (hId === idA && aId === idB) || (hId === idB && aId === idA);
+          });
+          if (found) return found;
+          // Fallback: substring match sobre normalized names (cubre casos
+          // donde normalizeTeam genera ID distinto por sufijo raro)
+          const pA = parts[0].normalize('NFD').replace(/[̀-ͯ]/g, '');
+          const pB = parts[1].normalize('NFD').replace(/[̀-ͯ]/g, '');
+          found = allEventsGlobal.find(e => {
+            const h = (e.home?.name || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+            const a = (e.away?.name || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+            return (h.includes(pA) && a.includes(pB)) || (h.includes(pB) && a.includes(pA));
+          });
+          return found || null;
+        }
       }
-    });
-    const matched = candidates.filter(e => e._coachSpecificMatch).length;
-    log(`[betsafe-ai] specificMatches[${filters.specificMatches.join('|')}]: matched ${matched}/${candidates.length}`);
+      // Caso B: solo un team mencionado ("Boca") → primer event del calendario
+      // donde ese team juegue (preferimos el más próximo en tiempo)
+      const idSolo = normalizeTeam(parts[0])?.id || '';
+      const term0Norm = parts[0].normalize('NFD').replace(/[̀-ͯ]/g, '');
+      const matches = allEventsGlobal.filter(e => {
+        const hId = normalizeTeam(e.home?.name || '')?.id || '';
+        const aId = normalizeTeam(e.away?.name || '')?.id || '';
+        if (idSolo && (hId === idSolo || aId === idSolo)) return true;
+        const h = (e.home?.name || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+        const a = (e.away?.name || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+        return h.includes(term0Norm) || a.includes(term0Norm);
+      });
+      if (!matches.length) return null;
+      matches.sort((a, b) => (a.start || Infinity) - (b.start || Infinity));
+      return matches[0];
+    }
+    for (const term of filters.specificMatches) {
+      specificMatchEvents[term] = findSpecificEvent(term);
+    }
+    // Re-injectar los specificMatch events en candidates ANTES de continuar.
+    // Estos sobrepasan los filtros de fecha/liga/sport — son explícitamente
+    // pedidos por el user y deben tener PRIORIDAD ABSOLUTA según las nuevas
+    // reglas de Coach IA (2026-05-19).
+    const candidateIds = new Set(candidates.map(e => e.id));
+    for (const [term, ev] of Object.entries(specificMatchEvents)) {
+      if (!ev) continue;
+      ev._coachSpecificMatch = true;
+      ev._coachSpecificRequest = term;
+      if (!candidateIds.has(ev.id)) {
+        candidates.unshift(ev);
+        candidateIds.add(ev.id);
+      }
+    }
+    const realMatched = Object.values(specificMatchEvents).filter(Boolean).length;
+    log(`[betsafe-ai] specificMatches GLOBAL search: ${realMatched}/${filters.specificMatches.length} encontrados — re-injected en candidates`);
   }
   // ── Filtro de liga ROBUSTO ──
   // Antes, el slug 'lpf' no matcheaba leagueName "Liga Profesional de Fútbol"
@@ -2961,6 +3040,18 @@ INSTRUCCIONES FINALES:
     const usedEvents = new Set();      // event.id
     const usedMatches = new Set();     // start+home+away normalizado (anti cross-source dup)
     const marketCount = new Map();
+    // PRIORIDAD ABSOLUTA: si user pidió partidos específicos, esos van PRIMERO
+    // (siempre que el pool los haya analizado y devuelto picks). Lo único que
+    // los excluye es que analyzeMatch los haya rechazado por error técnico.
+    const specificPool = sortedPool.filter(p => p.event._coachSpecificMatch);
+    for (const p of specificPool) {
+      if (out.length >= maxLegs) break;
+      if (usedEvents.has(p.event.id) || usedMatches.has(_mkKey(p.event))) continue;
+      out.push(p);
+      usedEvents.add(p.event.id);
+      usedMatches.add(_mkKey(p.event));
+      marketCount.set(p.sel.market, (marketCount.get(p.sel.market) || 0) + 1);
+    }
     while (out.length < maxLegs) {
       // Re-rankear cada vez basado en lo que ya elegimos. Filtramos:
       //   - misma referencia
@@ -2988,6 +3079,61 @@ INSTRUCCIONES FINALES:
     return out;
   }
   let chosen = pickWithDiversity(filters.legs);
+
+  // ── FORCE INCLUDE — el user tocó "Agregar partido igualmente" ──────────────
+  // Si forceInclude trae eventIds, los buscamos en el pool y los EMPUJAMOS
+  // dentro de chosen, reemplazando legs de menor score si excedemos
+  // filters.legs. Si el evento NO está en el pool (analyzeMatch falló o
+  // analytical/book lock lo descartó), lo construimos sintéticamente con
+  // el mejor pick disponible del orchestrator directamente.
+  if (forceInclude.length) {
+    const chosenIds = new Set(chosen.map(c => c.event.id));
+    for (const evId of forceInclude) {
+      if (chosenIds.has(evId)) continue;
+      let poolEntry = pool.find(p => p.event.id === evId);
+      if (!poolEntry) {
+        // Buscar en analyzed (puede que esté ahí pero filtrado del pool por
+        // book lock o analytical). Tomar el mejor pick que tenga.
+        const a = analyzed.find(r => r.status === 'fulfilled' && r.value?.event?.id === evId);
+        if (a?.value?.selections?.length) {
+          const sel = a.value.selections.find(s => s && s.odd && s.book)
+                   || a.value.selections.find(s => s && s.odd)
+                   || a.value.selections[0];
+          if (sel) {
+            poolEntry = {
+              event: a.value.event,
+              factors: a.value.factors,
+              sel,
+              llmKey: a.value.llmKeyFactor,
+              llmSynth: a.value.llmSynthesis,
+              _forced: true
+            };
+          }
+        }
+      }
+      if (!poolEntry) {
+        log(`[betsafe-ai] forceInclude ${evId}: no se pudo construir leg (sin selections válidas)`);
+        continue;
+      }
+      poolEntry._forced = true;
+      if (chosen.length >= filters.legs) {
+        // Reemplazar el de menor score que NO sea otro forced/specific
+        let dropIdx = -1, dropScore = Infinity;
+        for (let i = 0; i < chosen.length; i++) {
+          const c = chosen[i];
+          if (c._forced || c.event._coachSpecificMatch) continue;
+          const s = legScore(c);
+          if (s < dropScore) { dropScore = s; dropIdx = i; }
+        }
+        if (dropIdx >= 0) chosen[dropIdx] = poolEntry;
+        else chosen.push(poolEntry);   // todas forced — extendemos
+      } else {
+        chosen.push(poolEntry);
+      }
+      chosenIds.add(evId);
+    }
+    log(`[betsafe-ai] forceInclude aplicado: ${forceInclude.length} eventIds → ${chosen.length} legs totales`);
+  }
 
   // ── ODD OPTIMIZATION: targetOdd OR minTotalOdd/maxTotalOdd ──
   // Si el user pidió un rango (10x-15x), el algoritmo busca el combo cuyo
@@ -3348,26 +3494,19 @@ INSTRUCCIONES FINALES:
       });
     }
   }
-  // 3d) specificMatches: verificar que TODOS los pedidos estén incluidos
-  if (filters.specificMatches.length) {
-    const matchesNotIncluded = [];
-    for (const wanted of filters.specificMatches) {
-      const wantedLower = wanted.toLowerCase();
-      const parts = wantedLower.split(/\s+vs?\s+/);
-      const found = enrichedLegs.some(l => {
-        const blob = `${l.home?.name || ''} vs ${l.away?.name || ''}`.toLowerCase();
-        return parts.every(p => blob.includes(p.trim()));
-      });
-      if (!found) matchesNotIncluded.push(wanted);
-    }
-    if (matchesNotIncluded.length) {
-      validationIssues.push({
-        type: 'specific-match-missing',
-        critical: true,
-        message: `Pediste específicamente: ${matchesNotIncluded.join(', ')}. NO se encontraron picks con valor en esos partidos (puede que no haya en nuestras casas o ya hayan empezado).`
-      });
-    }
-  }
+  // 3d) specificMatches: el sistema COHERENTE de tracking de partidos pedidos.
+  //
+  // Refactor 2026-05-19: en lugar de un warning genérico crítico que
+  // CONTRADECÍA la combinada (decía "no se encontró Boca vs Cruzeiro"
+  // pero la combinada incluía OTROS partidos con Boca y Cruzeiro por
+  // separado), ahora generamos un specificMatchesStatus array con el
+  // estado REAL de cada partido pedido. El frontend lo renderiza arriba
+  // como panel dedicado, con botón "Agregar igualmente" para los que
+  // existen pero fueron descartados por análisis. NO se agrega
+  // validationIssue acá — la UI dedicada es más clara y honesta.
+  //
+  // Esto cubre la regla principal de coherencia: la IA jamás puede
+  // contradecirse — el mensaje debe reflejar exactamente lo que hizo.
   // 4) markets: verificar que todas las legs usen los mercados pedidos
   if (filters.markets.length) {
     const wrongMarkets = enrichedLegs.filter(l => !filters.markets.includes(l.market));
@@ -3752,6 +3891,7 @@ REGLAS ABSOLUTAS (incumplir = FAIL):
 4. Si TODOS los filtros se cumplen sin advertencias, podés decirlo (sé natural).
 5. USÁ los FACTORES que te paso por leg (lesiones, alineaciones, forma, xG, H2H, clima) — son data REAL del partido. Mencioná los más relevantes.
 6. NO inventes lesiones ni datos. Si te paso "lesiones: 60%", podés decir "Liverpool tiene bajas importantes". Si NO te paso lesiones, NO digas "no hay lesiones".
+7. COHERENCIA TOTAL: SOLO podés mencionar partidos que estén en la lista COMBINADA FINAL abajo. NUNCA menciones partidos que el user pidió pero NO están en la combinada — eso ya lo maneja el panel "Partidos que pediste" del frontend. Si decís "incluí X vs Y", X vs Y DEBE estar en la combinada final. Decir lo contrario = bug crítico de coherencia.
 
 JSON estricto: { "narrative": "<párrafo 100-150 palabras>", "headline": "<frase corta atractiva sin números falsos>" }`;
   const narrativePrompt = `El usuario pidió: "${filters.userIntent}"
@@ -3774,6 +3914,103 @@ Explicá honestamente: si NO cumple algo del pedido (advertencias), decilo claro
     if (r.result) { narrative = r.result; aiProvider = r.provider; }
   } catch (e) { log(`[betsafe-ai narrative] ${e?.message?.slice(0, 80)}`); }
 
+  // ── SPECIFIC MATCHES STATUS — fuente única de verdad para el panel del UI ──
+  // Por cada partido pedido por el user, determinamos su estado FINAL:
+  //   - 'included':      el partido está en enrichedLegs (lo agregamos).
+  //   - 'analyzed_unfit': el partido EXISTE y fue ANALIZADO, pero no entró
+  //                       a la combinada por análisis adverso (low score,
+  //                       book lock excluyó la sel, etc). canForceInclude=true.
+  //   - 'analyzed_failed': el partido existe pero analyzeMatch falló (sin
+  //                        selections válidas). canForceInclude=false.
+  //   - 'not_in_catalog': el partido no existe en orchestrator.events()
+  //                       (no está en el calendario actual). canForceInclude=false.
+  const specificMatchesStatus = (filters.specificMatches || []).map(requested => {
+    const ev = specificMatchEvents[requested];
+    if (!ev) {
+      return {
+        requested,
+        status: 'not_in_catalog',
+        canForceInclude: false,
+        message: `No encontré "${requested}" en el calendario actual. Puede no estar programado o no estar en ninguna de las 6 casas legales argentinas.`
+      };
+    }
+    const inLegs = enrichedLegs.find(l => l.eventId === ev.id);
+    if (inLegs) {
+      return {
+        requested,
+        status: 'included',
+        canForceInclude: false,
+        eventId: ev.id,
+        home: { id: ev.home?.id, name: ev.home?.name },
+        away: { id: ev.away?.id, name: ev.away?.name },
+        start: ev.start,
+        leagueName: ev.leagueName || ev.league,
+        sport: ev.sport,
+        legMarket: inLegs.market,
+        legLabel: inLegs.label,
+        legOdd: inLegs.odd,
+        message: `Incluí ${ev.home?.name} vs ${ev.away?.name} en la combinada con el mercado más efectivo según el análisis.`
+      };
+    }
+    // Buscar info de análisis aunque no haya entrado
+    const analyzedR = analyzed.find(r => r.status === 'fulfilled' && r.value?.event?.id === ev.id);
+    const inPool = pool.some(p => p.event.id === ev.id);
+    if (analyzedR?.value?.selections?.length) {
+      const bestSel = analyzedR.value.selections
+        .filter(s => s && s.odd)
+        .sort((a, b) => (b.consensusEv || 0) - (a.consensusEv || 0))[0];
+      const ev_pct = bestSel?.consensusEv != null ? bestSel.consensusEv.toFixed(2) : null;
+      const conf = bestSel?.confidence != null ? Math.round(bestSel.confidence * 100) : null;
+      // Razón humana de por qué no entró
+      let reason;
+      if (!inPool) {
+        reason = bestSel?.analytical
+          ? `el mejor pick es analítico (no hay cuota REAL en las casas argentinas)`
+          : `el book seleccionado no tiene cuotas para este partido`;
+      } else {
+        reason = ev_pct != null && Number(ev_pct) < 0
+          ? `valor esperado negativo (EV ${ev_pct}%)`
+          : (conf != null && conf < 40
+              ? `confianza estadística baja (${conf}%)`
+              : `volatilidad o score insuficiente para entrar al top ${filters.legs}`);
+      }
+      return {
+        requested,
+        status: 'analyzed_unfit',
+        canForceInclude: true,
+        eventId: ev.id,
+        home: { id: ev.home?.id, name: ev.home?.name },
+        away: { id: ev.away?.id, name: ev.away?.name },
+        start: ev.start,
+        leagueName: ev.leagueName || ev.league,
+        sport: ev.sport,
+        analysis: bestSel ? {
+          market: bestSel.market,
+          outcome: bestSel.outcome,
+          label: bestSel.label,
+          odd: bestSel.odd,
+          book: bestSel.book,
+          ev: bestSel.consensusEv,
+          confidence: bestSel.confidence
+        } : null,
+        message: `Analicé ${ev.home?.name} vs ${ev.away?.name} pero ${reason}. Podés agregarlo igualmente — entenderás que el análisis no lo recomienda.`
+      };
+    }
+    // analyzeMatch falló o no devolvió selections
+    return {
+      requested,
+      status: 'analyzed_failed',
+      canForceInclude: false,
+      eventId: ev.id,
+      home: { id: ev.home?.id, name: ev.home?.name },
+      away: { id: ev.away?.id, name: ev.away?.name },
+      start: ev.start,
+      leagueName: ev.leagueName || ev.league,
+      sport: ev.sport,
+      message: `${ev.home?.name} vs ${ev.away?.name} existe en el calendario pero el motor no pudo procesar los mercados (data incompleta de las casas). Refrescá en unos minutos.`
+    };
+  });
+
   res.json({
     ok: true,
     filters,
@@ -3790,7 +4027,12 @@ Explicá honestamente: si NO cumple algo del pedido (advertencias), decilo claro
     validationIssues,                        // array de discrepancias entre filtros y resultado
     // SOLO true si NINGUNA issue critical (banner verde "✓ respetando todos los filtros"
     // solo aparece cuando es VERDAD). Issues no-critical (warnings) sí permiten OK.
-    filtersFullyRespected: criticalIssues.length === 0
+    filtersFullyRespected: criticalIssues.length === 0,
+    // NUEVO 2026-05-19: estado COHERENTE de cada partido pedido específicamente
+    // por el user. El frontend renderiza un panel dedicado arriba con esto.
+    specificMatchesStatus,
+    // Eco del forceInclude aplicado (para que el frontend sepa qué se agregó)
+    forceIncludeApplied: forceInclude
   });
 });
 
