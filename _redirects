@@ -1,0 +1,6 @@
+/app           /dashboard.html   200
+/app/*         /dashboard.html   200
+/responsable   /responsable.html 200
+/terminos      /terminos.html    200
+/privacidad    /privacidad.html  200
+/cookies       /cookies.html     200

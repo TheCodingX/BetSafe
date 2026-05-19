@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="es-AR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Dashboard — BetSafe</title>
+<meta name="description" content="Tu análisis profesional: comparador, builder, IA, banca, arbitraje, Mundial 2026." />
+<meta name="theme-color" content="#ffffff" />
+<meta name="robots" content="noindex" />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="icon" href="assets/img/icon-192.svg" type="image/svg+xml" />
+<link rel="stylesheet" href="assets/css/main.css?v=5.7.0" />
+<!-- Premium initial loader inline para que aparezca antes de cualquier JS.
+     Se oculta automáticamente cuando BSLive snapshot está listo + logos cargaron. -->
+<style id="bs-preloader-styles">
+  html.bs-preloading body { overflow: hidden; }
+  #bs-preloader {
+    position: fixed; inset: 0;
+    background: radial-gradient(ellipse at center, #112147 0%, #0a1530 55%, #050a1e 100%);
+    z-index: 99999;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 20px;
+    transition: opacity .55s cubic-bezier(.4,0,.2,1);
+    font-family: -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif;
+    color: rgba(255,255,255,0.92);
+  }
+  #bs-preloader.is-hidden { opacity: 0; pointer-events: none; }
+  .bs-preloader__mark {
+    width: 84px; height: 84px;
+    position: relative;
+    animation: bs-mark-pulse 2.4s ease-in-out infinite;
+  }
+  .bs-preloader__mark svg { width: 100%; height: 100%; display: block; }
+  @keyframes bs-mark-pulse {
+    0%, 100% { transform: scale(1); filter: drop-shadow(0 4px 22px rgba(196,154,26,.32)); }
+    50% { transform: scale(1.05); filter: drop-shadow(0 6px 32px rgba(196,154,26,.52)); }
+  }
+  .bs-preloader__brand {
+    font-size: 1.35rem; font-weight: 800; letter-spacing: -.02em;
+    display: flex; gap: 2px;
+  }
+  .bs-preloader__brand .bet { color: #ffffff; }
+  .bs-preloader__brand .safe { color: #ffd76b; }
+  .bs-preloader__bar {
+    width: 220px; height: 3px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 3px; overflow: hidden;
+    position: relative;
+  }
+  .bs-preloader__bar::after {
+    content: '';
+    position: absolute; left: -40%; top: 0; bottom: 0; width: 40%;
+    background: linear-gradient(90deg, transparent, rgba(255,215,107,0.85), transparent);
+    animation: bs-bar-sweep 1.4s cubic-bezier(.4,0,.2,1) infinite;
+  }
+  @keyframes bs-bar-sweep {
+    0% { left: -40%; }
+    100% { left: 100%; }
+  }
+  .bs-preloader__hint {
+    font-size: .78rem; color: rgba(255,255,255,0.55);
+    letter-spacing: .03em; text-transform: uppercase;
+    transition: opacity .3s ease;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .bs-preloader__mark { animation: none; }
+    .bs-preloader__bar::after { animation: none; left: 0; width: 100%; opacity: .3; }
+  }
+</style>
+<script>
+  // CLEANUP DEFENSIVO (2026-05-17): borrar localStorage del selector de casino
+  // del Coach IA. Causaba que la elección quedara pegada entre sesiones y el
+  // user filtrara por una casa sin darse cuenta. Esto se ejecuta antes que
+  // cualquier otro JS — garantiza estado limpio al cargar el dashboard.
+  try { localStorage.removeItem('bsai_preferred_book'); } catch {}
+</script>
+<script>
+  document.documentElement.classList.add('bs-preloading');
+  (function () {
+    // Estrategia "esperar a tener data real":
+    //   - Hard cap 15s: si después de 15s no llegó el snapshot, ocultamos
+    //     igual para no dejar al usuario pegado
+    //   - El loader se oculta CUANDO el primer snapshot del backend está OK
+    //     (bs:live-ready) — no antes, para evitar el flash de "data vacía"
+    //     que el usuario reportó como "IA en espera en todos lados"
+    //   - minShowMs 600ms para que el preloader sea perceptible
+    var maxWaitMs = 15000;
+    var minShowMs = 600;
+    var startedAt = Date.now();
+    var hidden = false;
+    function hide(reason) {
+      if (hidden) return;
+      hidden = true;
+      var loader = document.getElementById('bs-preloader');
+      if (!loader) return;
+      var elapsed = Date.now() - startedAt;
+      var wait = Math.max(0, minShowMs - elapsed);
+      setTimeout(function () {
+        loader.classList.add('is-hidden');
+        document.documentElement.classList.remove('bs-preloading');
+        setTimeout(function () { loader && loader.parentNode && loader.parentNode.removeChild(loader); }, 600);
+      }, wait);
+    }
+    // Hard cap (15s): si algo se cuelga el loader sale igual
+    setTimeout(function () { hide('timeout'); }, maxWaitMs);
+    // PRIMARY: ocultamos cuando el snapshot del backend está listo
+    window.addEventListener('bs:live-ready', function () { hide('live-ready'); }, { once: true });
+    // Actualizar hint mientras esperamos para dar feedback de progreso
+    var hint = null;
+    setTimeout(function () {
+      hint = document.querySelector('.bs-preloader__hint');
+      if (hint && !hidden) hint.textContent = 'Trayendo cuotas de las 6 casas argentinas…';
+    }, 2000);
+    setTimeout(function () {
+      if (hint && !hidden) hint.textContent = 'Analizando partidos con IA…';
+    }, 6000);
+    setTimeout(function () {
+      if (hint && !hidden) hint.textContent = 'Casi listo, armando picks del día…';
+    }, 10000);
+  })();
+</script>
+</head>
+<body class="has-bottom-nav">
+
+<!-- Premium initial loader -->
+<div id="bs-preloader" aria-hidden="true" aria-busy="true">
+  <div class="bs-preloader__mark">
+    <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <radialGradient id="bs-pre-glow" cx="50%" cy="18%" r="75%">
+          <stop offset="0%" stop-color="rgba(255,215,107,.40)"/>
+          <stop offset="100%" stop-color="rgba(255,215,107,0)"/>
+        </radialGradient>
+      </defs>
+      <ellipse cx="32" cy="36" rx="26" ry="30" fill="url(#bs-pre-glow)"/>
+      <path d="M32 4 L57 13 L57 36 C57 50 44 59 32 63 C20 59 7 50 7 36 L7 13 Z"
+            fill="rgba(255,215,107,.08)" stroke="#ffd76b" stroke-width="3.5" stroke-linejoin="round"/>
+      <path d="M17 37 L27 50" fill="none" stroke="#ffffff" stroke-width="5.8"
+            stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M27 50 L47 24" fill="none" stroke="#ffd76b" stroke-width="5.8"
+            stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </div>
+  <div class="bs-preloader__brand"><span class="bet">Bet</span><span class="safe">Safe</span></div>
+  <div class="bs-preloader__bar"></div>
+  <div class="bs-preloader__hint">Preparando tu análisis</div>
+</div>
+
+<div data-shell-header></div>
+
+<main id="main" class="app-shell">
+  <aside class="sidebar" aria-label="Navegación de dashboard">
+    <nav id="sideNav" class="stack-sm"></nav>
+    <div class="sidebar-vip-card" id="upgradeCard" hidden>
+      <div class="sidebar-vip-card__head">
+        <span class="badge-vip">VIP Gold</span>
+      </div>
+      <h4 class="h4 sidebar-vip-card__title">Hacete VIP</h4>
+      <ul class="sidebar-vip-card__feats">
+        <li><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Comparador avanzado</li>
+        <li><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Arbitraje en tiempo real</li>
+        <li><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Quant IA premium</li>
+        <li><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Mundial 2026 exclusivo</li>
+      </ul>
+      <a href="pricing.html" class="btn btn-gold btn-sm btn-block">Ver planes</a>
+    </div>
+  </aside>
+
+  <section class="app-main">
+    <!-- Tab panels injected by JS -->
+    <div id="tabHost"></div>
+  </section>
+</main>
+
+<!-- Mobile bottom nav — coincide con los 5 tabs primarios -->
+<nav class="bottom-nav" aria-label="Navegación rápida">
+  <a href="#overview" data-tab-link="overview" class="active" aria-label="Inicio">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8v10a2 2 0 0 1-2 2h-4v-6h-6v6H5a2 2 0 0 1-2-2V11z"/></svg>
+    <span>Inicio</span>
+  </a>
+  <a href="#betsafeai" data-tab-link="betsafeai" class="bottom-nav-flagship" aria-label="Coach IA — combinadas por voz">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.5 5.5L19 10l-5.5 1.5L12 17l-1.5-5.5L5 10l5.5-1.5L12 3z"/><path d="M19 14l.8 2.7L22 17.5l-2.2.8L19 21l-.8-2.7L16 17.5l2.2-.8L19 14z"/></svg>
+    <span>Coach IA</span>
+  </a>
+  <a href="#ai" data-tab-link="ai" aria-label="AI Picks">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+    <span>AI Picks</span>
+  </a>
+  <a href="#arbitrage" data-tab-link="arbitrage" aria-label="Arbitraje">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h10l-3-3M17 17H7l3 3M3 12h18"/></svg>
+    <span>Arb</span>
+  </a>
+  <button type="button" class="bottom-nav-more" data-bottom-more aria-label="Más herramientas">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
+    <span>Más</span>
+  </button>
+</nav>
+
+<!-- Slip bar (persistent) -->
+<div id="slipHost"></div>
+
+<div data-shell-footer></div>
+
+<script src="assets/js/env.js?v=5.7.0"></script>
+<script src="assets/js/live.js?v=5.7.0"></script>
+<script src="assets/js/data.js?v=5.7.0"></script>
+<script src="assets/js/logos.js?v=5.7.0"></script>
+<script src="assets/js/icons.js?v=5.7.0"></script>
+<script src="assets/js/engine.js?v=5.7.0"></script>
+<script src="assets/js/store.js?v=5.7.0"></script>
+<script src="assets/js/supabase-client.js?v=5.7.0"></script>
+<script src="assets/js/auth.js?v=5.7.0"></script>
+<script src="assets/js/api.js?v=5.7.0"></script>
+<script src="assets/js/math.js?v=5.7.0"></script>
+<script src="assets/js/ui.js?v=5.7.0"></script>
+<script src="assets/js/shell.js?v=5.7.0"></script>
+<script src="assets/js/app.js?v=5.7.0"></script>
+<script src="assets/js/onboarding.js?v=5.7.0"></script>
+<script src="assets/js/dashboard.js?v=5.7.0"></script>
+<script src="assets/js/tabs-overview.js?v=5.7.0"></script>
+<script src="assets/js/tabs-builder.js?v=5.7.0"></script>
+<script src="assets/js/tabs-ai.js?v=5.7.0"></script>
+<script src="assets/js/tabs-aigenerator.js?v=5.7.0"></script>
+<script src="assets/js/tabs-betsafeai.js?v=5.7.0"></script>
+<script src="assets/js/tabs-simulator.js?v=5.7.0"></script>
+<script src="assets/js/tabs-comparator.js?v=5.7.0"></script>
+<script src="assets/js/tabs-calc.js?v=5.7.0"></script>
+<script src="assets/js/tabs-calcpro.js?v=5.7.0"></script>
+<script src="assets/js/tabs-arbitrage.js?v=5.7.0"></script>
+<script src="assets/js/tabs-smartmoney.js?v=5.7.0"></script>
+<script src="assets/js/tabs-whatif.js?v=5.7.0"></script>
+<script src="assets/js/tabs-worldcup.js?v=5.7.0"></script>
+<script src="assets/js/tabs-tracker.js?v=5.7.0"></script>
+<script src="assets/js/tabs-settings.js?v=5.7.0"></script>
+</body>
+</html>

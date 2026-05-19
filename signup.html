@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="es-AR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Crear cuenta — BetSafe</title>
+<meta name="description" content="Crear cuenta en BetSafe. Verificación +18, multi-step." />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="icon" href="assets/img/icon-192.svg" type="image/svg+xml" />
+<link rel="stylesheet" href="assets/css/main.css?v=5.7.0" />
+</head>
+<body>
+<div data-shell-header></div>
+<main id="main" class="container section" style="display:grid;place-items:center;min-height:calc(100dvh - 200px)">
+  <div class="card card-pad-lg" style="width:min(560px, 96vw)">
+    <div class="seg mb-3" id="suSeg">
+      <span class="active">1 · Datos</span><span>2 · +18</span><span>3 · Preferencias</span>
+    </div>
+    <div id="suStep"></div>
+    <div class="row between mt-4">
+      <button class="btn btn-ghost" id="suBack" disabled>Atrás</button>
+      <button class="btn btn-primary mag" id="suNext">Siguiente</button>
+    </div>
+  </div>
+</main>
+<div data-shell-footer></div>
+<script src="assets/js/env.js?v=5.7.0"></script>
+<script src="assets/js/live.js?v=5.7.0"></script>
+<script src="assets/js/data.js?v=5.7.0"></script>
+<script src="assets/js/logos.js?v=5.7.0"></script>
+<script src="assets/js/icons.js?v=5.7.0"></script>
+<script src="assets/js/engine.js?v=5.7.0"></script>
+<script src="assets/js/store.js?v=5.7.0"></script>
+<script src="assets/js/supabase-client.js?v=5.7.0"></script>
+<script src="assets/js/auth.js?v=5.7.0"></script>
+<script src="assets/js/api.js?v=5.7.0"></script>
+<script src="assets/js/math.js?v=5.7.0"></script>
+<script src="assets/js/ui.js?v=5.7.0"></script>
+<script src="assets/js/shell.js?v=5.7.0"></script>
+<script src="assets/js/app.js?v=5.7.0"></script>
+<script>
+let step = 0;
+const data = { name:'', email:'', user:'', age:0, sports:['soccer','basketball'], bankroll:100000 };
+
+function render() {
+  document.querySelectorAll('#suSeg span').forEach((s, i) => s.classList.toggle('active', i === step));
+  document.getElementById('suBack').disabled = step === 0;
+  document.getElementById('suNext').textContent = step === 2 ? 'Crear cuenta' : 'Siguiente';
+  document.getElementById('suStep').innerHTML = stepHtml();
+  bind();
+}
+function stepHtml() {
+  if (step === 0) return `
+    <h1 class="h3 mb-2">Tus datos</h1>
+    <div class="grid grid-2 gap-3">
+      <label class="field"><span class="field-label">Nombre</span><input class="input" id="nm" value="${BSUI.esc(data.name)}" placeholder="Tu nombre"></label>
+      <label class="field"><span class="field-label">Email</span><input class="input" id="em" type="email" value="${BSUI.esc(data.email)}" placeholder="vos@correo.com"></label>
+      <label class="field"><span class="field-label">Usuario</span><input class="input" id="us" value="${BSUI.esc(data.user)}" placeholder="usuario"></label>
+      <label class="field"><span class="field-label">Contraseña</span><input class="input" id="pw" type="password" placeholder="Mínimo 8 caracteres" minlength="8"></label>
+    </div>`;
+  if (step === 1) return `
+    <h1 class="h3 mb-2">Verificación de edad</h1>
+    <p class="muted mb-3">BetSafe es para mayores de 18 años (Ley LOTBA / IPLyC).</p>
+    <label class="field"><span class="field-label">Edad</span><input class="input" id="ag" type="number" min="0" value="${data.age||''}" placeholder="18"></label>
+    <div class="card card-tinted mt-3" style="font-size:.85rem">
+      <strong>Juego responsable.</strong> Si las apuestas afectan tu vida: <a href="https://www.juegoresponsable.com.ar" target="_blank" rel="noopener" class="text-brand">juegoresponsable.com.ar</a> · 0800-222-1133.
+    </div>`;
+  return `
+    <h1 class="h3 mb-2">Tus preferencias</h1>
+    <label class="field"><span class="field-label">Banca inicial</span><input class="input" id="bk" type="number" value="${data.bankroll}" step="1000"></label>
+    <div class="mt-3"><strong class="tiny">Deportes</strong>
+      <div class="cluster mt-2">${BSData.SPORTS.slice(0,8).map(s=>`<label class="check"><input type="checkbox" value="${s.key}" ${data.sports.includes(s.key)?'checked':''}><span class="box"></span><span>${s.name}</span></label>`).join('')}</div>
+    </div>
+    <label class="check mt-3"><input type="checkbox" required id="ag2"><span class="box"></span><span class="tiny muted">Acepto los <a href="terminos.html" class="text-brand">términos</a>, <a href="privacidad.html" class="text-brand">privacidad</a>.</span></label>
+  `;
+}
+function bind() {
+  if (step === 0) {
+    document.getElementById('nm').addEventListener('input', e => data.name = e.target.value);
+    document.getElementById('em').addEventListener('input', e => data.email = e.target.value);
+    document.getElementById('us').addEventListener('input', e => data.user = e.target.value);
+  } else if (step === 1) {
+    document.getElementById('ag').addEventListener('input', e => data.age = +e.target.value);
+  } else {
+    document.getElementById('bk').addEventListener('input', e => data.bankroll = +e.target.value);
+    document.querySelectorAll('input[type=checkbox]').forEach(i => i.addEventListener('change', () => {
+      if (i.value) data.sports = Array.from(document.querySelectorAll('input[type=checkbox]:checked')).filter(x=>x.value).map(x=>x.value);
+    }));
+  }
+}
+document.getElementById('suBack').addEventListener('click', () => { if (step > 0) { step--; render(); } });
+document.getElementById('suNext').addEventListener('click', async () => {
+  if (step === 1 && data.age < 18) { BSUI.toast({ title: 'Debés ser mayor de 18', type: 'danger' }); return; }
+  if (step < 2) { step++; render(); return; }
+  // Finish — Supabase real signup si está configurado; sino demo local.
+  if (BSAuth.isSupabaseEnabled && BSAuth.isSupabaseEnabled() && data.email && data.pass) {
+    const r = await BSAuth.signUp({ email: data.email, password: data.pass, name: data.user || data.email.split('@')[0] });
+    if (!r.ok) { BSUI.toast({ title: 'No se pudo crear la cuenta', message: r.error, type: 'danger' }); return; }
+  } else {
+    await BSAuth.login('admin', 'admin');
+  }
+  BSStore.set(BSStore.KEYS.bankroll, { current: data.bankroll, initial: data.bankroll, history: [{ at: Date.now(), value: data.bankroll }] });
+  BSStore.set(BSStore.KEYS.age, { ok: true, at: Date.now() });
+  BSUI.toast({ title: 'Cuenta creada', type: 'success' });
+  setTimeout(() => location.href = 'dashboard.html', 600);
+});
+render();
+</script>
+</body>
+</html>

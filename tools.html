@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="es-AR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Tools Hub — BetSafe (80+ herramientas)</title>
+<meta name="description" content="Tools Hub: 80+ herramientas profesionales en 4 categorías (Críticas, Avanzadas, UX & Social, Moats Pro)." />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="icon" href="assets/img/icon-192.svg" type="image/svg+xml" />
+<link rel="stylesheet" href="assets/css/main.css?v=5.7.0" />
+</head>
+<body>
+
+<div data-shell-header></div>
+
+<main id="main">
+  <section class="hero">
+    <div class="container stack">
+      <span class="eyebrow">Tools Hub · 80+ herramientas profesionales</span>
+      <h1 class="h1">Toda la análisis profesional, en pestañas.</h1>
+      <p class="lead">Críticas, Avanzadas, UX & Social, Moats Pro.</p>
+      <div class="seg" id="toolsTabs">
+        <button class="active" data-cat="critical">Críticas</button>
+        <button data-cat="advanced">Avanzadas</button>
+        <button data-cat="ux">UX & Social</button>
+        <button data-cat="moats">Moats Pro</button>
+        <button data-cat="all">Todas</button>
+      </div>
+      <div class="input-group" style="max-width:420px"><span class="icon">🔎</span><input class="input" id="toolsSearch" placeholder="Buscar herramienta…"></div>
+    </div>
+  </section>
+
+  <section class="section container">
+    <div id="toolsList" class="grid grid-auto-lg"></div>
+  </section>
+</main>
+
+<div data-shell-footer></div>
+
+<script src="assets/js/env.js?v=5.7.0"></script>
+<script src="assets/js/live.js?v=5.7.0"></script>
+<script src="assets/js/data.js?v=5.7.0"></script>
+<script src="assets/js/logos.js?v=5.7.0"></script>
+<script src="assets/js/icons.js?v=5.7.0"></script>
+<script src="assets/js/engine.js?v=5.7.0"></script>
+<script src="assets/js/store.js?v=5.7.0"></script>
+<script src="assets/js/supabase-client.js?v=5.7.0"></script>
+<script src="assets/js/auth.js?v=5.7.0"></script>
+<script src="assets/js/api.js?v=5.7.0"></script>
+<script src="assets/js/math.js?v=5.7.0"></script>
+<script src="assets/js/ui.js?v=5.7.0"></script>
+<script src="assets/js/shell.js?v=5.7.0"></script>
+<script src="assets/js/app.js?v=5.7.0"></script>
+<script>
+const TOOLS = [
+  // Critical (24)
+  { cat:'critical', name:'Line History Chart', tier:'standard', desc:'Tracking automático en localStorage' },
+  { cat:'critical', name:'Public Betting % + Sharp Money', tier:'vip' },
+  { cat:'critical', name:'Bonus Bet Converter', tier:'standard', desc:'SNR/SR via lay betting' },
+  { cat:'critical', name:'Same-Game Parlay Correlator', tier:'vip' },
+  { cat:'critical', name:'Cash-Out Optimizer', tier:'vip' },
+  { cat:'critical', name:'Round Robin / System Bets', tier:'standard', desc:'Trixie, Patent, Yankee, Lucky 15/31/63' },
+  { cat:'critical', name:'Bookmaker Stake Limits DB', tier:'standard' },
+  { cat:'critical', name:'Player Props Database', tier:'vip', desc:'Hit rate por jugador (50 partidos)' },
+  { cat:'critical', name:'H2H histórico 10 años', tier:'standard' },
+  { cat:'critical', name:'Injury & Suspension Feed', tier:'vip' },
+  { cat:'critical', name:'Weather Impact Score', tier:'vip' },
+  { cat:'critical', name:'Referee Tendencies', tier:'vip' },
+  { cat:'critical', name:'Pace Adjusted Ratings (NBA)', tier:'vip' },
+  { cat:'critical', name:'Asian Handicap Calculator', tier:'standard' },
+  { cat:'critical', name:'Bet Slip Sharing', tier:'standard' },
+  { cat:'critical', name:'Push Notifications PWA', tier:'vip', pending:true },
+  { cat:'critical', name:'Tax Form Generator AR', tier:'vip' },
+  { cat:'critical', name:'Auto-Import Bets via OAuth', tier:'vip', pending:true, desc:'CSV mientras tanto' },
+  { cat:'critical', name:'Quick Arb Check', tier:'standard' },
+  { cat:'critical', name:'Kelly Stake Recommender', tier:'standard' },
+  { cat:'critical', name:'EV Calculator', tier:'standard' },
+  { cat:'critical', name:'No-Vig Fair Odds', tier:'vip' },
+  { cat:'critical', name:'CLV Tracker', tier:'vip' },
+  { cat:'critical', name:'Risk Score 0-100', tier:'vip' },
+  // Advanced (26)
+  { cat:'advanced', name:'EPA / Success Rate (NFL)', tier:'vip' },
+  { cat:'advanced', name:'xT (Expected Threat)', tier:'vip' },
+  { cat:'advanced', name:'Pythagorean Win Expectancy', tier:'vip' },
+  { cat:'advanced', name:'Strength of Schedule', tier:'vip' },
+  { cat:'advanced', name:'B2B / Rest Days Impact', tier:'vip' },
+  { cat:'advanced', name:'Travel Distance Impact', tier:'vip' },
+  { cat:'advanced', name:'Coaching Matchup History', tier:'vip' },
+  { cat:'advanced', name:'Power Rankings dinámicos', tier:'vip' },
+  { cat:'advanced', name:'Heatmap de Value (slate)', tier:'vip' },
+  { cat:'advanced', name:'Backtesting Visual', tier:'vip', desc:'5 estrategias predefinidas' },
+  { cat:'advanced', name:'Custom SQL Queries', tier:'vip' },
+  { cat:'advanced', name:'Find Systems pattern detector', tier:'vip' },
+  { cat:'advanced', name:'Bayesian Probability Updater', tier:'vip' },
+  { cat:'advanced', name:'Markov Chain Score Simulator', tier:'vip' },
+  { cat:'advanced', name:'Defense vs Position (NBA)', tier:'vip' },
+  { cat:'advanced', name:'Goalie Stats (NHL)', tier:'vip' },
+  { cat:'advanced', name:'Pitcher xERA (MLB)', tier:'vip' },
+  { cat:'advanced', name:'Possession Heatmap', tier:'vip' },
+  { cat:'advanced', name:'Cluster Analysis equipos', tier:'vip' },
+  { cat:'advanced', name:'Manager Career Stats', tier:'vip' },
+  { cat:'advanced', name:'Squad Value vs Performance', tier:'vip' },
+  { cat:'advanced', name:'Set Pieces Specialist', tier:'vip' },
+  { cat:'advanced', name:'Live Win Probability Graph', tier:'vip' },
+  { cat:'advanced', name:'Confidence Bands 95% CI', tier:'vip' },
+  { cat:'advanced', name:'News Impact Detector', tier:'vip' },
+  { cat:'advanced', name:'Hedge Auto-Suggestion', tier:'vip' },
+  // UX & Social (15)
+  { cat:'ux', name:'Instalación PWA', tier:'standard' },
+  { cat:'ux', name:'Theme toggle', tier:'standard' },
+  { cat:'ux', name:'Saved Filters & Watchlists', tier:'standard' },
+  { cat:'ux', name:'Telegram Bot integration', tier:'vip', pending:true },
+  { cat:'ux', name:'Discord Webhook', tier:'vip', pending:true },
+  { cat:'ux', name:'CSV/JSON Import/Export', tier:'standard' },
+  { cat:'ux', name:'iCal Export de eventos', tier:'standard' },
+  { cat:'ux', name:'Voice Notifications (TTS)', tier:'vip' },
+  { cat:'ux', name:'Voice Search', tier:'vip' },
+  { cat:'ux', name:'Keyboard shortcuts list', tier:'standard' },
+  { cat:'ux', name:'Tour interactivo guiado', tier:'standard' },
+  { cat:'ux', name:'Demo Mode (sim sin dinero)', tier:'standard' },
+  { cat:'ux', name:'Leaderboard', tier:'standard' },
+  { cat:'ux', name:'Achievements (gamification)', tier:'standard' },
+  { cat:'ux', name:'AI Chat Assistant', tier:'vip' },
+  { cat:'ux', name:'Smart Search natural language', tier:'standard' },
+  // Moats Pro (5)
+  { cat:'moats', name:'Backtesting Visual con estrategias guardables', tier:'vip' },
+  { cat:'moats', name:'Multi-Account Portfolio', tier:'vip', desc:'Sub-bancas: recreación, pro, prueba' },
+  { cat:'moats', name:'API Access REST', tier:'vip', desc:'Generar y revocar API keys' },
+  { cat:'moats', name:'Educational Courses', tier:'standard', desc:'6 cursos con progress tracker' },
+  { cat:'moats', name:'Verified Track Record (hash)', tier:'vip' }
+];
+
+document.addEventListener('DOMContentLoaded', () => {
+  let cat = 'critical', q = '';
+
+  function getTab(t) {
+    const n = t.name.toLowerCase();
+    if (n.includes('arb') || n.includes('surebet')) return 'arbitrage';
+    if (n.includes('kelly') || n.includes('ev ') || n.includes('no-vig') || n.includes('clv') || n.includes('risk score') || n.includes('tax form')) return 'calcpro';
+    if (n.includes('calc') || n.includes('stake') || n.includes('probabilid') || n.includes('conversor') || n.includes('asian') || n.includes('bonus bet') || n.includes('quick arb')) return 'calc';
+    if (n.includes('tracker') || n.includes('histór') || n.includes('import') || n.includes('portf') || n.includes('track record')) return 'tracker';
+    if (n.includes('builder') || n.includes('slip') || n.includes('parlay') || n.includes('round robin') || n.includes('cash-out')) return 'builder';
+    if (n.includes('smart money') || n.includes('sharp') || n.includes('steam') || n.includes('line history') || n.includes('public betting')) return 'smartmoney';
+    if (n.includes('backtesting') || n.includes('simulat') || n.includes('monte carlo') || n.includes('what-if')) return 'simulator';
+    if (n.includes('comparad') || n.includes('bookmaker stake') || n.includes('h2h')) return 'comparator';
+    if (t.cat === 'advanced' || n.includes('epa') || n.includes('xt ') || n.includes('pythagorean') || n.includes('power rank') || n.includes('player prop') || n.includes('weather') || n.includes('referee') || n.includes('injury') || n.includes('ai chat')) return 'ai';
+    return 'overview';
+  }
+
+  function render() {
+    const out = document.getElementById('toolsList');
+    const list = TOOLS.filter(t => (cat==='all' || t.cat===cat) && (!q || (t.name + ' ' + (t.desc||'')).toLowerCase().includes(q.toLowerCase())));
+    out.innerHTML = list.map(t => `
+      <div class="card card-hover stack reveal">
+        <div class="row between">
+          <strong>${BSUI.esc(t.name)}</strong>
+          <span class="badge ${t.tier==='vip'?'badge-gold':'badge-brand'}">${t.tier.toUpperCase()}</span>
+        </div>
+        <p class="muted tiny">${BSUI.esc(t.desc || 'Listo para usar')}</p>
+        <div class="row between">
+          ${t.pending ? '<span class="badge badge-warning">En desarrollo</span>' : '<span class="badge badge-success">Activo</span>'}
+          <a href="dashboard.html#${getTab(t)}" class="text-brand fw-600">Abrir →</a>
+        </div>
+      </div>`).join('');
+    BSUI.bindReveal(out);
+  }
+  document.getElementById('toolsTabs').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    document.querySelectorAll('#toolsTabs button').forEach(x => x.classList.remove('active')); b.classList.add('active');
+    cat = b.dataset.cat; render();
+  });
+  document.getElementById('toolsSearch').addEventListener('input', e => { q = e.target.value; render(); });
+  render();
+});
+</script>
+</body>
+</html>

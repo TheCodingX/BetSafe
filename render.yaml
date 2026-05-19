@@ -1,0 +1,170 @@
+# BetSafe — Render.com deployment (backend scraper + frontend en un solo service)
+# ============================================================================
+# El backend Node.js de /server sirve:
+#   - Frontend estático (HTML/CSS/JS) en la raíz `/`
+#   - API REST en /api/*
+#   - WebSocket push en /api/live
+#   - Scrapeo cada SCRAPE_INTERVAL_MS de las 6 casas argentinas legales
+#     (Bplay, Betano, BetWarrior, Bet365 AR, Codere, Betsson)
+#
+# Cómo deployar:
+#   1) Pushear este repo a GitHub
+#   2) render.com → New + → Blueprint → conectar el repo
+#   3) Render lee este YAML y crea el Web Service
+#   4) Settings → Environment → cargar env vars de .env.example
+#   5) Deploy
+#
+# Plan Render recomendado: Standard ($25/mes) — el plan Free hibernará el
+# scraper cada 15min de inactividad y perderemos snapshots.
+# ============================================================================
+
+services:
+  - type: web
+    name: betsafe
+    runtime: node
+    plan: standard
+    region: oregon
+    branch: main
+    rootDir: server
+    # IMPORTANTE: NO usar `--with-deps` en Render — intenta `sudo apt-get` y
+    # Render no permite root durante el build (su: Authentication failure).
+    # El runtime de Render Node viene con la mayoría de las libs C que Chromium
+    # headless necesita. Si Chromium falla al arrancar por una lib específica
+    # faltante, conviene migrar a un Dockerfile con FROM mcr.microsoft.com/playwright.
+    #
+    # PLAYWRIGHT_BROWSERS_PATH fuerza que Chromium se instale dentro del
+    # project workspace (persiste entre build y runtime). Sin esto, el default
+    # `/opt/render/.cache/ms-playwright` se borra al pasar a runtime y
+    # browserType.launch() falla con "Executable doesn't exist".
+    buildCommand: 'PLAYWRIGHT_BROWSERS_PATH=/opt/render/project/src/.cache/ms-playwright npm install && PLAYWRIGHT_BROWSERS_PATH=/opt/render/project/src/.cache/ms-playwright npx playwright install chromium && node ../build/inject-env.js'
+    startCommand: npm start
+    healthCheckPath: /api/health
+    pullRequestPreviewsEnabled: true
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: '20'
+      - key: PORT
+        value: '8787'
+      # Playwright debe encontrar Chromium en RUNTIME en el mismo path que el
+      # build install. /opt/render/project/src/ persiste entre fases.
+      - key: PLAYWRIGHT_BROWSERS_PATH
+        value: '/opt/render/project/src/.cache/ms-playwright'
+      - key: SCRAPE_INTERVAL_MS
+        value: '30000'
+      - key: ARB_INTERVAL_MS
+        value: '5000'
+      - key: ENABLED_BOOKS
+        value: 'bplay,betano,betwarrior,bet365ar,codere,betsson'
+      # PICKS_CONCURRENCY: cuántos partidos analiza /api/picks en paralelo.
+      # 4 es el sweet spot — más alto multiplica costo IA sin mejorar latencia
+      # perceptible (cada call tarda 1-3s en el cascade nuevo free).
+      - key: PICKS_CONCURRENCY
+        value: '4'
+      - key: ODDS_API_SPORTS_PER_CYCLE
+        value: '6'
+      - key: CORS_ORIGIN
+        value: '*'
+      # The Odds API — fuente PRIMARIA. Sin esto el sistema depende de scrapers.
+      - key: THE_ODDS_API_KEY
+        sync: false
+      # ScrapingBee proxy — necesario para Betano desde IPs cloud (Render bloqueado
+      # por Cloudflare). Activa el path `tryScrapingBee` en betano.js. Sin esto,
+      # betano cae a direct + playwright (que fallan en Render).
+      # Plan free: 1000 créditos/mes ≈ 100 requests con premium_proxy.
+      - key: SCRAPINGBEE_KEY
+        sync: false
+      # Activar Betsson scraper (intenta Kambi API free → SBee → Playwright)
+      - key: ENABLE_BETSSON_SCRAPER
+        value: 'true'
+      # NO activar Bet365 hasta tener parser implementado (gasta créditos sin output)
+      # - key: ENABLE_BET365_SCRAPER
+      #   value: 'true'
+      - key: ODDSAPI_REGION
+        value: 'eu'
+      # Factors APIs (opcionales — sin keys los factores quedan "unavailable")
+      - key: OPENWEATHER_API_KEY
+        sync: false
+      # API-Football: elegí UNA (directa o via RapidAPI). Si no cargás ninguna,
+      # las lesiones caen a ESPN scrape (best effort).
+      - key: APISPORTS_KEY
+        sync: false
+      - key: RAPIDAPI_KEY
+        sync: false
+      # ═══════════════════════════════════════════════════════════════════
+      # AI CASCADE — OpenAI gpt-5-mini PRIMARY (si key) + free fallbacks
+      # ═══════════════════════════════════════════════════════════════════
+      # Orden del cascade en runtime (server/engines/ai-pipeline.js → llmStructured):
+      #   0) [si OPENAI_KEY] OpenAI gpt-5-mini (PRIMARY pago ~$0.30/$1.50 per 1M)
+      #   1) Groq Llama 3.3 70B   (free, 14400 req/día, ~280 tok/s, JSON nativo)
+      #   2) Cerebras Llama 3.1 8B (free, ~2200 tok/s ULTRA fast)
+      #   3) OpenRouter free models (DeepSeek V4 → Llama 70B → Nemotron 120B → Qwen3 80B)
+      #   4) Groq Llama 3.1 8B    (fast fallback si 70B rate-limited)
+      #   5) [opt-in BS_USE_PAID_TIER=1] Gemini 2.5 Flash (PAGO)
+      #   6) [opt-in + premium match] Claude Sonnet 4.5 (PAGO)
+      #
+      # Para cargar MÚLTIPLES keys del mismo provider y rotarlas (multiplica el
+      # rate limit), usá la versión _KEYS en plural separadas por coma:
+      #   BS_OPENAI_API_KEYS="sk-proj-xxx,sk-proj-yyy"
+      # La versión singular BS_OPENAI_API_KEY también funciona (1 sola key).
+      #
+      # ── NEW PRIMARY: OpenAI gpt-5-mini (pago) ───────────────────────────
+      # https://platform.openai.com/api-keys
+      # Pricing: $0.30 input / $1.50 output per 1M tokens — ~$15-30/mes para BetSafe.
+      # Mejor reasoning + JSON estructurado más confiable que cualquier Llama 70B.
+      # Si esta key está cargada, se vuelve automáticamente PRIMARY del cascade.
+      - key: BS_OPENAI_API_KEY
+        sync: false
+      - key: BS_OPENAI_MODEL
+        value: 'gpt-5-mini'
+      #
+      # ── FALLBACK 1: Groq (free) ─────────────────────────────────────────
+      # https://console.groq.com/keys (instant signup, sin tarjeta)
+      # Free: 30 req/min, 14.4K req/día por key.
+      - key: BS_GROQ_API_KEY
+        sync: false
+      - key: BS_GROQ_MODEL
+        value: 'llama-3.3-70b-versatile'
+      - key: BS_GROQ_FAST_MODEL
+        value: 'llama-3.1-8b-instant'
+      #
+      # ── SECONDARY: Cerebras (free, ultra rápido) ─────────────────────────
+      # https://cloud.cerebras.ai/ (signup con email)
+      # Free tier 2026-05: SOLO llama3.1-8b está disponible (los 70B/405B están
+      # en Dedicated Endpoints pago). ~2200 tok/s — útil como fallback rápido.
+      # Aviso: llama3.1-8b se deprecia 2026-05-27. Cuando Cerebras anuncie el
+      # reemplazo, actualizar BS_CEREBRAS_MODEL aquí.
+      - key: BS_CEREBRAS_API_KEY
+        sync: false
+      - key: BS_CEREBRAS_MODEL
+        value: 'llama3.1-8b'
+      #
+      # ── TERTIARY: OpenRouter (cascada de modelos free) ──────────────────
+      # https://openrouter.ai/keys (signup gratis, sin tarjeta)
+      # Free: 50 req/día por modelo (con balance $0). Combinando 4 modelos free
+      # = ~200 req/día efectivos.
+      - key: BS_OPENROUTER_API_KEY
+        sync: false
+      # Override opcional de los modelos free (lista actualizada 2026-05):
+      # - key: BS_OPENROUTER_FREE_MODELS
+      #   value: 'deepseek/deepseek-v4-flash:free,meta-llama/llama-3.3-70b-instruct:free,nvidia/nemotron-3-super-120b-a12b:free,qwen/qwen3-next-80b-a3b-instruct:free'
+      #
+      # ── PAID TIER (OPT-IN ONLY) — DEFAULT OFF ─────────────────────────────
+      # Setear BS_USE_PAID_TIER=1 SOLO si los free fallan consistentemente.
+      # Cada call Gemini ~$0.0005, cada call Claude ~$0.01. SUMA RÁPIDO.
+      # - key: BS_USE_PAID_TIER
+      #   value: '1'
+      - key: BS_GEMINI_API_KEY
+        sync: false
+      - key: BS_GEMINI_MODEL
+        value: 'gemini-2.5-flash'
+      - key: BS_ANTHROPIC_API_KEY
+        sync: false
+      - key: BS_ANTHROPIC_MODEL
+        value: 'claude-sonnet-4-5'
+      - key: BS_FOOTBALL_DATA_API_KEY
+        sync: false
+      - key: BS_SUPABASE_URL
+        sync: false
+      - key: BS_SUPABASE_ANON_KEY
+        sync: false

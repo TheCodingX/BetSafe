@@ -1,0 +1,103 @@
+/* BetSafe — Source: scrapers wrapper
+ * ============================================================================
+ * Envuelve los scrapers individuales (server/scrapers/<id>.js) en la interfaz
+ * unificada SourceBase. Cada scraper queda como una "sub-source" con su propia
+ * priority — las que The Odds API NO cubre tienen priority alta (=fuente única,
+ * irreemplazable), las que sí cubre tienen priority baja (=fallback / cross-val).
+ *
+ * Casas activas:
+ *   - bplay       → priority 2 (XML público — fuente única)
+ *   - betwarrior  → priority 2 (Kambi API — fuente única)
+ *   - codere      → priority 2 (NavigationService — fuente única)
+ *   - betano      → priority 2 (Kaizen JSON + Playwright + ScrapingBee — fuente única en cloud IPs)
+ *   - betsson     → priority 2 (SPA AWS-WAF via ScrapingBee render_js — Odds API quota-out)
+ *   - bet365ar    → priority 4 (DESACTIVADO por default — Cloudflare Managed Challenge.
+ *                                Habilita con ENABLE_BET365_SCRAPER=true a costo de
+ *                                stealth_proxy. Sin esto, devuelve [] sin gastar quota)
+ * ============================================================================
+ */
+'use strict';
+
+const { SourceBase } = require('./_adapter');
+
+const SCRAPERS = {
+  bplay:        require('../scrapers/bplay'),
+  betano:       require('../scrapers/betano'),
+  betwarrior:   require('../scrapers/betwarrior'),
+  codere:       require('../scrapers/codere'),
+  betsson:      require('../scrapers/betsson'),
+  bet365ar:     require('../scrapers/bet365ar')
+};
+
+// Casas cuyo scraper es la ÚNICA fuente (The Odds API quota-out o no las cubre).
+// betsson queda ÚNICA mientras Odds API esté caída. bet365ar es UNIQUE pero
+// devuelve [] por default — registrado para retry manual.
+const UNIQUE_BOOKS = new Set(['bplay', 'betwarrior', 'codere', 'betsson', 'bet365ar']);
+
+class ScraperSource extends SourceBase {
+  constructor({ bookKey }) {
+    super({
+      name: 'scraper:' + bookKey,
+      priority: UNIQUE_BOOKS.has(bookKey) ? 2 : 4
+    });
+    this.bookKey = bookKey;
+    this.scrape = SCRAPERS[bookKey];
+  }
+
+  covers(sport) {
+    // Los scrapers AR cubren principalmente soccer + algunos básquet/tennis.
+    // No cubren NFL/MLB/NHL (sin presencia AR significativa).
+    return ['soccer', 'basketball', 'tennis', 'mma'].includes(sport);
+  }
+
+  async fetch(sports) {
+    if (!this.scrape) return [];
+    const events = await this.scrape({ sports });
+    if (!Array.isArray(events)) return [];
+
+    // Normalizar a la forma que el orchestrator espera:
+    //   markets: { <marketName>: { <bookKey>: { ...marketFields } } }
+    // Los scrapers ACTUALES (bplay, betano, betwarrior, codere) ya devuelven
+    // los markets envueltos en `{[this.bookKey]: data}`. Si llega así, lo
+    // dejamos pasar. Si llega "crudo" (sin la capa bookKey) lo envolvemos.
+    return events.map(ev => {
+      if (!ev) return null;
+      const wrapped = {
+        home: ev.home,
+        away: ev.away,
+        start: ev.start,
+        league: ev.league,
+        leagueName: ev.leagueName,
+        sport: ev.sport,
+        markets: {}
+      };
+      if (ev.markets) {
+        for (const [marketName, marketData] of Object.entries(ev.markets)) {
+          if (!marketData || typeof marketData !== 'object') continue;
+          // Detectar si ya viene envuelto: { bookKey: {...} } donde la sub-key
+          // matchea con this.bookKey (o cualquier book conocido).
+          const wrappedAlready = marketData[this.bookKey]
+            && typeof marketData[this.bookKey] === 'object';
+          if (wrappedAlready) {
+            // Ya viene en formato esperado — pass-through
+            wrapped.markets[marketName] = wrapped.markets[marketName] || {};
+            wrapped.markets[marketName][this.bookKey] = marketData[this.bookKey];
+          } else {
+            // Forma cruda — envolver
+            wrapped.markets[marketName] = wrapped.markets[marketName] || {};
+            wrapped.markets[marketName][this.bookKey] = marketData;
+          }
+        }
+      }
+      return wrapped;
+    }).filter(Boolean);
+  }
+}
+
+/** Crea las sources scraper para cada bookmaker AR activo. */
+function createAllScraperSources(enabledBooks) {
+  const keys = enabledBooks && enabledBooks.length ? enabledBooks : Object.keys(SCRAPERS);
+  return keys.filter(k => SCRAPERS[k]).map(k => new ScraperSource({ bookKey: k }));
+}
+
+module.exports = { ScraperSource, createAllScraperSources, UNIQUE_BOOKS };

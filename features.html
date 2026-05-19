@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="es-AR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Funciones — BetSafe (155 funciones, 55 Standard + 100 VIP)</title>
+<meta name="description" content="Las 155 funciones de BetSafe agrupadas por categoría. 55 Standard + 100 VIP. Filtrá por tier o por área." />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="icon" href="assets/img/icon-192.svg" type="image/svg+xml" />
+<link rel="stylesheet" href="assets/css/main.css?v=5.7.0" />
+</head>
+<body>
+
+<div data-shell-header></div>
+
+<main id="main">
+  <section class="hero">
+    <div class="container stack">
+      <span class="eyebrow">155 funciones · 55 Standard + 100 VIP</span>
+      <h1 class="h1">Funciones</h1>
+      <p class="lead">Todo lo que hace BetSafe, en una página. Filtrá por categoría o tier.</p>
+      <div class="row mt-3">
+        <div class="seg" id="featTier"><button class="active" data-tier="all">Todas</button><button data-tier="standard">Standard</button><button data-tier="vip">VIP</button></div>
+        <div class="input-group" style="min-width:280px"><span class="icon">🔎</span><input class="input" id="featSearch" placeholder="Buscar función…"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="container section">
+    <div id="featList" class="stack-lg"></div>
+  </section>
+</main>
+
+<div data-shell-footer></div>
+
+<script src="assets/js/env.js?v=5.7.0"></script>
+<script src="assets/js/live.js?v=5.7.0"></script>
+<script src="assets/js/data.js?v=5.7.0"></script>
+<script src="assets/js/logos.js?v=5.7.0"></script>
+<script src="assets/js/icons.js?v=5.7.0"></script>
+<script src="assets/js/engine.js?v=5.7.0"></script>
+<script src="assets/js/store.js?v=5.7.0"></script>
+<script src="assets/js/supabase-client.js?v=5.7.0"></script>
+<script src="assets/js/auth.js?v=5.7.0"></script>
+<script src="assets/js/api.js?v=5.7.0"></script>
+<script src="assets/js/math.js?v=5.7.0"></script>
+<script src="assets/js/ui.js?v=5.7.0"></script>
+<script src="assets/js/shell.js?v=5.7.0"></script>
+<script src="assets/js/app.js?v=5.7.0"></script>
+<script src="assets/js/features-data.js?v=5.7.0"></script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  let tier = 'all', q = '';
+  function render() {
+    const cats = window.FEATURES_DATA;
+    const out = document.getElementById('featList');
+    out.innerHTML = cats.map(cat => {
+      const items = cat.items.filter(i => (tier === 'all' || i.tier === tier) && (!q || (i.name + ' ' + (i.desc||'')).toLowerCase().includes(q.toLowerCase())));
+      if (!items.length) return '';
+      return `
+        <div class="card stack reveal">
+          <div class="row between">
+            <h2 class="h3">${BSUI.esc(cat.name)} <span class="muted tiny">${items.length} funciones</span></h2>
+            <span class="badge">${BSUI.esc(cat.area)}</span>
+          </div>
+          <div class="grid grid-auto reveal-stagger">
+            ${items.map(i => `
+              <div class="card card-tinted card-pad-sm card-hover">
+                <div class="row between">
+                  <strong>${BSUI.esc(i.name)}</strong>
+                  <span class="badge ${i.tier==='vip'?'badge-gold':'badge-brand'}">${i.tier.toUpperCase()}</span>
+                </div>
+                <p class="muted tiny mt-2">${BSUI.esc(i.desc || '')}</p>
+                ${i.pending ? '<span class="badge badge-warning mt-2">En desarrollo</span>' : ''}
+              </div>
+            `).join('')}
+          </div>
+        </div>`;
+    }).join('');
+    BSUI.bindReveal(out);
+    const total = cats.reduce((a, c) => a + c.items.filter(i => tier==='all'||i.tier===tier).length, 0);
+    document.title = `Funciones (${total}) — BetSafe`;
+  }
+  document.getElementById('featTier').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    document.querySelectorAll('#featTier button').forEach(x => x.classList.remove('active')); b.classList.add('active');
+    tier = b.dataset.tier; render();
+  });
+  document.getElementById('featSearch').addEventListener('input', e => { q = e.target.value; render(); });
+  render();
+});
+</script>
+</body>
+</html>

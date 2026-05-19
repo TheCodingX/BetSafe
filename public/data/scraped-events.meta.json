@@ -1,0 +1,14 @@
+{
+  "ts": 1779075021922,
+  "iso": "2026-05-18T03:30:21.922Z",
+  "totalEvents": 1020,
+  "perBook": {
+    "bplay": 495,
+    "betwarrior": 119,
+    "betano": 28,
+    "codere": 514,
+    "betsson": 0
+  },
+  "errors": {},
+  "durSec": 16
+}

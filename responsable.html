@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="es-AR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Juego Responsable — BetSafe</title>
+<meta name="description" content="Recursos de juego responsable, auto-test y enlaces oficiales (SEDRONAR, FEJAR, juegoresponsable.com.ar)." />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="icon" href="assets/img/icon-192.svg" type="image/svg+xml" />
+<link rel="stylesheet" href="assets/css/main.css?v=5.7.0" />
+</head>
+<body>
+
+<div data-shell-header></div>
+
+<main id="main">
+  <section class="hero">
+    <div class="container stack">
+      <span class="eyebrow">Juego Responsable</span>
+      <h1 class="h1">Apostá con cabeza. Sin volverte adicto.</h1>
+      <p class="lead">BetSafe es una herramienta cuantitativa. Si las apuestas afectan tu vida personal, financiera o emocional, pedí ayuda.</p>
+    </div>
+  </section>
+
+  <section class="container section">
+    <div class="grid grid-2 gap-4">
+      <div class="card stack">
+        <h2 class="h3">Líneas de ayuda en Argentina</h2>
+        <ul class="stack">
+          <li><strong>SEDRONAR</strong> — <a href="tel:08002224000" class="text-brand">0800-222-1133</a> (gratuito, 24 hs)</li>
+          <li><strong>Juego Responsable</strong> — <a href="https://www.juegoresponsable.com.ar" target="_blank" rel="noopener" class="text-brand">juegoresponsable.com.ar</a></li>
+          <li><strong>FEJAR</strong> (Federación de Jugadores Anónimos) — <a href="https://www.jugadoresanonimos.com.ar" target="_blank" rel="noopener" class="text-brand">jugadoresanonimos.com.ar</a></li>
+          <li><strong>LOTBA</strong> — Lotería Provincia BSAS</li>
+          <li><strong>IPLyC</strong> — Instituto Provincial de Lotería y Casinos</li>
+        </ul>
+      </div>
+      <div class="card stack">
+        <h2 class="h3">Buenas prácticas</h2>
+        <ul class="stack">
+          <li>✓ Definí una banca y nunca la rompas.</li>
+          <li>✓ Usá Kelly fraccional (¼ a ½) y stake fijo.</li>
+          <li>✓ No persigas pérdidas (chasing) — el detector de tilt te avisa.</li>
+          <li>✓ Anotá cada pick. Sin registro, no hay performance.</li>
+          <li>✓ Hacé pausas. La mejor apuesta es la que no apostás.</li>
+          <li>✓ Si dependés de ganar para vivir, pará y consultá.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section id="self-test" class="container section">
+    <div class="card card-pad-lg">
+      <h2 class="h2 mb-3">Auto-test rápido (10 preguntas, 2 min)</h2>
+      <p class="muted mb-4">Escala basada en SOGS adaptada. Las respuestas no se envían a ningún servidor.</p>
+      <form id="stForm" class="stack"></form>
+      <div id="stOut" class="mt-3"></div>
+    </div>
+  </section>
+</main>
+
+<div data-shell-footer></div>
+
+<script src="assets/js/env.js?v=5.7.0"></script>
+<script src="assets/js/live.js?v=5.7.0"></script>
+<script src="assets/js/data.js?v=5.7.0"></script>
+<script src="assets/js/logos.js?v=5.7.0"></script>
+<script src="assets/js/icons.js?v=5.7.0"></script>
+<script src="assets/js/engine.js?v=5.7.0"></script>
+<script src="assets/js/store.js?v=5.7.0"></script>
+<script src="assets/js/supabase-client.js?v=5.7.0"></script>
+<script src="assets/js/auth.js?v=5.7.0"></script>
+<script src="assets/js/api.js?v=5.7.0"></script>
+<script src="assets/js/math.js?v=5.7.0"></script>
+<script src="assets/js/ui.js?v=5.7.0"></script>
+<script src="assets/js/shell.js?v=5.7.0"></script>
+<script src="assets/js/app.js?v=5.7.0"></script>
+<script>
+const QS = [
+  '¿Apostaste más de lo que podías permitirte perder en el último mes?',
+  '¿Sentiste que necesitás apostar más dinero para el mismo nivel de emoción?',
+  '¿Volviste otro día a "recuperar" lo perdido?',
+  '¿Pediste prestado o vendiste algo para apostar?',
+  '¿Sentiste que tenés un problema con las apuestas?',
+  '¿Apostar te causó problemas en relaciones, trabajo o estudios?',
+  '¿Mentiste a familiares sobre cuánto apostás?',
+  '¿Discutiste con alguien por dinero apostado?',
+  '¿Faltaste al trabajo/estudios por apostar?',
+  '¿Sentiste culpa después de apostar?'
+];
+
+document.addEventListener('DOMContentLoaded', () => {
+  const f = document.getElementById('stForm');
+  f.innerHTML = QS.map((q, i) => `
+    <div class="card card-tinted card-pad-sm">
+      <div class="row between gap-3">
+        <strong>${i+1}. ${q}</strong>
+        <div class="cluster">
+          <label class="radio"><input type="radio" name="q${i}" value="0" required><span class="dot-r"></span><span class="tiny">No</span></label>
+          <label class="radio"><input type="radio" name="q${i}" value="1"><span class="dot-r"></span><span class="tiny">Sí</span></label>
+        </div>
+      </div>
+    </div>`).join('') + `<button class="btn btn-primary btn-lg mt-3" type="submit">Calcular resultado</button>`;
+  f.addEventListener('submit', e => {
+    e.preventDefault();
+    const fd = new FormData(f);
+    let score = 0; for (let i = 0; i < QS.length; i++) score += +fd.get('q'+i);
+    const level = score < 3 ? 'low' : score < 6 ? 'mid' : 'high';
+    const msg = level === 'low' ? 'Sin señales de problema. Mantené las buenas prácticas.'
+      : level === 'mid' ? 'Señales de riesgo moderado. Revisá tu banca y considerá pausas más largas.'
+      : 'Señales de riesgo alto. Te recomendamos consultar al 0800-222-1133 (SEDRONAR) y considerar autoexclusión.';
+    document.getElementById('stOut').innerHTML = `
+      <div class="card card-tinted card-pad-lg">
+        <div class="row between"><strong>Tu score: ${score} / ${QS.length}</strong><span class="risk-pill ${level}">${level==='low'?'Bajo':level==='mid'?'Medio':'Alto'}</span></div>
+        <p class="mt-3">${msg}</p>
+        <a href="https://www.juegoresponsable.com.ar" class="btn btn-outline mt-3" target="_blank" rel="noopener">Recursos oficiales</a>
+      </div>`;
+  });
+});
+</script>
+</body>
+</html>

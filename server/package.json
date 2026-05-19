@@ -1,0 +1,30 @@
+{
+  "name": "betsafe-scraper",
+  "version": "1.0.0",
+  "description": "BetSafe — backend de scraping en vivo para 12 casas de apuestas argentinas legales (LOTBA / IPLyC).",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "install-browsers": "playwright install chromium",
+    "test-scraper": "node lib/test-scraper.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "cheerio": "^1.0.0",
+    "dotenv": "^17.4.2",
+    "express": "^4.21.1",
+    "fast-xml-parser": "^5.8.0",
+    "lru-cache": "^11.0.2",
+    "p-limit": "^6.1.0",
+    "playwright": "^1.49.0",
+    "playwright-extra": "^4.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "undici": "^7.1.0",
+    "user-agents": "^2.1.57",
+    "ws": "^8.18.0"
+  }
+}

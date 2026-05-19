@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="es-AR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Quiénes somos — BetSafe</title>
+<meta name="description" content="No somos tipsters, no somos un grupo de Telegram. Somos un equipo argentino que construyó la herramienta que hubiera querido tener cuando empezó a apostar." />
+<meta name="theme-color" content="#1e3a8a" />
+<meta property="og:title" content="Quiénes somos — BetSafe" />
+<meta property="og:description" content="La historia detrás de BetSafe: por qué existe y a quién ayudamos." />
+<meta property="og:type" content="website" />
+<meta property="og:locale" content="es_AR" />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="icon" href="assets/img/icon-192.svg" type="image/svg+xml" />
+<link rel="stylesheet" href="assets/css/main.css?v=5.7.0" />
+<style>
+  /* Quiénes somos — premium narrative layout */
+  .about-hero {
+    position: relative;
+    isolation: isolate;
+    padding: clamp(64px, 8vw, 120px) 0 clamp(48px, 6vw, 80px);
+    overflow: hidden;
+  }
+  .about-hero::before {
+    content: '';
+    position: absolute;
+    inset: -20% -10% auto auto;
+    width: 60vmax;
+    height: 60vmax;
+    background: radial-gradient(closest-side, rgba(30,58,138,0.10), transparent 70%);
+    z-index: -1;
+  }
+  .about-hero::after {
+    content: '';
+    position: absolute;
+    inset: auto auto -30% -10%;
+    width: 50vmax;
+    height: 50vmax;
+    background: radial-gradient(closest-side, rgba(212,160,23,0.08), transparent 70%);
+    z-index: -1;
+  }
+  .about-eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--gold-700);
+    padding: 6px 14px;
+    border-radius: 999px;
+    background: rgba(212,160,23,0.10);
+    border: 1px solid rgba(212,160,23,0.30);
+  }
+  [data-theme=dark] .about-eyebrow { color: var(--gold-300); }
+  .about-h1 {
+    font-size: clamp(2rem, 1.5rem + 2.6vw, 3.4rem);
+    line-height: 1.1;
+    letter-spacing: -.025em;
+    font-weight: 800;
+    margin: 18px 0 16px;
+    max-width: 22ch;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 .35em;
+  }
+  .about-h1 .word {
+    display: inline-block;
+    opacity: 0;
+    transform: translateY(18px);
+    animation: aboutWordIn .7s cubic-bezier(.2,.7,.2,1) forwards;
+    animation-delay: calc(var(--i, 0) * 70ms + 120ms);
+  }
+  @keyframes aboutWordIn {
+    to { opacity: 1; transform: translateY(0); }
+  }
+  /* "suerte" lleva acento dorado con shimmer + subrayado animado */
+  .about-h1 em {
+    font-style: normal;
+    position: relative;
+    background: linear-gradient(110deg,
+      var(--gold-500) 0%,
+      var(--gold-300) 35%,
+      var(--gold-500) 55%,
+      var(--gold-700) 100%);
+    background-size: 220% 100%;
+    background-position: 0% 50%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: aboutWordIn .7s cubic-bezier(.2,.7,.2,1) forwards,
+               aboutGoldSweep 5s ease-in-out infinite 1.1s;
+    animation-delay: calc(var(--i, 0) * 70ms + 120ms), 1.1s;
+  }
+  @keyframes aboutGoldSweep {
+    0%, 100% { background-position: 0% 50%; }
+    50%      { background-position: 100% 50%; }
+  }
+  .about-h1 em::after {
+    content: '';
+    position: absolute;
+    left: 0; right: 0;
+    bottom: -.04em;
+    height: 3px;
+    border-radius: 3px;
+    background: linear-gradient(90deg,
+      transparent,
+      color-mix(in srgb, var(--gold-500) 80%, transparent) 50%,
+      transparent);
+    transform-origin: left;
+    transform: scaleX(0);
+    animation: aboutUnderline .9s cubic-bezier(.2,.7,.2,1) forwards;
+    animation-delay: calc(var(--total-words, 6) * 70ms + 350ms);
+  }
+  @keyframes aboutUnderline {
+    to { transform: scaleX(1); }
+  }
+  [data-theme=dark] .about-h1 em {
+    background: linear-gradient(110deg,
+      var(--gold-300) 0%,
+      #fff5cc 35%,
+      var(--gold-300) 55%,
+      var(--gold-500) 100%);
+    background-size: 220% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .about-h1 .word { animation: none; opacity: 1; transform: none; }
+    .about-h1 em { animation: none; background-position: 0% 50%; }
+    .about-h1 em::after { animation: none; transform: scaleX(1); }
+  }
+  .about-lead {
+    font-size: clamp(1.05rem, 1rem + .35vw, 1.25rem);
+    color: var(--text-secondary);
+    line-height: 1.65;
+    max-width: 56ch;
+  }
+  .about-section {
+    padding-block: clamp(48px, 5vw, 80px);
+  }
+  .about-block {
+    max-width: 70ch;
+    margin: 0 auto;
+  }
+  .about-block h2 {
+    font-size: clamp(1.4rem, 1.2rem + 1vw, 2rem);
+    font-weight: 800;
+    letter-spacing: -.02em;
+    line-height: 1.15;
+    margin: 0 0 18px;
+  }
+  .about-block p {
+    font-size: 1.05rem;
+    color: var(--text-secondary);
+    line-height: 1.75;
+    margin: 0 0 16px;
+  }
+  .about-block p strong {
+    color: var(--text-primary);
+    font-weight: 700;
+  }
+  .about-quote {
+    border-left: 3px solid var(--gold-500);
+    padding: 4px 18px;
+    margin: 28px 0;
+    font-style: italic;
+    color: var(--text-primary);
+    font-size: 1.1rem;
+    line-height: 1.6;
+  }
+  .pillar-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0,1fr));
+    gap: 18px;
+    margin-top: 36px;
+  }
+  .pillar-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    padding: 24px;
+    position: relative;
+    transition: transform var(--d-base), box-shadow var(--d-base), border-color var(--d-base);
+  }
+  .pillar-card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(212,160,23,0.40);
+    box-shadow: var(--shadow-md);
+  }
+  .pillar-card .num {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--gold-700);
+    font-weight: 800;
+    letter-spacing: .14em;
+  }
+  [data-theme=dark] .pillar-card .num { color: var(--gold-300); }
+  .pillar-card h3 {
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin: 8px 0 10px;
+    letter-spacing: -.01em;
+  }
+  .pillar-card p {
+    font-size: .95rem;
+    color: var(--text-secondary);
+    line-height: 1.55;
+    margin: 0;
+  }
+  @media (max-width: 760px) {
+    .pillar-grid { grid-template-columns: 1fr; }
+  }
+  .values-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin-top: 24px;
+  }
+  .values-row .v-block {
+    padding: 18px 20px;
+    border-radius: var(--r-md);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+  }
+  .values-row .v-block.v-no { border-color: rgba(220,38,38,0.20); background: rgba(220,38,38,0.04); }
+  .values-row .v-block.v-yes { border-color: rgba(22,163,74,0.20); background: rgba(22,163,74,0.04); }
+  .values-row h4 {
+    font-size: 12px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: .12em;
+    margin: 0 0 12px;
+  }
+  .v-no h4 { color: var(--danger); }
+  .v-yes h4 { color: var(--success); }
+  .values-row ul { list-style: none; padding: 0; margin: 0; }
+  .values-row li {
+    padding: 6px 0;
+    font-size: .95rem;
+    color: var(--text-primary);
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    line-height: 1.5;
+  }
+  .values-row .v-no li::before {
+    content: '✗';
+    color: var(--danger);
+    font-weight: 700;
+    margin-top: 1px;
+  }
+  .values-row .v-yes li::before {
+    content: '✓';
+    color: var(--success);
+    font-weight: 700;
+    margin-top: 1px;
+  }
+  @media (max-width: 720px) { .values-row { grid-template-columns: 1fr; } }
+  .cta-final {
+    background:
+      linear-gradient(135deg, #0c1838 0%, #182e6e 60%, #1e3a8a 100%);
+    color: #fff;
+    border-radius: var(--r-2xl);
+    padding: clamp(40px, 5vw, 64px);
+    text-align: center;
+    border: 1px solid rgba(212,160,23,0.25);
+    position: relative;
+    overflow: hidden;
+  }
+  .cta-final::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(800px 320px at 50% 0%, rgba(212,160,23,0.18), transparent 60%);
+    z-index: 0;
+  }
+  .cta-final > * { position: relative; z-index: 1; }
+  .cta-final h2 {
+    color: #fff;
+    font-size: clamp(1.4rem, 1.2rem + 1vw, 2rem);
+    margin: 0 0 12px;
+  }
+  .cta-final p {
+    color: rgba(255,255,255,.82);
+    margin: 0 0 24px;
+    font-size: 1.05rem;
+    max-width: 50ch;
+    margin-inline: auto;
+  }
+</style>
+</head>
+<body>
+
+<div data-shell-header></div>
+
+<main id="main">
+  <section class="about-hero">
+    <div class="container">
+      <div class="about-block" style="margin:0">
+        <span class="about-eyebrow">
+          <svg width="10" height="10" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill="currentColor"/></svg>
+          Equipo argentino · es-AR
+        </span>
+        <h1 class="about-h1" style="--total-words:8">
+          <span class="word" style="--i:0">Apostadores</span>
+          <span class="word" style="--i:1">que</span>
+          <span class="word" style="--i:2">ya</span>
+          <span class="word" style="--i:3">no</span>
+          <span class="word" style="--i:4">confían</span>
+          <span class="word" style="--i:5">en</span>
+          <span class="word" style="--i:6">la</span>
+          <em class="word" style="--i:7">suerte.</em>
+        </h1>
+        <p class="about-lead">Este proyecto nació de varias frustraciones acumuladas. La principal: no existía una herramienta seria, honesta y pensada para el apostador argentino.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="about-section">
+    <div class="container about-block">
+      <h2>Por qué existe BetSafe.</h2>
+      <p>Abrimos cuentas en las <strong>6 casas legales argentinas</strong> con licencia LOTBA / IPLyC con las que hoy trabaja BetSafe: <strong>Bplay, Betano, BetWarrior, Bet365 Argentina, Codere y Betsson</strong>. La idea era simple: comparar cuotas antes de cada apuesta y nunca operar fuera del marco regulatorio.</p>
+      <p>Te quemás los ojos saltando entre apps. Para cuando elegiste, la cuota ya cambió. Y cuando ganás, no sabés si fue porque acertaste o porque tuviste suerte. La diferencia importa: una cosa la podés repetir, la otra no.</p>
+      <p>Buscamos un Sofascore para apuestas. Una herramienta que mostrara <strong>todo en una vista</strong>, con datos honestos, sin ruido, sin tipsters. No existía en castellano para el mercado local. Las alternativas en inglés cuestan más de USD 100 por mes, no soportan casas argentinas y fueron construidas para un contexto completamente diferente.</p>
+
+      <p class="about-quote">"La diferencia entre apostar y jugar al casino no es la suerte. Es saber si tenés ventaja, cuánto, y cómo administrarla."</p>
+
+      <p>Entonces la construimos. <strong>BetSafe es esa herramienta.</strong> No es magia, no es un curso, no es un grupo VIP que vende picks. Es matemática aplicada a un mercado que la mayoría aborda con corazonadas.</p>
+    </div>
+  </section>
+
+  <section class="about-section" style="background:var(--bg-2)">
+    <div class="container about-block">
+      <h2>A quién ayudamos.</h2>
+      <p>A vos, si ya apostás y querés tomarte esto en serio. <strong>No le vendemos sueños a principiantes.</strong> Si nunca apostaste, te recomendamos no empezar — y si igual lo hacés, leé primero <a href="/responsable.html">juego responsable</a>.</p>
+      <p>Pero si ya estás en esto, queremos que dejes de hacerlo a ciegas. Que sepas qué casa te paga más. Cuándo una cuota tiene valor real. Cuánto te conviene apostar según tu banca. Cómo medir si tu sistema funciona o si te estás engañando solo.</p>
+      <p>Eso es BetSafe. Una herramienta para que las apuestas no se sientan como tirar la moneda.</p>
+    </div>
+  </section>
+
+  <section class="about-section">
+    <div class="container">
+      <div class="about-block" style="text-align:center">
+        <h2>Cómo pensamos las apuestas.</h2>
+        <p>Tres principios. Sin perderlos de vista, todo lo demás se acomoda.</p>
+      </div>
+      <div class="pillar-grid">
+        <div class="pillar-card">
+          <div class="num">01</div>
+          <h3>Datos antes que opinión</h3>
+          <p>Cada decisión que ofrecemos viene con su número: probabilidad implícita, EV, margen del libro, CLV. Si no podemos medirlo, no lo recomendamos.</p>
+        </div>
+        <div class="pillar-card">
+          <div class="num">02</div>
+          <h3>Ventaja real, no promesas</h3>
+          <p>No prometemos ganancias. Mostramos value cuando existe; lo decimos cuando no. La honestidad sobre el edge es la única forma de durar en este mercado.</p>
+        </div>
+        <div class="pillar-card">
+          <div class="num">03</div>
+          <h3>Tu banca, tu plan</h3>
+          <p>Kelly fraccional, drawdown estimado, alertas de tilt. Un buen apostador pierde plata sin quemar la banca. La gestión de riesgo es lo que separa al amateur del serio.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="about-section" style="background:var(--bg-2)">
+    <div class="container about-block">
+      <h2>Lo que somos. Lo que no somos.</h2>
+      <div class="values-row">
+        <div class="v-block v-no">
+          <h4>Lo que NO somos</h4>
+          <ul>
+            <li>Un grupo de Telegram con tipsters</li>
+            <li>Una academia que vende cursos mágicos</li>
+            <li>Una casa de apuestas — no tomamos tu plata</li>
+            <li>Un sistema "100% efectivo" — eso no existe</li>
+            <li>Afiliados disfrazados de gurúes</li>
+          </ul>
+        </div>
+        <div class="v-block v-yes">
+          <h4>Lo que SÍ somos</h4>
+          <ul>
+            <li>Una herramienta de software</li>
+            <li>Comparador, IA explicable, calculadoras pro</li>
+            <li>Compatibles con las 12 casas legales argentinas (LOTBA · IPLyC)</li>
+            <li>Honestos sobre lo que el sistema puede y no puede hacer</li>
+            <li>Un equipo local, construido para el mercado argentino</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="about-section">
+    <div class="container about-block">
+      <h2>Qué queremos cambiar.</h2>
+      <p>Queremos que apostar deje de asociarse al ruido, a los grupos sin accountability, a los pronósticos sin historial verificable. Que se parezca más a operar en un broker: con datos, con reglas, con riesgo conocido y medido.</p>
+      <p>Queremos que cuando alguien te pregunte cómo te fue el mes, puedas mostrar un reporte real. No decir "bien" porque ganaste tres apuestas en una semana mala. La diferencia entre el tracking honesto y la narrativa que nos construimos es exactamente lo que separa este oficio del juego.</p>
+      <p>Y queremos hacerlo mientras te recordamos, sin parar, que <strong>el riesgo existe siempre</strong>, que solo apostes lo que puedas perder, y que si necesitás ayuda, está disponible 24/7 en <a href="https://www.juegoresponsable.com.ar" target="_blank" rel="noopener">juegoresponsable.com.ar</a>.</p>
+    </div>
+  </section>
+
+  <section class="about-section">
+    <div class="container">
+      <div class="cta-final">
+        <h2>Si pensás como nosotros, vas a estar como en casa.</h2>
+        <p>Empezá gratis, sin tarjeta. Si la herramienta te suma, lo vas a sentir en el primer mes.</p>
+        <a href="login.html" class="btn btn-gold btn-lg">Empezar gratis →</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div data-shell-footer></div>
+
+<script src="assets/js/shell.js?v=5.7.0"></script>
+</body>
+</html>

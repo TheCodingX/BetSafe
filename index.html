@@ -1,0 +1,1320 @@
+<!doctype html>
+<html lang="es-AR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>BetSafe — Análisis inteligente de apuestas deportivas | Argentina legal</title>
+<meta name="description" content="BetSafe es la plataforma argentina legal para apostadores serios: comparador de cuotas en las 6 casas LOTBA, IA para picks, banca, arbitraje y Mundial 2026. No somos casa de apuestas. +18." />
+<meta name="theme-color" content="#ffffff" />
+<meta name="color-scheme" content="light dark" />
+<meta property="og:title" content="BetSafe — Análisis inteligente de apuestas" />
+<meta property="og:description" content="La mesa de trading para apostadores legales en Argentina. Comparador, IA, arbitraje, banca." />
+<meta property="og:type" content="website" />
+<meta property="og:image" content="assets/img/og.svg" />
+<meta property="og:locale" content="es_AR" />
+<meta name="twitter:card" content="summary_large_image" />
+<link rel="canonical" href="/" />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="icon" href="assets/img/icon-192.svg" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="assets/img/icon-192.svg" />
+<link rel="stylesheet" href="assets/css/main.css?v=5.7.0" />
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  "name": "BetSafe",
+  "url": "/",
+  "logo": "assets/img/icon-512.svg",
+  "areaServed": "AR",
+  "description": "Plataforma argentina legal de análisis inteligente de apuestas deportivas."
+}
+</script>
+</head>
+<body>
+
+<div data-shell-header></div>
+
+<main id="main">
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="container hero-grid">
+      <div class="stack-lg reveal-stagger">
+        <span class="eyebrow eyebrow-elegant">Análisis profesional argentino · es-AR</span>
+        <h1 class="h1 hero-headline">Apostar ya no es <span class="strike-rotate">suerte</span>.<br>Es <span class="grad type-cycle" data-words="análisis,ciencia,método,disciplina">análisis</span>.</h1>
+        <p class="lead">Mirás un partido, abrís 6 casas, te perdés en pestañas. <strong>BetSafe te muestra todo en una sola vista</strong>: dónde te pagan más, cómo ven los números cada partido, y cuánto te conviene apostar según tu banca. Sin gurúes, sin grupos de Telegram. Una herramienta limpia para pensar mejor antes de jugar.</p>
+        <div class="row">
+          <a href="dashboard.html#overview" class="btn btn-primary btn-lg mag" id="heroCta">Empezar gratis<span class="arrow" style="margin-left:6px">→</span></a>
+          <a href="#demo" class="btn btn-outline btn-lg">Ver comparador en vivo</a>
+        </div>
+        <div class="stat-strip mt-4">
+          <div><div class="kpi-value tabular" data-count="25">0</div><div class="muted tiny">Casas comparadas</div></div>
+          <div><div class="kpi-value tabular" data-count="155">0</div><div class="muted tiny">Funciones</div></div>
+          <div><div class="kpi-value tabular" data-count="48">0</div><div class="muted tiny">Selecciones WC26</div></div>
+          <div><div class="kpi-value tabular" data-count="80" data-suffix="+">0</div><div class="muted tiny">Herramientas</div></div>
+        </div>
+      </div>
+
+      <div class="hero-visual reveal">
+        <div class="ticker-card stack">
+          <div class="between">
+            <div class="cluster">
+              <span class="dot dot-live dot-success" id="heroLiveDot"></span>
+              <strong>Comparador en vivo</strong>
+            </div>
+            <span class="badge badge-brand" id="heroLiveBadge">Conectando…</span>
+          </div>
+          <!-- Card que se rellena dinámicamente con el primer partido top
+               del snapshot del backend. Mientras tanto, skeleton. -->
+          <div class="card card-tinted card-pad-sm cmp-demo" id="heroLiveCard">
+            <div class="row between" style="margin-bottom:10px">
+              <div class="cluster">
+                <span class="muted tiny">Esperando primer snapshot del backend…</span>
+              </div>
+            </div>
+            <div class="cmp3 mt-2" style="opacity:.55">
+              <div class="cmp3-col">
+                <div class="cmp3-col-head"><span class="label">Local</span><span class="outcome">1</span></div>
+                <div class="cmp3-row"><span class="book">—</span><span class="price">—</span></div>
+                <div class="cmp3-row"><span class="book">—</span><span class="price">—</span></div>
+                <div class="cmp3-row"><span class="book">—</span><span class="price">—</span></div>
+              </div>
+              <div class="cmp3-col">
+                <div class="cmp3-col-head"><span class="label">Empate</span><span class="outcome">X</span></div>
+                <div class="cmp3-row"><span class="book">—</span><span class="price">—</span></div>
+                <div class="cmp3-row"><span class="book">—</span><span class="price">—</span></div>
+                <div class="cmp3-row"><span class="book">—</span><span class="price">—</span></div>
+              </div>
+              <div class="cmp3-col">
+                <div class="cmp3-col-head"><span class="label">Visitante</span><span class="outcome">2</span></div>
+                <div class="cmp3-row"><span class="book">—</span><span class="price">—</span></div>
+                <div class="cmp3-row"><span class="book">—</span><span class="price">—</span></div>
+                <div class="cmp3-row"><span class="book">—</span><span class="price">—</span></div>
+              </div>
+            </div>
+            <div class="cmp-meta-row">
+              <span class="cmp-meta-item"><span class="dim">Estado:</span><strong id="heroBackendState">conectando…</strong></span>
+              <span class="cmp-meta-item"><span class="dim">Última actualización:</span><strong id="heroLastUpdate">—</strong></span>
+            </div>
+          </div>
+          <!-- Hero surebet card REMOVIDO 2026-05-17 a pedido del user — mostraba
+               "Surebet detectada · VIP · sin oportunidades · Buscando surebets en
+               vivo…" cuando no había surebets reales, generando confusión. Las
+               surebets en vivo siguen disponibles en el dashboard tab Arbitraje. -->
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── QUICK ACCESS CARDS — fila premium estilo Stripe/Linear/Vercel ── -->
+  <section class="container quick-access reveal" aria-label="Accesos rápidos">
+    <div class="qa-grid">
+      <a href="dashboard.html#aigenerator" class="qa-card">
+        <span class="qa-card__icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/></svg>
+        </span>
+        <span class="qa-card__body">
+          <strong class="qa-card__title">Quant IA</strong>
+          <span class="qa-card__desc">Combinadas inteligentes según tu perfil.</span>
+        </span>
+        <span class="qa-card__arrow" aria-hidden="true">→</span>
+      </a>
+
+      <a href="dashboard.html#comparator" class="qa-card">
+        <span class="qa-card__icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><path d="M3 3v18h18M7 14l4-4 4 4 5-7"/></svg>
+        </span>
+        <span class="qa-card__body">
+          <strong class="qa-card__title">Comparador</strong>
+          <span class="qa-card__desc">Encontrá dónde paga más cada cuota.</span>
+        </span>
+        <span class="qa-card__arrow" aria-hidden="true">→</span>
+      </a>
+
+      <a href="dashboard.html#worldcup" class="qa-card">
+        <span class="qa-card__icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><path d="M6 4h12v3a4 4 0 0 1-4 4h-1v3h2a3 3 0 0 1 3 3v3H6v-3a3 3 0 0 1 3-3h2v-3h-1a4 4 0 0 1-4-4V4z"/></svg>
+        </span>
+        <span class="qa-card__body">
+          <strong class="qa-card__title">Mundial 2026</strong>
+          <span class="qa-card__desc">Seguimiento completo del Mundial.</span>
+        </span>
+        <span class="qa-card__arrow" aria-hidden="true">→</span>
+      </a>
+
+      <a href="bonos.html" class="qa-card">
+        <span class="qa-card__icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        </span>
+        <span class="qa-card__body">
+          <strong class="qa-card__title">Bonos</strong>
+          <span class="qa-card__desc">Las mejores promos para empezar.</span>
+        </span>
+        <span class="qa-card__arrow" aria-hidden="true">→</span>
+      </a>
+
+      <a href="dashboard.html#builder" class="qa-card">
+        <span class="qa-card__icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+        </span>
+        <span class="qa-card__body">
+          <strong class="qa-card__title">Builder</strong>
+          <span class="qa-card__desc">Armá apuestas más seguras.</span>
+        </span>
+        <span class="qa-card__arrow" aria-hidden="true">→</span>
+      </a>
+
+      <a href="dashboard.html#arbitrage" class="qa-card">
+        <span class="qa-card__icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><path d="M7 7h10l-3-3M17 17H7l3 3M3 12h18"/></svg>
+        </span>
+        <span class="qa-card__body">
+          <strong class="qa-card__title">Arbitraje</strong>
+          <span class="qa-card__desc">Detectá diferencias de cuotas.</span>
+        </span>
+        <span class="qa-card__arrow" aria-hidden="true">→</span>
+      </a>
+
+      <a href="dashboard.html#calcpro" class="qa-card">
+        <span class="qa-card__icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 7h8M8 11h8M8 15h4"/></svg>
+        </span>
+        <span class="qa-card__body">
+          <strong class="qa-card__title">Calc Pro</strong>
+          <span class="qa-card__desc">Calculadoras para apostar mejor.</span>
+        </span>
+        <span class="qa-card__arrow" aria-hidden="true">→</span>
+      </a>
+    </div>
+  </section>
+
+  <!-- TRUST / OPERAMOS — casas argentinas legales -->
+  <section class="container reveal" style="padding-top:8px">
+    <p class="eyebrow-elegant text-center" style="display:flex;justify-content:center;margin-bottom:14px">Operamos sobre las casas legales argentinas (LOTBA / IPLyC)</p>
+    <div class="card marquee" aria-label="Casas con licencia LOTBA">
+      <div class="marquee-track" id="bookmarks"></div>
+    </div>
+  </section>
+
+  <!-- MUNDIAL 2026 — banner épico premium v3 -->
+  <section class="wc-mega reveal" aria-labelledby="wcBannerTitle">
+    <!-- Cinematic background layers -->
+    <div class="wc-mega__bg" aria-hidden="true">
+      <!-- Stadium SVG: crowd silhouette + pitch + floodlight towers -->
+      <svg class="wc-mega__stadium-svg" viewBox="0 0 1200 320" preserveAspectRatio="xMidYMax meet" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <!-- Pitch green glow -->
+        <ellipse cx="600" cy="355" rx="590" ry="135" fill="rgba(0,120,42,.18)"/>
+        <!-- Back crowd rows -->
+        <path d="M0,320 L0,185 C25,178 44,168 62,181 C74,188 88,172 108,165 C124,160 140,172 160,165 C176,160 192,147 212,160 C228,170 244,154 268,147 C286,141 303,154 324,147 C342,141 358,130 381,142 C399,152 415,136 440,129 C458,123 474,136 497,129 C515,123 531,111 554,124 C572,134 588,118 613,111 C631,105 647,118 670,111 C688,105 704,94 728,107 C746,117 762,101 786,94 C804,88 820,101 844,94 C862,89 878,78 902,90 C920,100 936,84 960,77 C978,71 994,84 1018,77 C1036,72 1052,61 1076,73 C1094,83 1110,67 1134,60 C1153,54 1170,68 1190,61 L1200,60 L1200,320 Z" fill="rgba(4,14,36,.72)"/>
+        <!-- Front crowd rows (darker) -->
+        <path d="M0,320 L0,248 C22,240 40,230 58,244 C70,252 84,236 106,229 C123,223 140,237 162,230 C178,225 195,212 218,225 C234,234 250,218 274,211 C292,205 309,218 331,211 C349,206 366,193 389,206 C406,215 423,199 447,192 C465,186 482,199 505,192 C523,187 540,174 563,187 C581,196 598,180 622,173 C640,167 656,180 680,173 C698,167 715,155 738,168 C756,177 772,161 796,154 C814,148 830,162 854,155 C872,149 888,137 912,150 C930,159 946,143 970,136 C988,130 1005,143 1028,136 C1046,131 1062,118 1086,131 C1104,141 1120,125 1144,118 C1162,112 1178,126 1198,119 L1200,119 L1200,320 Z" fill="rgba(2,8,22,.94)"/>
+        <!-- Left floodlight tower -->
+        <rect x="68" y="0" width="5" height="205" rx="1.5" fill="rgba(10,26,68,.80)"/>
+        <rect x="53" y="198" width="36" height="5" rx="1.5" fill="rgba(10,26,68,.80)"/>
+        <rect x="55" y="197" width="9" height="5" rx="1" fill="rgba(255,248,200,.22)"/>
+        <rect x="68" y="197" width="9" height="5" rx="1" fill="rgba(255,248,200,.22)"/>
+        <rect x="81" y="197" width="9" height="5" rx="1" fill="rgba(255,248,200,.22)"/>
+        <ellipse cx="70" cy="16" rx="42" ry="20" fill="rgba(255,248,200,.055)"/>
+        <!-- Right floodlight tower -->
+        <rect x="1127" y="0" width="5" height="205" rx="1.5" fill="rgba(10,26,68,.80)"/>
+        <rect x="1111" y="198" width="36" height="5" rx="1.5" fill="rgba(10,26,68,.80)"/>
+        <rect x="1113" y="197" width="9" height="5" rx="1" fill="rgba(255,248,200,.22)"/>
+        <rect x="1126" y="197" width="9" height="5" rx="1" fill="rgba(255,248,200,.22)"/>
+        <rect x="1139" y="197" width="9" height="5" rx="1" fill="rgba(255,248,200,.22)"/>
+        <ellipse cx="1129" cy="16" rx="42" ry="20" fill="rgba(255,248,200,.055)"/>
+        <!-- Pitch center line -->
+        <line x1="130" y1="308" x2="1070" y2="308" stroke="rgba(255,255,255,.065)" stroke-width="1.5"/>
+        <!-- Pitch center circle -->
+        <circle cx="600" cy="378" r="165" stroke="rgba(255,255,255,.065)" stroke-width="1.5" fill="none"/>
+        <circle cx="600" cy="308" r="4.5" stroke="rgba(255,255,255,.07)" stroke-width="1" fill="none"/>
+        <!-- Goal area lines -->
+        <rect x="130" y="292" width="248" height="52" stroke="rgba(255,255,255,.045)" stroke-width="1" fill="none"/>
+        <rect x="822" y="292" width="248" height="52" stroke="rgba(255,255,255,.045)" stroke-width="1" fill="none"/>
+      </svg>
+      <!-- Pitch floor gradient -->
+      <div class="wc-mega__pitch-floor"></div>
+      <!-- Film grain texture -->
+      <div class="wc-mega__grain"></div>
+      <!-- Festive confetti — WC26 host nation colors -->
+      <div class="wc-mega__festive" aria-hidden="true">
+        <b style="width:3px;height:22px;background:#C8102E;left:5%;--d:9s;--delay:-3s;--r:15deg;--op:.60;--vh:400px"></b>
+        <b style="width:2px;height:16px;background:#FFE07A;left:12%;--d:11s;--delay:-7s;--r:-22deg;--op:.48;--vh:400px"></b>
+        <b style="width:4px;height:14px;background:#006847;left:21%;--d:8s;--delay:-1s;--r:32deg;--op:.55;--vh:400px"></b>
+        <b style="width:2px;height:20px;background:rgba(255,255,255,.70);left:31%;--d:13s;--delay:-5s;--r:-17deg;--op:.42;--vh:400px"></b>
+        <b style="width:3px;height:18px;background:#C8102E;left:42%;--d:10s;--delay:-9s;--r:24deg;--op:.58;--vh:400px"></b>
+        <b style="width:2px;height:12px;background:#003DA5;left:51%;--d:12s;--delay:-4s;--r:-34deg;--op:.45;--vh:400px"></b>
+        <b style="width:3px;height:18px;background:#FFE07A;left:60%;--d:9s;--delay:-6s;--r:28deg;--op:.52;--vh:400px"></b>
+        <b style="width:4px;height:14px;background:#006847;left:70%;--d:11s;--delay:-2s;--r:-19deg;--op:.50;--vh:400px"></b>
+        <b style="width:2px;height:20px;background:rgba(255,255,255,.58);left:79%;--d:8s;--delay:-8s;--r:14deg;--op:.40;--vh:400px"></b>
+        <b style="width:3px;height:16px;background:#C8102E;left:88%;--d:10s;--delay:-3s;--r:-28deg;--op:.62;--vh:400px"></b>
+        <b style="width:2px;height:14px;background:#FFE07A;left:95%;--d:13s;--delay:-5s;--r:20deg;--op:.46;--vh:400px"></b>
+      </div>
+    </div>
+
+    <!-- Main content -->
+    <div class="wc-mega__inner">
+
+      <!-- Header: WC26 emblem + badge cluster -->
+      <div class="wc-mega__header">
+        <div class="wc-mega__emblem">
+          <div class="wc-mega__emblem-img-wrap">
+            <img src="assets/img/wc2026-logo.jpg" alt="FIFA World Cup 2026" class="wc-mega__emblem-img" width="88" height="108" />
+          </div>
+          <div class="wc-mega__emblem-text">
+            <span class="wc-mega__emblem-sup">Mundial de Fútbol</span>
+            <span class="wc-mega__emblem-year">2026</span>
+            <span class="wc-mega__emblem-host">USA · México · Canadá</span>
+          </div>
+        </div>
+        <div class="wc-mega__badges">
+          <img src="assets/img/fifa-logo-blue.png" alt="FIFA" class="wc-mega__fifa-badge" />
+          <span class="wc-mega__badge wc-mega__badge--gold">11 Jun — 19 Jul 2026</span>
+          <span class="wc-mega__badge wc-mega__badge--live">
+            <svg width="6" height="6" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="3.5" fill="currentColor"/></svg>
+            Cuotas en vivo
+          </span>
+          <span class="wc-mega__badge">48 selecciones</span>
+        </div>
+      </div>
+
+      <!-- Title + subtitle -->
+      <h2 id="wcBannerTitle" class="wc-mega__title">Llegá al Mundial <em>preparado</em>.</h2>
+      <p class="wc-mega__sub">48 selecciones, 16 sedes, favoritos al título y cuotas comparadas en las casas legales argentinas, día a día.</p>
+
+      <!-- Nation flag chips — corrected SVG flags -->
+      <div class="wc-mega__nations" aria-label="Selecciones participantes">
+        <span class="wc-mega__nation">
+          <span class="wc-mega__flag"><svg viewBox="0 0 7 3.7" xmlns="http://www.w3.org/2000/svg"><rect width="7" height="3.7" fill="#fff"/><rect width="7" height=".284" fill="#BF0A30"/><rect y=".568" width="7" height=".284" fill="#BF0A30"/><rect y="1.137" width="7" height=".284" fill="#BF0A30"/><rect y="1.705" width="7" height=".284" fill="#BF0A30"/><rect y="2.274" width="7" height=".284" fill="#BF0A30"/><rect y="2.843" width="7" height=".284" fill="#BF0A30"/><rect y="3.411" width="7" height=".289" fill="#BF0A30"/><rect width="2.8" height="2" fill="#002868"/></svg></span>
+          USA
+        </span>
+        <span class="wc-mega__nation">
+          <span class="wc-mega__flag"><svg viewBox="0 0 3 2" xmlns="http://www.w3.org/2000/svg"><rect width="1" height="2" fill="#006847"/><rect x="1" width="1" height="2" fill="#fff"/><rect x="2" width="1" height="2" fill="#CE1126"/></svg></span>
+          México
+        </span>
+        <span class="wc-mega__nation">
+          <span class="wc-mega__flag"><svg viewBox="0 0 3 2" xmlns="http://www.w3.org/2000/svg"><rect width="3" height="2" fill="#fff"/><rect width=".75" height="2" fill="#FF0000"/><rect x="2.25" width=".75" height="2" fill="#FF0000"/></svg></span>
+          Canadá
+        </span>
+        <span class="wc-mega__nation">
+          <span class="wc-mega__flag"><svg viewBox="0 0 3 2" xmlns="http://www.w3.org/2000/svg"><rect width="3" height="2" fill="#74ACDF"/><rect y=".667" width="3" height=".667" fill="#fff"/></svg></span>
+          Argentina
+        </span>
+        <span class="wc-mega__nation">
+          <span class="wc-mega__flag"><svg viewBox="0 0 4 2.8" xmlns="http://www.w3.org/2000/svg"><rect width="4" height="2.8" fill="#009c3b"/><polygon points="2,.28 3.64,1.4 2,2.52 .36,1.4" fill="#fedf00"/><circle cx="2" cy="1.4" r=".66" fill="#002776"/></svg></span>
+          Brasil
+        </span>
+        <span class="wc-mega__nation">
+          <span class="wc-mega__flag"><svg viewBox="0 0 3 2" xmlns="http://www.w3.org/2000/svg"><rect width="1" height="2" fill="#002395"/><rect x="1" width="1" height="2" fill="#fff"/><rect x="2" width="1" height="2" fill="#ED2939"/></svg></span>
+          Francia
+        </span>
+        <span class="wc-mega__nation">
+          <span class="wc-mega__flag"><svg viewBox="0 0 3 2" xmlns="http://www.w3.org/2000/svg"><rect width="3" height=".5" fill="#c60b1e"/><rect y=".5" width="3" height="1" fill="#ffc400"/><rect y="1.5" width="3" height=".5" fill="#c60b1e"/></svg></span>
+          España
+        </span>
+        <span class="wc-mega__nation">
+          <span class="wc-mega__flag"><svg viewBox="0 0 3 2" xmlns="http://www.w3.org/2000/svg"><rect width="3" height=".667" fill="#000"/><rect y=".667" width="3" height=".667" fill="#DD0000"/><rect y="1.333" width="3" height=".667" fill="#FFCE00"/></svg></span>
+          Alemania
+        </span>
+        <span class="wc-mega__nation" style="color:rgba(255,255,255,.48)">+40 más</span>
+      </div>
+
+      <!-- 2-col: left (CTAs + stats) / right (countdown + favorites) -->
+      <div class="wc-mega__content">
+
+        <div>
+          <div class="wc-mega__ctas">
+            <a href="dashboard.html#worldcup" class="btn btn-gold btn-lg">Ir al Mundial 2026 →</a>
+          </div>
+          <div class="wc-mega__stats">
+            <div class="wc-mega__stat"><span class="sv">48</span><span class="sk">Selecciones</span></div>
+            <div class="wc-mega__stat"><span class="sv">16</span><span class="sk">Sedes</span></div>
+            <div class="wc-mega__stat"><span class="sv">12</span><span class="sk">Casas</span></div>
+            <div class="wc-mega__stat"><span class="sv">104</span><span class="sk">Partidos</span></div>
+          </div>
+        </div>
+
+        <div class="wc-mega__right">
+          <div class="wc-mega__countdown" aria-label="Cuenta regresiva al Mundial">
+            <div class="wc-mega__cu"><strong id="wcEpicD" data-wc-countdown="days">—</strong><span>Días</span></div>
+            <div class="wc-mega__cu"><strong id="wcEpicH">—</strong><span>Horas</span></div>
+            <div class="wc-mega__cu"><strong id="wcEpicM">—</strong><span>Min</span></div>
+            <div class="wc-mega__cu"><strong id="wcEpicS">—</strong><span>Seg</span></div>
+          </div>
+          <div class="wc-mega__favorites" aria-label="Favoritos al título" id="wcLiveFavorites">
+            <span class="wc-mega__fav-header">Favoritos al título · WC26</span>
+            <div class="wc-mega__fav-row" style="opacity:.6">
+              <span class="wc-mega__fav-name">Cuotas reales pendientes</span>
+              <span class="wc-mega__fav-odd">—</span>
+            </div>
+            <div class="muted tiny" style="padding:8px 4px 0">El mercado "Campeón Mundial 2026" se rehidrata acá apenas las casas argentinas lo publiquen.</div>
+          </div>
+          <script>
+            (function () {
+              function render() {
+                if (!window.BSData) return;
+                const host = document.getElementById('wcLiveFavorites');
+                if (!host) return;
+                const evs = BSData.liveEvents({})
+                  .filter(e => /world.cup|mundial|wc26/i.test(e.leagueName || e.league || ''));
+                const champOdds = {};
+                evs.forEach(ev => {
+                  const code = (BSData.NATIONS.find(n => new RegExp(n.name, 'i').test(ev.home.name)) || {}).code;
+                  if (code && ev.bestOdds?.h2h?.home) {
+                    if (!champOdds[code] || ev.bestOdds.h2h.home > champOdds[code]) champOdds[code] = ev.bestOdds.h2h.home;
+                  }
+                });
+                const rows = Object.entries(champOdds).sort((a, b) => a[1] - b[1]).slice(0, 5);
+                if (!rows.length) return;
+                host.innerHTML = `<span class="wc-mega__fav-header">Favoritos al título · WC26 · cuotas reales</span>` +
+                  rows.map(([code, odd]) => {
+                    const n = BSData.NATIONS.find(x => x.code === code) || {};
+                    return `<div class="wc-mega__fav-row"><span class="wc-mega__fav-name">${BSUI.esc(n.name || code)}</span><span class="wc-mega__fav-odd">${odd.toFixed(2)}</span></div>`;
+                  }).join('');
+              }
+              // Solo re-render en snapshot (cada ~30s) — bs:live-update genera flicker
+              window.addEventListener('bs:live-snapshot', render);
+            })();
+          </script>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Comparador WC26 — se llena con partidos reales del backend cuando
+         las casas argentinas publiquen mercado del torneo (sorteo: 5 dic 2025). -->
+    <div class="wc-mega__comparator">
+      <div class="wc-mega__cmp-head">
+        <div>
+          <p class="wc-mega__cmp-title">Comparador de cuotas — Partidos del Mundial</p>
+          <p class="wc-mega__cmp-sub">Top 3 casas argentinas por resultado · Cuotas actualizadas en vivo</p>
+        </div>
+        <span class="wc-mega__cmp-badge">
+          <svg width="6" height="6" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="3.5" fill="currentColor"/></svg>
+          Exclusivo WC26
+        </span>
+      </div>
+      <div id="wcLiveComparator" class="wc-mega__cmp-grid">
+        <div class="empty" style="grid-column:1/-1;padding:32px;text-align:center;border:1px dashed var(--border);border-radius:12px">
+          <strong>Mercados del Mundial 2026 — pendiente apertura</strong>
+          <p class="muted tiny" style="max-width:560px;margin:8px auto 0">El sorteo de grupos se hizo el 5 diciembre 2025. A medida que las casas legales argentinas publiquen los mercados de cada partido, las cuotas reales aparecen acá automáticamente.</p>
+        </div>
+      </div>
+      <div style="margin-top:16px;text-align:right">
+        <a href="dashboard.html#worldcup" class="wc-mega__more-link">Ver todas las cuotas WC26 →</a>
+      </div>
+    </div>
+    <script>
+      // Rehidrata el comparador del Mundial con datos reales cuando estén
+      (function () {
+        function render() {
+          if (!window.BSData) return;
+          const host = document.getElementById('wcLiveComparator');
+          if (!host) return;
+          const matches = BSData.liveEvents({})
+            .filter(m => /world.cup|mundial|wc26/i.test(m.leagueName || m.league || ''))
+            .filter(m => m.markets?.h2h && Object.keys(m.markets.h2h).length >= 2)
+            .slice(0, 2);
+          if (!matches.length) return;  // mantener empty state honesto
+          const bookName = (k) => BSData.ALL_BOOKS.find(b => b.key === k)?.name || k;
+          const top3 = (books, side) => Object.entries(books)
+            .map(([k, v]) => ({ book: k, price: v[side] || 0 }))
+            .filter(x => x.price > 1).sort((a, b) => b.price - a.price).slice(0, 3);
+          host.innerHTML = matches.map(m => {
+            const tH = top3(m.markets.h2h, 'home');
+            const tD = top3(m.markets.h2h, 'draw');
+            const tA = top3(m.markets.h2h, 'away');
+            const col = (label, code, list) => `
+              <div class="wc-mega__cmp-col">
+                <div class="wc-mega__cmp-col-label">${BSUI.esc(label)} <span class="wc-mega__cmp-col-code">${code}</span></div>
+                ${list.map((it, i) => `<div class="wc-mega__cmp-row${i===0?' is-top':''}"><span class="wc-mega__cmp-book">${BSUI.esc(bookName(it.book))}</span><span class="wc-mega__cmp-price">${it.price.toFixed(2)}</span></div>`).join('')}
+              </div>`;
+            return `<div class="wc-mega__cmp-card">
+              <div class="wc-mega__cmp-match">
+                <div class="wc-mega__cmp-teams">${BSUI.esc(m.home.name)} <span class="wc-mega__cmp-vs">vs</span> ${BSUI.esc(m.away.name)}</div>
+                <span class="wc-mega__cmp-stage">${BSUI.esc(m.leagueName || 'WC26')}</span>
+              </div>
+              <div class="wc-mega__cmp-outcomes">
+                ${col(m.home.name, '1', tH)}
+                ${tD.length ? col('Empate', 'X', tD) : ''}
+                ${col(m.away.name, '2', tA)}
+              </div>
+            </div>`;
+          }).join('');
+        }
+        // Solo re-render en snapshot
+        window.addEventListener('bs:live-snapshot', render);
+      })();
+    </script>
+  </section>
+
+  <!-- VALUE PROPS / FEATURES GRID -->
+  <section class="section container">
+    <div class="section-head mb-6">
+      <div>
+        <span class="eyebrow-elegant">Lo que hacés con BetSafe</span>
+        <h2 class="h2 mt-2">Trabajá las apuestas con datos, no con corazonadas.</h2>
+      </div>
+      <a href="features.html" class="btn btn-outline cta-arrow">Ver las 155 funciones <span class="arrow">→</span></a>
+    </div>
+    <div class="grid grid-3 reveal-stagger">
+      <article class="card card-hover stack">
+        <div class="badge badge-brand">Comparador</div>
+        <h3 class="h4">6 casas, una sola vista</h3>
+        <p class="muted">Bplay, Betano, BetWarrior, Bet365 AR, Codere y Betsson — las casas legales argentinas con licencia LOTBA / IPLyC. Resaltamos la mejor cuota por outcome y mostramos el margen del libro. Refresco cada 30 s.</p>
+        <a href="dashboard.html#comparator" class="text-brand fw-600">Ver comparador →</a>
+      </article>
+      <article class="card card-hover stack">
+        <div class="badge badge-brand">IA explicada</div>
+        <h3 class="h4">3 picks por partido (cons / equilibrado / agresivo)</h3>
+        <p class="muted">Motor cuántico de IA con análisis táctico en 3 párrafos: probabilístico, contexto, aviso de riesgo. Sin "corazonadas".</p>
+        <a href="dashboard.html#ai" class="text-brand fw-600">Generar picks →</a>
+      </article>
+      <article class="card card-hover stack">
+        <div class="badge badge-brand">Banca</div>
+        <h3 class="h4">Kelly, Sharpe, Drawdown</h3>
+        <p class="muted">Stake óptimo, equity curve, ROI por deporte/liga/casa, Kelly fraccional, simulación Monte Carlo. Tu banca, instrumentada.</p>
+        <a href="dashboard.html#tracker" class="text-brand fw-600">Ver tracker →</a>
+      </article>
+      <article class="card card-hover stack">
+        <div class="badge badge-gold">VIP</div>
+        <h3 class="h4">Arbitraje en tiempo real</h3>
+        <p class="muted">Motor de surebets escaneando 5 deportes, slippage protection, calculadora 2-way y 3-way, histórico de 500 detecciones.</p>
+        <a href="dashboard.html#arbitrage" class="text-brand fw-600">Arbitraje VIP →</a>
+      </article>
+      <article class="card card-hover stack">
+        <div class="badge badge-info">Mundial 2026</div>
+        <h3 class="h4">Hub WC26 con countdown live</h3>
+        <p class="muted">48 selecciones por confederación, 16 sedes, top scorers, favoritos al título y eventos clave (UCL, NBA Finals, Super Bowl LX).</p>
+        <a href="dashboard.html#worldcup" class="text-brand fw-600">Ir al Mundial →</a>
+      </article>
+      <article class="card card-hover stack">
+        <div class="badge badge-success">Tools</div>
+        <h3 class="h4">80+ herramientas profesionales</h3>
+        <p class="muted">Same-Game Parlay correlator, Cash-Out Optimizer, EPA, xT, Pythagorean, Power Rankings, Backtesting visual.</p>
+        <a href="tools.html" class="text-brand fw-600">Hub de tools →</a>
+      </article>
+    </div>
+  </section>
+
+  <!-- AI PICK DEL DÍA -->
+  <section id="ai-pick" class="section">
+    <div class="container">
+      <div class="row between mb-4">
+        <div>
+          <span class="eyebrow-elegant">Pick del día por IA</span>
+          <h2 class="h2 mt-2">El partido con mayor EV de hoy, según el motor</h2>
+          <p class="muted mt-2">Nuestra IA analiza clima, lesiones, movimientos del mercado e histórico de cada partido en vivo.</p>
+        </div>
+        <a href="dashboard.html#ai" class="btn btn-primary">Ver todos los picks</a>
+      </div>
+      <div id="aiPickDailyCard" class="card stack" style="min-height:200px;padding:24px">
+        <div class="cluster muted tiny"><span class="shimmer-text">Backend procesando los partidos del día con IA...</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- DEMO COMPARATOR (no login) -->
+  <section id="demo" class="section">
+    <div class="container">
+      <div class="row between mb-4">
+        <div>
+          <span class="eyebrow-elegant">Demo en vivo</span>
+          <h2 class="h2 mt-2">Probá el comparador sin registro</h2>
+          <p class="muted mt-2">Datos simulados con la misma lógica del producto. Conectamos The Odds API en producción.</p>
+        </div>
+        <a href="dashboard.html" class="btn btn-primary">Abrir herramienta completa</a>
+      </div>
+      <div id="demoComparator"></div>
+    </div>
+  </section>
+
+
+  <!-- Sección "Builder de combinadas" REMOVIDA 2026-05-17 a pedido del user
+       junto con la eliminación del tab Builder del dashboard. La landing va
+       directo de Features a VIP Upsell. -->
+
+
+  <!-- VIP UPSELL -->
+  <section class="section container">
+    <div class="card card-vip card-pad-lg reveal vip-aura vip-particles-host" style="position:relative">
+      <div class="grid grid-2" style="align-items:center;gap:32px;position:relative;z-index:2">
+        <div class="stack">
+          <span class="badge-vip" style="align-self:flex-start">VIP · Gold tier</span>
+          <h2 class="h2"><span class="vip-text">Arbitraje en tiempo real</span>, alertas de Smart Money, Monte Carlo, Kelly portfolio.</h2>
+          <p class="lead">Pasá al plan VIP y desbloqueá la suite completa: IA Pro, métricas avanzadas, backtesting visual, gestión multi-cuenta, API.</p>
+          <ul class="vip-features-grid">
+            <li class="vip-feat" style="--i:0">
+              <span class="vip-feat-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M2 12h20M5 5l14 14M19 5L5 19"/></svg>
+              </span>
+              <div><strong>Surebets 24/7</strong><span class="muted tiny">5 deportes simultáneos</span></div>
+            </li>
+            <li class="vip-feat" style="--i:1">
+              <span class="vip-feat-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-7 4 14 3-7h4"/></svg>
+              </span>
+              <div><strong>Smart Money Alerts</strong><span class="muted tiny">Movimientos sharp &gt;5%/h</span></div>
+            </li>
+            <li class="vip-feat" style="--i:2">
+              <span class="vip-feat-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+              </span>
+              <div><strong>Monte Carlo</strong><span class="muted tiny">1000+ runs estocásticos</span></div>
+            </li>
+            <li class="vip-feat" style="--i:3">
+              <span class="vip-feat-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 4v5c0 5-3.5 8.5-8 9-4.5-.5-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg>
+              </span>
+              <div><strong>Track Record</strong><span class="muted tiny">Hash criptográfico verificable</span></div>
+            </li>
+            <li class="vip-feat" style="--i:4">
+              <span class="vip-feat-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6M9 13h6M9 17h3"/></svg>
+              </span>
+              <div><strong>Tax calculator AR</strong><span class="muted tiny">5 jurisdicciones</span></div>
+            </li>
+            <li class="vip-feat" style="--i:5">
+              <span class="vip-feat-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12c2 0 4-2 4-4M21 12c-2 0-4-2-4-4M3 12c2 0 4 2 4 4M21 12c-2 0-4 2-4 4M9 5a3 3 0 1 0 6 0 3 3 0 1 0-6 0M9 19a3 3 0 1 0 6 0 3 3 0 1 0-6 0"/></svg>
+              </span>
+              <div><strong>Multi-account</strong><span class="muted tiny">Portfolio entre cuentas</span></div>
+            </li>
+          </ul>
+          <div class="row mt-4">
+            <a href="pricing.html" class="btn btn-premium mag">Pasar a VIP</a>
+            <a href="features.html#vip" class="btn btn-outline">Ver todo lo VIP</a>
+            <span data-ai-status></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- LOGO STRIP — operadores legales -->
+  <section class="section container reveal">
+    <p class="eyebrow-elegant text-center" style="display:flex;justify-content:center">Comparamos cuotas en las casas legales argentinas</p>
+    <div class="logo-strip stagger mt-3" id="bookLogoStrip" aria-label="Logos de casas de apuestas legales en Argentina"></div>
+  </section>
+
+  <!-- LIGAS / TORNEOS -->
+  <section class="section container reveal">
+    <p class="eyebrow-elegant text-center" style="display:flex;justify-content:center">Cubrimos las ligas más relevantes del mundo</p>
+    <div class="logo-strip stagger mt-3" id="leagueLogoStrip" aria-label="Logos de ligas y torneos cubiertos"></div>
+  </section>
+
+  <!-- TESTIMONIALS (terminal-style) -->
+  <section class="section container">
+    <div class="row between mb-4">
+      <div>
+        <span class="eyebrow-elegant">Quienes apuestan en serio</span>
+        <h2 class="h2 mt-2">Operadores reales, métricas reales.</h2>
+      </div>
+    </div>
+    <div class="grid grid-3 reveal-stagger">
+      <div class="card stack">
+        <div class="cluster"><span class="dot" style="background:var(--brand-600)"></span><strong>Joaquín · Buenos Aires</strong></div>
+        <p class="muted">"Pasé de stake plano a Kelly fraccional. La curva de banca cambió. CLV+3.4% sostenido en NBA."</p>
+        <div class="cluster muted tiny"><span class="num">ROI 9.8%</span><span>·</span><span class="num">156 picks</span><span>·</span><span class="num">CLV +3.4%</span></div>
+      </div>
+      <div class="card stack">
+        <div class="cluster"><span class="dot" style="background:var(--gold-500)"></span><strong>Sofía · Córdoba (VIP)</strong></div>
+        <p class="muted">"El arbitraje en vivo me da 4-6 surebets por día. Tax calculator integrada me ahorra horas."</p>
+        <div class="cluster muted tiny"><span class="num">+ARS 1.2M / 90d</span></div>
+      </div>
+      <div class="card stack">
+        <div class="cluster"><span class="dot" style="background:var(--brand-600)"></span><strong>Martín · Mendoza</strong></div>
+        <p class="muted">"El generador IA con justificación me obliga a pensar antes de apostar. Tilt detector me salvó tres veces."</p>
+        <div class="cluster muted tiny"><span class="num">Yield 6.1%</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TRUST METRICS STRIP -->
+  <section class="section container reveal">
+    <div class="trust-row stagger">
+      <div class="trust-row__item">
+        <strong data-count="9.8" data-format="pct">0%</strong>
+        <span>ROI medio Q1 2026</span>
+      </div>
+      <div class="trust-row__item">
+        <strong data-count="2156">0</strong>
+        <span>Surebets detectadas / mes</span>
+      </div>
+      <div class="trust-row__item">
+        <strong data-count="843">0</strong>
+        <span>ms latencia IA real</span>
+      </div>
+      <div class="trust-row__item">
+        <strong data-count="25">0</strong>
+        <span>Casas comparadas</span>
+      </div>
+      <div class="trust-row__item">
+        <strong data-count="155">0</strong>
+        <span>Funciones quant</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- PRICING TEASER (rich, animated) -->
+  <section class="section container">
+    <div class="text-center mb-6">
+      <span class="eyebrow-elegant">Planes</span>
+      <h2 class="h2 mt-2">Empezá gratis. Subí a VIP cuando lo necesites.<a class="help-q" tabindex="0" data-tip="Sin permanencia. Cancelás cuando quieras desde Settings — conservás acceso hasta el final del ciclo facturado y exportás todos tus datos a CSV / JSON."></a></h2>
+      <p class="muted mt-2">Sin permanencia · Cancelás cuando quieras · Datos siempre tuyos</p>
+    </div>
+    <div class="grid grid-2 reveal-stagger" style="max-width:920px;margin:auto;align-items:stretch;gap:24px">
+      <div class="card price-card">
+        <span class="badge badge-brand">Standard</span>
+        <h2 class="h3">Plan Básico</h2>
+        <p class="muted tiny" style="margin:-4px 0 4px">Lo esencial para apostar con cabeza, gratis para siempre.</p>
+        <div class="price">$0<small> / siempre</small></div>
+        <ul>
+          <li>Comparador de cuotas (6 casas argentinas legales LOTBA)</li>
+          <li>Builder para armar tu combinada paso a paso</li>
+          <li>3 picks de IA por partido (conservador, equilibrado, agresivo)</li>
+          <li>9 calculadoras esenciales (Kelly, valor esperado, etc.)</li>
+          <li>Tracker para llevar tu banca y resultados</li>
+          <li>Mundial 2026 hub completo</li>
+        </ul>
+        <a href="dashboard.html#overview" class="btn btn-outline btn-block btn-lg">Empezar gratis</a>
+      </div>
+
+      <div class="card price-card popular">
+        <span class="badge-vip">VIP · Gold</span>
+        <h2 class="h3">Para apostadores serios</h2>
+        <p class="muted tiny" style="margin:-4px 0 4px">Todo el poder profesional: arbitraje, IA Pro y herramientas avanzadas.</p>
+        <div class="price">$39.000<small> / mes ARS</small></div>
+        <ul>
+          <li>Todo lo del Plan Básico</li>
+          <li>Arbitraje en vivo 24/7 (ganancia matemática garantizada)</li>
+          <li>IA Pro: análisis más profundo y picks de mayor calidad</li>
+          <li>24 calculadoras avanzadas (CalcPro)</li>
+          <li>Smart Money Alerts: te avisamos cuando se mueve el dinero sharp</li>
+          <li>Simulación Monte Carlo + What-If (1000 escenarios)</li>
+          <li>Métricas pro: Sharpe, Sortino, drawdown</li>
+          <li>Calculadora de impuestos AR y multi-cuenta</li>
+        </ul>
+        <a href="pricing.html" class="btn btn-gold btn-block btn-lg mag">Pasar a VIP</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section class="section container">
+    <div class="text-center mb-6">
+      <span class="eyebrow-elegant">Preguntas frecuentes</span>
+      <h2 class="h2 mt-2">Todo lo que un apostador serio quiere saber.</h2>
+    </div>
+    <div class="stack" style="max-width:780px;margin:auto" id="faqList"></div>
+  </section>
+
+  <!-- CTA FINAL -->
+  <section class="section container">
+    <div class="card card-pad-lg text-center reveal" style="background:linear-gradient(135deg, var(--brand-50), var(--surface));border-color: color-mix(in srgb, var(--brand-600) 24%, transparent)">
+      <h2 class="h2">Listo para operar con datos.</h2>
+      <p class="lead mt-2">Sumate a la plataforma de análisis inteligente argentina. +18, juego responsable, sin promesas vacías.</p>
+      <div class="row" style="justify-content:center;margin-top:18px">
+        <a href="dashboard.html#overview" class="btn btn-primary btn-lg mag">Empezar gratis</a>
+        <a href="pricing.html" class="btn btn-outline btn-lg">Ver planes</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<div data-shell-footer></div>
+
+<script src="assets/js/env.js?v=5.7.0"></script>
+<script src="assets/js/live.js?v=5.7.0"></script>
+<script src="assets/js/data.js?v=5.7.0"></script>
+<script src="assets/js/logos.js?v=5.7.0"></script>
+<script src="assets/js/icons.js?v=5.7.0"></script>
+<script src="assets/js/engine.js?v=5.7.0"></script>
+<script src="assets/js/store.js?v=5.7.0"></script>
+<script src="assets/js/supabase-client.js?v=5.7.0"></script>
+<script src="assets/js/auth.js?v=5.7.0"></script>
+<script src="assets/js/api.js?v=5.7.0"></script>
+<script src="assets/js/math.js?v=5.7.0"></script>
+<script src="assets/js/ui.js?v=5.7.0"></script>
+<script src="assets/js/shell.js?v=5.7.0"></script>
+<script src="assets/js/app.js?v=5.7.0"></script>
+<script>
+/* Landing page — local interactions */
+document.addEventListener('DOMContentLoaded', () => {
+  // Count-ups
+  document.querySelectorAll('[data-count]').forEach(el => {
+    const to = Number(el.dataset.count);
+    const suffix = el.dataset.suffix || '';
+    if (!('IntersectionObserver' in window)) { el.textContent = to + suffix; return; }
+    const io = new IntersectionObserver(([e]) => { if (e.isIntersecting) { BSUI.countUp(el, to, { suffix }); io.disconnect(); } });
+    io.observe(el);
+  });
+
+  // Hero headline word cycler (data-words on .type-cycle)
+  document.querySelectorAll('.type-cycle[data-words]').forEach(el => {
+    const words = el.dataset.words.split(',').map(s => s.trim()).filter(Boolean);
+    if (words.length < 2) return;
+    let i = 0;
+    setInterval(() => {
+      i = (i + 1) % words.length;
+      el.classList.add('swapping');
+      setTimeout(() => { el.textContent = words[i]; }, 250);
+      setTimeout(() => el.classList.remove('swapping'), 600);
+    }, 2600);
+  });
+
+  // Inline team logos in hero — use real CDN crests
+  document.querySelectorAll('[data-team]').forEach(el => {
+    const id = el.dataset.team;
+    if (window.BSLogos && window.BSLogos.teamCrest) {
+      el.innerHTML = BSLogos.teamCrest(id, { size: 24 });
+      return;
+    }
+    const team = BSData.TEAMS.find(t => t.id === id);
+    if (team) el.innerHTML = BSIcons.teamLogo(team, { size: 24 });
+  });
+
+  // Populate book logos in [data-book] elements (live comparator demo)
+  document.querySelectorAll('.book-logo[data-book]').forEach(el => {
+    const id = el.dataset.book;
+    if (window.BSLogos && window.BSLogos.bookLogo) {
+      el.innerHTML = BSLogos.bookLogo(id, { size: 18 });
+    }
+  });
+  // El "rank" del podio del comparador ahora muestra el logo de la casa
+  // en lugar de un número 1/2/3 — más claro para entender que es un top
+  // de casinos que mejor pagan.
+  document.querySelectorAll('.rank-book[data-book]').forEach(el => {
+    const id = el.dataset.book;
+    if (window.BSLogos && window.BSLogos.bookLogo) {
+      el.innerHTML = BSLogos.bookLogo(id, { size: 26 });
+    }
+  });
+
+  // Hero comparador: rehidrata con el primer match del snapshot real
+  function renderHeroLive() {
+    const card = document.getElementById('heroLiveCard');
+    const badge = document.getElementById('heroLiveBadge');
+    const dot = document.getElementById('heroLiveDot');
+    const lastUpd = document.getElementById('heroLastUpdate');
+    const stateEl = document.getElementById('heroBackendState');
+    const sbCard = document.getElementById('heroSurebetCard');
+    // Click handler una sola vez: scroll a sección VIP si no-VIP, dashboard si VIP
+    if (sbCard && !sbCard._gateBound) {
+      sbCard._gateBound = true;
+      sbCard.addEventListener('click', (e) => {
+        const isVip = window.BSAuth?.isVip?.() === true;
+        if (isVip) {
+          window.location.href = 'dashboard.html#arbitrage';
+        } else {
+          const vipSection = document.querySelector('.vip-band, [data-vip-section]') || document.querySelector('section.section .badge-vip')?.closest('section');
+          if (vipSection) vipSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          else window.location.href = 'pricing.html#vip';
+        }
+      });
+      sbCard.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); sbCard.click(); } });
+    }
+    if (!card || !window.BSData) return;
+    // ── SELECCIÓN INTELIGENTE DEL PARTIDO MÁS RELEVANTE ────────────────────
+    // El banner rota automáticamente: filtra partidos ya empezados / sin cuotas
+    // y rankea por relevancia (liga + presencia de top teams + frescura).
+    // Antes solo tomaba `.slice(0, 1)` → quedaba pegado al primer partido
+    // aunque ya hubiera arrancado o no fuera el más relevante.
+    const HERO_LEAGUE_PRIORITY = {
+      // ─ TIER S — competiciones top mundial ─
+      'champions league': 100, 'uefa champions league': 100, 'ucl': 100,
+      'copa libertadores': 95, 'libertadores': 95,
+      'copa mundial': 95, 'world cup': 95, 'mundial': 95,
+      'premier league': 90,
+      // ─ TIER A — ligas top europeas ─
+      'la liga': 85, 'laliga': 85, 'primera división': 85,
+      'serie a': 82, 'bundesliga': 80, 'ligue 1': 78,
+      'europa league': 78, 'uefa europa league': 78,
+      // ─ TIER B — fútbol AR + selecciones ─
+      'liga profesional': 75, 'liga argentina': 75, 'lpf': 75,
+      'copa argentina': 65,
+      'eliminatorias': 80, 'amistoso internacional': 60,
+      'copa sudamericana': 70, 'sudamericana': 70,
+      // ─ TIER C — otras competiciones relevantes ─
+      'brasileirão': 60, 'brasileirao': 60, 'serie a brasil': 60,
+      'mls': 55, 'liga mx': 55,
+      'nba': 70, 'nfl': 65, 'mlb': 50, 'nhl': 50
+    };
+    const HERO_TOP_TEAMS = /\b(real madrid|barcelona|atletico madrid|liverpool|arsenal|manchester united|manchester city|chelsea|tottenham|bayern|dortmund|psg|juventus|inter|ac milan|napoli|roma|boca|river|racing|independiente|flamengo|palmeiras|santos|peñarol|nacional|lakers|warriors|celtics|heat|argentina|brasil|francia|alemania|inglaterra|espa[ñn]a)\b/i;
+    function leagueScore(name) {
+      const k = String(name || '').toLowerCase();
+      for (const [key, score] of Object.entries(HERO_LEAGUE_PRIORITY)) {
+        if (k.includes(key)) return score;
+      }
+      return 20;
+    }
+    const NOW = Date.now();
+    const FIVE_MIN = 5 * 60 * 1000;
+    const TWELVE_HRS = 12 * 3600 * 1000;
+    const all = BSData.liveEvents({})
+      .filter(m => m && m.markets?.h2h && Object.keys(m.markets.h2h).length >= 2)
+      // No mostrar partidos que ya terminaron hace rato (kickoff > 4h atrás)
+      .filter(m => {
+        if (!Number.isFinite(m.start)) return true;
+        return m.start > NOW - 4 * 3600 * 1000;
+      })
+      // Evitar partidos súper lejanos en el tiempo (>12h al futuro) salvo que
+      // sea lo único disponible — manejado en el ordenamiento abajo.
+      .map(m => {
+        const teamsTxt = `${m.home?.name || ''} ${m.away?.name || ''}`;
+        const lgScore = leagueScore(m.leagueName);
+        const isLive = Number.isFinite(m.start) && m.start <= NOW && m.start >= NOW - 4 * 3600 * 1000;
+        const isUpcomingSoon = Number.isFinite(m.start) && m.start > NOW && m.start - NOW <= TWELVE_HRS;
+        const isFar = Number.isFinite(m.start) && m.start - NOW > TWELVE_HRS;
+        const hasTopTeam = HERO_TOP_TEAMS.test(teamsTxt);
+        const bookCount = Object.keys(m.markets.h2h || {}).length;
+        // Score compuesto: liga × 1.0 + top-team × 25 + live × 30 + upcoming × 12
+        //                  + books × 1.2 + (penalización si muy lejano)
+        let score = lgScore
+          + (hasTopTeam ? 25 : 0)
+          + (isLive ? 30 : 0)
+          + (isUpcomingSoon ? 12 : 0)
+          + (isFar ? -20 : 0)
+          + bookCount * 1.2;
+        return { m, score, isLive, isUpcomingSoon };
+      })
+      .sort((a, b) => b.score - a.score);
+    const matches = all.slice(0, 1).map(x => x.m);
+    const heroPick = all[0];
+    if (lastUpd) lastUpd.textContent = BSData.liveFreshness();
+    if (badge) {
+      if (!matches.length) badge.textContent = 'Conectando…';
+      else if (heroPick?.isLive) badge.textContent = 'En vivo';
+      else if (heroPick?.isUpcomingSoon) badge.textContent = 'Próximo';
+      else badge.textContent = 'En agenda';
+    }
+    if (stateEl) {
+      const books = BSData.liveBookStatus ? BSData.liveBookStatus() : {};
+      const ok = Object.values(books).filter(b => b.ok).length;
+      const total = Object.keys(books).length || 12;
+      stateEl.textContent = `${ok}/${total} casas`;
+    }
+    if (!matches.length) return;
+    const m = matches[0];
+    const top3 = (side) => Object.entries(m.markets.h2h)
+      .map(([k, v]) => ({ book: k, price: v[side] || 0 }))
+      .filter(x => x.price > 1)
+      .sort((a, b) => b.price - a.price)
+      .slice(0, 3);
+    const bookName = (k) => (BSData.ALL_BOOKS.find(b => b.key === k)?.name || k);
+    const renderCol = (label, code, list) => `
+      <div class="cmp3-col">
+        <div class="cmp3-col-head"><span class="label">${BSUI.esc(label)}</span><span class="outcome">${code}</span></div>
+        ${list.length ? list.map((it, i) => `
+          <div class="cmp3-row${i===0?' is-best':''}">
+            <span class="rank rank-book" data-book="${it.book}" aria-label="${BSUI.esc(bookName(it.book))}"></span>
+            <span class="book">${BSUI.esc(bookName(it.book))}</span>
+            <span class="price">${it.price.toFixed(2)}</span>
+          </div>`).join('') : '<div class="cmp3-row"><span class="book">—</span><span class="price">—</span></div>'}
+      </div>`;
+    const hHome = top3('home'), hDraw = top3('draw'), hAway = top3('away');
+    const homeName = m.home.name, awayName = m.away.name;
+    card.innerHTML = `
+      <div class="row between" style="margin-bottom:10px">
+        <div class="cluster">
+          <span class="team-crest-wrap" data-team-name="${BSUI.esc(homeName)}">${window.BSLogos?.teamCrest(m.home.id, { size: 22, name: m.home.name, sport: m.sport }) || BSIcons.teamLogo(m.home, { size: 22, sport: m.sport })}</span>
+          <strong>${BSUI.esc(homeName)}</strong>
+          <span class="dim">vs</span>
+          <strong>${BSUI.esc(awayName)}</strong>
+          <span class="team-crest-wrap" data-team-name="${BSUI.esc(awayName)}">${window.BSLogos?.teamCrest(m.away.id, { size: 22, name: m.away.name, sport: m.sport }) || BSIcons.teamLogo(m.away, { size: 22, sport: m.sport })}</span>
+        </div>
+        <span class="badge badge-brand">${BSUI.esc(m.leagueName || 'Live')}</span>
+      </div>
+      <div class="cmp3 mt-2" style="${hDraw.length ? '' : 'grid-template-columns:repeat(2,minmax(0,1fr))'}">
+        ${renderCol('Local', '1', hHome)}
+        ${hDraw.length ? renderCol('Empate', 'X', hDraw) : ''}
+        ${renderCol('Visitante', '2', hAway)}
+      </div>
+      <div class="cmp-meta-row">
+        <span class="cmp-meta-item"><span class="dim">Casas comparadas:</span><strong>${Object.keys(m.markets.h2h).length}</strong></span>
+        <span class="cmp-meta-item"><span class="dim">Margen libro:</span><strong>${m.overround ? ((m.overround - 1) * 100).toFixed(2) + '%' : '—'}</strong></span>
+        <span class="cmp-meta-item"><span class="dim">Última actualización:</span><strong>${BSData.liveFreshness()}</strong></span>
+      </div>`;
+    // Rellenar logos
+    card.querySelectorAll('.rank-book[data-book]').forEach(el => {
+      if (window.BSLogos?.bookLogo) el.innerHTML = BSLogos.bookLogo(el.dataset.book, { size: 26 });
+    });
+    // Hero surebet card removido (DOM null-safe — el guard sbCard ya manejaba esto)
+  }
+  /* Throttle global para renders del landing — sin esto, cada bs:live-update
+   * (cada 1.2s) re-rendereaba hero + ticker + surebets + pick del día +
+   * demo comparator + builder demo simultáneamente → DOM flicker constante.
+   * Throttle 4s evita el "parpadeo" reportado por el user. */
+  function throttle(fn, ms) {
+    let last = 0, pending = null;
+    return function(...args) {
+      const now = Date.now();
+      if (now - last >= ms) {
+        last = now;
+        if (pending) { clearTimeout(pending); pending = null; }
+        fn.apply(this, args);
+      } else if (!pending) {
+        pending = setTimeout(() => {
+          last = Date.now();
+          pending = null;
+          fn.apply(this, args);
+        }, ms - (now - last));
+      }
+    };
+  }
+  // Hero: solo re-render en snapshot (cada ~30s, nuevo ciclo).
+  // bs:live-update se dispara cada 1.2s — IGNORAMOS para evitar flicker.
+  // bs:live-surebet solo si user es VIP (cambia el card visible).
+  renderHeroLive();
+  window.addEventListener('bs:live-snapshot', renderHeroLive);
+  const renderHeroOnSurebet = throttle(renderHeroLive, 8000);
+  window.addEventListener('bs:live-surebet', renderHeroOnSurebet);
+
+  // Live ticker — cuotas REALES del backend de scraping. Se rehidrata en
+  // cuanto BSLive recibe el primer snapshot (y luego en cada update).
+  const ticker = document.getElementById('liveTicker');
+  function renderLiveTicker() {
+    if (!ticker || !window.BSData) return;
+    const matches = BSData.liveEvents({})
+      .filter(m => m.bestOdds?.h2h?.home)
+      .slice(0, 14);
+    if (!matches.length) {
+      ticker.innerHTML = `<span class="tk muted">Cargando cuotas en vivo…</span>`;
+      return;
+    }
+    const items = matches.map(m => {
+      const home = window.BSLogos?.teamCrest(m.home.id, { size: 22, name: m.home.name, sport: m.sport }) || BSIcons.teamLogo(m.home, { size: 22, sport: m.sport });
+      const away = window.BSLogos?.teamCrest(m.away.id, { size: 22, name: m.away.name, sport: m.sport }) || BSIcons.teamLogo(m.away, { size: 22, sport: m.sport });
+      const best = m.bestOdds.h2h.home;
+      return `<span class="tk">
+        ${home}
+        <strong>${BSUI.esc(m.home.name)}</strong>
+        <span class="dim">vs</span>
+        <strong>${BSUI.esc(m.away.name)}</strong>
+        ${away}
+        <span class="num text-brand">${best.toFixed(2)}</span>
+      </span>`;
+    }).join('');
+    ticker.innerHTML = items + items;
+  }
+  // Ticker: solo re-render en snapshot. Cada 30s actualiza. bs:live-update IGNORADO.
+  // El ticker visual sigue scrolleando con su propia animación CSS (no necesita re-render).
+  renderLiveTicker();
+  window.addEventListener('bs:live-snapshot', renderLiveTicker);
+
+  // Bookmark marquee — SOLO casas argentinas legales con LOGO REAL (CDN)
+  const bm = document.getElementById('bookmarks');
+  if (bm && window.BSLogos) {
+    const arBooks = ['bplay','betano','betwarrior','bet365','codere','betsson'];
+    const items = arBooks.map(k => {
+      const b = BSLogos.BOOKS[k] || { name: k, primary: '#1f2937' };
+      return `<span class="tk">${BSLogos.bookLogo(k, { size: 22 })}<strong>${b.name}</strong></span>`;
+    }).join('');
+    bm.innerHTML = items + items;
+  }
+
+  // Demo comparator
+  buildDemoComparator();
+
+  // AI Pick del día (Groq llama-3.3-70b vía /api/picks)
+  buildAiPickDaily();
+
+  // Builder demo
+  // buildBuilderDemo(); // <- sección Builder removida 2026-05-17
+
+
+  // FAQ
+  buildFaq();
+
+  // Book logo strip — full SVG art
+  const bls = document.getElementById('bookLogoStrip');
+  if (bls && window.BSLogos) {
+    const order = ['bplay','betano','betwarrior','bet365','codere','betsson'];
+    bls.innerHTML = order.map(k => `
+      <a class="logo-strip__item" href="dashboard.html#comparator" aria-label="${BSLogos.BOOKS[k]?.name||k}">
+        ${BSLogos.bookLogo(k,{size:42})}
+        <span>${BSLogos.BOOKS[k]?.name||k}</span>
+      </a>`).join('');
+  }
+  // Leagues logo strip
+  const lls = document.getElementById('leagueLogoStrip');
+  if (lls && window.BSLogos) {
+    const lkeys = ['epl','laliga','seriea','bundes','ligue1','ucl','uel','lpfar','libert','nba','nfl','mlb','nhl','mls','ufc','wc26'];
+    lls.innerHTML = lkeys.map(k => `
+      <span class="logo-strip__item" aria-label="${BSLogos.LEAGUES[k]?.name||k}">
+        ${BSLogos.leagueLogo(k,{size:44})}
+        <span>${BSLogos.LEAGUES[k]?.name||k}</span>
+      </span>`).join('');
+  }
+});
+
+/* AI Pick del día: fetch a /api/picks?limit=1 (server cachea 5min por evento).
+ * Renderiza el partido con mayor EV + rationale del LLM (Groq llama-3.3-70b). */
+async function buildAiPickDaily() {
+  const host = document.getElementById('aiPickDailyCard');
+  if (!host) return;
+
+  function renderEmpty(msg, hint) {
+    host.innerHTML = `<div class="row between" style="align-items:center;flex-wrap:wrap;gap:12px">
+      <div><strong>${msg}</strong>${hint ? `<p class="muted tiny" style="margin-top:4px">${hint}</p>` : ''}</div>
+      <a href="dashboard.html#ai" class="btn btn-outline btn-sm">Ir a AI Picks</a>
+    </div>`;
+  }
+
+  try {
+    const r = await fetch((window.BSLive?.API_BASE || '') + '/api/picks?limit=4');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    const picks = (data.picks || []).filter(p => p?.event && p.selections?.length);
+    if (!picks.length) {
+      renderEmpty('Esperando primer ciclo del motor IA', 'Cuando termine de procesar los partidos del día, el top pick aparece acá.');
+      return;
+    }
+
+    // Elegimos el pick con MEJOR consensusEv en su selection 'eq' (equilibrado).
+    const top = picks
+      .map(p => {
+        const eq = (p.selections || []).find(s => s.type === 'eq') || (p.selections || [])[0];
+        return { p, eq };
+      })
+      .filter(x => x.eq && Number.isFinite(x.eq.consensusEv))
+      .sort((a, b) => (b.eq.consensusEv || -99) - (a.eq.consensusEv || -99))[0];
+
+    if (!top) {
+      renderEmpty('No hay picks con EV positivo en este momento', 'Esperá al próximo ciclo o revisá la sección AI Picks.');
+      return;
+    }
+
+    const { p, eq } = top;
+    const ev = p.event;
+    const homeLogo = window.BSLogos?.teamCrest(ev.home.id, { size: 32, name: ev.home.name, sport: ev.sport }) || BSIcons.teamLogo(ev.home, { size: 32, sport: ev.sport });
+    const awayLogo = window.BSLogos?.teamCrest(ev.away.id, { size: 32, name: ev.away.name, sport: ev.sport }) || BSIcons.teamLogo(ev.away, { size: 32, sport: ev.sport });
+    const provider = p.llmProvider !== 'offline'
+      ? `<span class="badge badge-success tiny">Análisis IA</span>`
+      : `<span class="badge tiny">Análisis</span>`;
+    const evPct = Number.isFinite(eq.consensusEv) ? eq.consensusEv.toFixed(2) : '—';
+    const confPct = Number.isFinite(eq.confidence) ? (eq.confidence * 100).toFixed(0) : '—';
+
+    host.innerHTML = `
+      <div class="row between" style="align-items:flex-start;flex-wrap:wrap;gap:14px">
+        <div class="cluster">
+          ${homeLogo}<strong>${BSUI.esc(ev.home.name)}</strong>
+          <span class="dim">vs</span>
+          <strong>${BSUI.esc(ev.away.name)}</strong>${awayLogo}
+        </div>
+        <div class="cluster" style="gap:6px;flex-wrap:wrap">
+          <span class="badge badge-brand tiny">${BSUI.esc(ev.leagueName || ev.league || '')}</span>
+          <span class="muted tiny">${BSUI.dt(ev.start)}</span>
+          ${provider}
+        </div>
+      </div>
+
+      <div class="grid grid-3" style="gap:12px;margin-top:14px">
+        <div class="card card-pad-sm card-tinted" style="border-left:3px solid var(--brand-500)">
+          <span class="muted tiny">Pick equilibrado</span>
+          <strong style="display:block;margin-top:4px">${BSUI.esc(eq.label || eq.outcome || '')}</strong>
+          <div class="row between" style="margin-top:6px">
+            <span class="num text-brand" style="font-size:1.3rem">${eq.odd?.toFixed?.(2) || '—'}</span>
+            <span class="muted tiny">${BSUI.esc((BSData.ALL_BOOKS||[]).find(b => b.key === eq.book)?.name || eq.book || '')}</span>
+          </div>
+        </div>
+        <div class="card card-pad-sm">
+          <span class="muted tiny">EV vs mercado</span>
+          <strong class="num ${evPct > 0 ? 'text-success' : 'text-danger'}" style="display:block;font-size:1.3rem;margin-top:4px">${evPct > 0 ? '+' : ''}${evPct}%</strong>
+          <span class="muted tiny">Edge sobre la cuota del libro</span>
+        </div>
+        <div class="card card-pad-sm">
+          <span class="muted tiny">Confidence</span>
+          <strong class="num" style="display:block;font-size:1.3rem;margin-top:4px">${confPct}%</strong>
+          <span class="muted tiny">Score de confianza del análisis</span>
+        </div>
+      </div>
+
+      ${p.llmKeyFactor ? `<div class="card card-pad-sm card-tinted" style="margin-top:12px;background:rgba(30,75,200,0.06);border-left:3px solid var(--brand-500)">
+        <strong class="tiny">Factor clave segun IA</strong>
+        <p class="tiny" style="margin-top:4px;line-height:1.5">${BSUI.esc(p.llmKeyFactor)}</p>
+      </div>` : ''}
+
+      ${eq.rationale ? `<div class="card card-pad-sm" style="margin-top:8px">
+        <strong class="tiny">Análisis</strong>
+        <p class="muted tiny" style="margin-top:4px;line-height:1.55">${BSUI.esc(eq.rationale)}</p>
+        ${eq.tacticalNotes ? `<p class="tiny" style="margin-top:6px;line-height:1.5;font-style:italic">${BSUI.esc(eq.tacticalNotes)}</p>` : ''}
+      </div>` : ''}
+
+      ${p.llmSynthesis ? `<details style="margin-top:8px">
+        <summary class="muted tiny" style="cursor:pointer">Lectura completa del partido →</summary>
+        <p class="muted tiny" style="margin-top:8px;line-height:1.55;padding:10px;background:var(--surface-2);border-radius:6px">${BSUI.esc(p.llmSynthesis)}</p>
+      </details>` : ''}
+
+      <div class="row between" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
+        <span class="muted tiny">Actualizado en vivo</span>
+        <a href="dashboard.html#ai" class="text-brand fw-600 tiny">Ver los ${picks.length} picks completos →</a>
+      </div>
+    `;
+  } catch (e) {
+    renderEmpty('Backend AI conectándose...', `Reintentando en 30s. Detalle: ${e?.message?.slice(0, 80) || 'network'}`);
+    setTimeout(buildAiPickDaily, 30000);
+  }
+}
+
+function buildDemoComparator() {
+  const host = document.getElementById('demoComparator');
+  if (!host) return;
+  function render() {
+    const matches = BSData.liveEvents({})
+      .filter(m => m.markets?.h2h && Object.keys(m.markets.h2h).length >= 2)
+      .slice(0, 4);
+    if (!matches.length) {
+      host.innerHTML = `<div class="card stack" style="padding:40px;text-align:center"><strong>Comparador en vivo</strong><p class="muted">Cargando cuotas de las casas argentinas legales. En cuanto haya partidos con mercados abiertos, aparecen acá.</p><span class="muted tiny">Estado: ${BSData.liveFreshness()}</span></div>`;
+      return;
+    }
+    host.innerHTML = `
+      <div class="card stack">
+        <div class="row between">
+          <strong>Cuotas en vivo · casas argentinas (LOTBA / IPLyC)</strong>
+          <span class="muted tiny">Push en vivo via WebSocket · última actualización ${BSData.liveFreshness()}</span>
+        </div>
+        <div class="table-wrap">
+          <table class="table">
+            <thead>
+              <tr><th>Partido</th><th>1</th><th>X</th><th>2</th><th>Mejor cuota</th><th>Margen</th></tr>
+            </thead>
+            <tbody>
+              ${matches.map(m => {
+                const books = Object.entries(m.markets.h2h);
+                const homeBest = books.reduce((a, [k, b]) => b.home > a.v ? { v: b.home, book: k } : a, { v: 0, book: '' });
+                const drawBest = books.reduce((a, [k, b]) => (b.draw || 0) > a.v ? { v: b.draw, book: k } : a, { v: 0, book: '' });
+                const awayBest = books.reduce((a, [k, b]) => b.away > a.v ? { v: b.away, book: k } : a, { v: 0, book: '' });
+                const homeVals = books.map(b => b[1].home).filter(Boolean);
+                const margin = BSMath.overround([homeBest.v || 99, drawBest.v || 99, awayBest.v || 99]) * 100;
+                const bookOf = k => BSData.ALL_BOOKS.find(b => b.key === k);
+                const deltaPct = homeVals.length > 1 ? ((homeBest.v / Math.min(...homeVals)) * 100 - 100) : 0;
+                return `<tr>
+                  <td>
+                    <div class="cluster">
+                      ${BSIcons.teamLogo(m.home, { size: 24, sport: m.sport })}
+                      <strong>${BSUI.esc(m.home.name)}</strong>
+                      <span class="dim">vs</span>
+                      <strong>${BSUI.esc(m.away.name)}</strong>
+                      ${BSIcons.teamLogo(m.away, { size: 24, sport: m.sport })}
+                    </div>
+                  </td>
+                  <td>
+                    <span class="odd best num">${homeBest.v ? homeBest.v.toFixed(2) : '—'}</span>
+                    <div class="tiny dim">${BSUI.esc(bookOf(homeBest.book)?.name || '')}</div>
+                  </td>
+                  <td>${drawBest.v ? `
+                    <span class="odd num">${drawBest.v.toFixed(2)}</span>
+                    <div class="tiny dim">${BSUI.esc(bookOf(drawBest.book)?.name || '')}</div>
+                  ` : '<span class="dim">—</span>'}</td>
+                  <td>
+                    <span class="odd num">${awayBest.v ? awayBest.v.toFixed(2) : '—'}</span>
+                    <div class="tiny dim">${BSUI.esc(bookOf(awayBest.book)?.name || '')}</div>
+                  </td>
+                  <td>${deltaPct > 0 ? `<span class="badge badge-success">+${deltaPct.toFixed(1)}%</span>` : '<span class="dim">—</span>'}</td>
+                  <td class="num">${margin.toFixed(1)}%</td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+  render();
+  // Solo en snapshot (cada ~30s) para evitar flicker
+  window.addEventListener('bs:live-snapshot', render);
+}
+
+function buildBuilderDemo() {
+  // El builder demo del landing arma combinadas con partidos REALES en vivo.
+  // Si todavía no hay snapshot, el botón Add muestra mensaje honesto.
+  let legs = [];
+  function liveMatches() {
+    return BSData.liveEvents({})
+      .filter(m => m.markets?.h2h && Object.keys(m.markets.h2h).length)
+      .slice(0, 5);
+  }
+  function render() {
+    const ls = document.getElementById('bdLegs');
+    if (!ls) return;
+    ls.innerHTML = legs.length ? legs.map((l, i) => `
+      <div class="row between" style="padding:8px;background:var(--surface-2);border-radius:8px">
+        <span class="truncate" style="max-width:200px"><strong>${BSUI.esc(l.team)}</strong> · ${BSUI.esc(l.market)}</span>
+        <span class="cluster"><strong class="num">${l.odd.toFixed(2)}</strong>
+          <button class="btn-ghost btn-icon btn-sm" data-rm="${i}">×</button>
+        </span>
+      </div>
+    `).join('') : `<div class="empty" style="padding:18px">Tocá <strong>Agregar leg</strong> para sumar un partido real del día</div>`;
+    const stake = Number(document.getElementById('bdStake').value || 0);
+    const total = legs.reduce((a, b) => a * b.odd, 1);
+    document.getElementById('bdOdd').textContent = legs.length ? total.toFixed(2) : '—';
+    document.getElementById('bdPay').textContent = legs.length ? BSUI.money(stake * total) : '—';
+    ls.querySelectorAll('[data-rm]').forEach(b => b.addEventListener('click', () => { legs.splice(Number(b.dataset.rm), 1); render(); }));
+  }
+  document.getElementById('bdAdd')?.addEventListener('click', () => {
+    if (legs.length >= 5) { BSUI.toast({ title: 'Demo limita a 5 legs', type: 'info' }); return; }
+    const matches = liveMatches();
+    if (!matches.length) {
+      BSUI.toast({ title: 'Sin partidos en vivo todavía', message: 'Estamos recibiendo cuotas en este momento; intentá en unos segundos.', type: 'info' });
+      return;
+    }
+    const m = matches[legs.length % matches.length];
+    const firstBook = Object.values(m.markets.h2h)[0];
+    const odd = firstBook?.home;
+    if (!odd) return;
+    legs.push({ team: m.home.name, market: 'Gana', odd });
+    render();
+  });
+  document.getElementById('bdStake')?.addEventListener('input', render);
+  render();
+}
+
+function buildFaq() {
+  const items = [
+    { q: '¿BetSafe es una casa de apuestas?', a: 'No. Somos una herramienta de análisis inteligente. Vos operás en las casas legales argentinas (LOTBA / IPLyC) y nosotros te damos comparador, IA, banca y arbitraje. Nunca tocamos tu dinero ni tomamos apuestas.' },
+    { q: '¿Es legal en Argentina?', a: 'Sí. Cumplimos con el marco LOTBA / IPLyC del Instituto Provincial de Lotería y Casinos. Verificación +18, juego responsable, datos bajo Ley 25.326 (Habeas Data). Mostramos disclaimers y links a SEDRONAR / FEJAR.' },
+    { q: '¿Necesito cuenta en cada casa?', a: 'Sí. BetSafe te dice qué casa paga más por cada outcome; vos operás directamente desde tu cuenta en Bplay, Betano, BetWarrior, Bet365, Codere, etc. Soportamos las casas argentinas legales con licencia LOTBA y IPLyC.' },
+    { q: '¿Qué diferencia hay con un grupo de Telegram?', a: 'Todo. En Telegram recibís "tips" sin contexto, sin responsabilidad, sin métricas. En BetSafe cada pick viene con probabilidad implícita, EV, value index, riesgo, contexto del partido y aviso explícito. Mediamos CLV, ROI, Yield, Sharpe, drawdown — auditable y reproducible.' },
+    { q: '¿La IA es real o es un truco?', a: 'Real. Cada pick pasa por nuestro motor de análisis táctico, con cascada interna de fallback automático. Sin que tengas que configurar nada, el sistema siempre usa la mejor variante disponible y se recupera solo si una capa falla. Respuesta en vivo en menos de 2 segundos.' },
+    { q: '¿Cómo funciona el arbitraje?', a: 'El motor escanea cada 30 segundos las casas legales argentinas, detecta cuándo la suma 1/cuota_outcome del partido es < 1 (oportunidad de surebet), calcula stakes óptimos por casa, aplica slippage protection (margen 1.5% default) y te avisa con audio y toast. Histórico de las últimas 500 detecciones, ROI promedio, mejor ROI.' },
+    { q: '¿Qué es Kelly fraccional y por qué importa?', a: 'Kelly es la fórmula matemáticamente óptima para maximizar el crecimiento logarítmico de tu banca dado un edge real. Full Kelly es agresivo; usar ¼ o ½ Kelly reduce drawdown 70% sin sacrificar mucho retorno esperado. BetSafe lo calcula automáticamente y te muestra el stake recomendado por pick.' },
+    { q: '¿Cómo me protege del tilt?', a: 'Detectamos automáticamente cuando llevás 4+ pérdidas seguidas y subiste el stake +50% en las últimas 2 horas. Te aparece un mensaje contextual de juego responsable con link directo a juegoresponsable.com.ar y un botón de "pausar 24h" que bloquea el dashboard.' },
+    { q: '¿Puedo cancelar VIP cuando quiera?', a: 'Sí. Sin permanencia, sin letra chica. Cancelás desde Settings y conservás acceso hasta el final del ciclo facturado. Tu histórico queda intacto y exportable a CSV/JSON.' },
+    { q: '¿Dónde vive mi información?', a: 'En tu navegador, cifrada por origen. Cero tracking publicitario, cero Google Analytics. Cuando habilitemos sincronización en la nube será con cifrado en tránsito (TLS 1.3) y en reposo (AES-256). Podés exportar todos tus datos en cualquier momento.' },
+    { q: '¿Cuánta plata necesito para empezar?', a: 'BetSafe es gratis para empezar. Para que el motor de banca tenga utilidad real recomendamos una banca mínima de ARS 50.000 — con eso podés operar Kelly fraccional ¼ con stakes de 0.5-2% y ver curva en 60-90 días. No hay mínimo de la app.' },
+    { q: '¿Y si las cuotas cambian mientras opero?', a: 'El comparador refresca cada 30s; el slip persistente te avisa con un flash de color (verde sube, rojo baja) si tu cuota cambió >2% antes de confirmar. Para arbitraje aplicamos slippage protection automática.' }
+  ];
+  const list = document.getElementById('faqList');
+  if (!list) return;
+  list.classList.add('faq');
+  list.innerHTML = items.map((it, i) => `
+    <details ${i === 0 ? 'open' : ''}>
+      <summary>${BSUI.esc(it.q)}</summary>
+      <div class="faq-body">${BSUI.esc(it.a)}</div>
+    </details>
+  `).join('');
+}
+
+/* ──────── Mundial 2026 — countdown live ──────── */
+(function () {
+  var KICKOFF = new Date('2026-06-11T20:00:00-04:00').getTime();
+  function pad(n) { return String(Math.max(0, n)).padStart(2, '0'); }
+  function tick() {
+    var diff = Math.max(0, KICKOFF - Date.now());
+    var days  = Math.floor(diff / 86400000);
+    var hours = Math.floor((diff % 86400000) / 3600000);
+    var mins  = Math.floor((diff % 3600000)  / 60000);
+    var secs  = Math.floor((diff % 60000)    / 1000);
+    document.querySelectorAll('[data-wc-countdown="days"]').forEach(function (el) { el.textContent = days; });
+    var D = document.getElementById('wcEpicD'); if (D) D.textContent = days;
+    var H = document.getElementById('wcEpicH'); if (H) H.textContent = pad(hours);
+    var M = document.getElementById('wcEpicM'); if (M) M.textContent = pad(mins);
+    var S = document.getElementById('wcEpicS'); if (S) S.textContent = pad(secs);
+  }
+  tick();
+  setInterval(tick, 1000);
+})();
+</script>
+</body>
+</html>
