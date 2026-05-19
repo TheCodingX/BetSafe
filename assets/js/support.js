@@ -177,8 +177,16 @@
     return wrap;
   }
 
+  // Estado liviano para el botón send — se llama en cada keystroke.
+  // No toca el DOM de mensajes/sugerencias (eso provocaba flicker por
+  // re-trigger de la animación bss-msg-in).
+  function updateSendState(state) {
+    const { inputEl, sendBtn } = state.dom;
+    sendBtn.disabled = !inputEl.value.trim() || state.typing;
+  }
+
   function render(state) {
-    const { panel, body, messagesEl, suggestionsEl, welcomeEl, inputEl, sendBtn } = state.dom;
+    const { body, messagesEl, suggestionsEl, welcomeEl } = state.dom;
 
     // Mensajes
     messagesEl.innerHTML = state.history.map(m => {
@@ -210,8 +218,7 @@
     ).join('');
     suggestionsEl.style.display = sug.length ? '' : 'none';
 
-    // Send button state
-    sendBtn.disabled = !inputEl.value.trim() || state.typing;
+    updateSendState(state);
 
     // Scroll al final
     requestAnimationFrame(() => { body.scrollTop = body.scrollHeight; });
@@ -334,7 +341,7 @@
 
     formEl.addEventListener('submit', (e) => { e.preventDefault(); submit(); });
 
-    inputEl.addEventListener('input', () => { autoresize(); render(state); });
+    inputEl.addEventListener('input', () => { autoresize(); updateSendState(state); });
     inputEl.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); }
     });
