@@ -47,11 +47,10 @@
 
   const links = [
     { href: 'index.html',     text: 'Inicio' },
-    { href: 'features.html',  text: 'Funciones' },
-    { href: 'tools.html',     text: 'Herramientas' },
     { href: 'bonos.html',     text: 'Bonos' },
     { href: 'pricing.html',   text: 'Precios' },
-    { href: 'about.html',     text: 'Quiénes somos' }
+    { href: 'about.html',     text: 'Quiénes somos' },
+    { href: 'contacto.html',  text: 'Contacto' }
   ];
   function header() {
     const path = location.pathname.split('/').pop() || 'index.html';
@@ -93,16 +92,15 @@
             </div>
             <div>
               <h5>Producto</h5>
-              <a href="features.html">Funciones</a>
-              <a href="tools.html">Herramientas</a>
               <a href="pricing.html">Precios</a>
+              <a href="bonos.html">Bonos</a>
               <a href="dashboard.html#worldcup">Mundial 2026</a>
               <a href="dashboard.html#arbitrage">Arbitraje VIP</a>
             </div>
             <div>
               <h5>Empresa</h5>
               <a href="about.html">Quiénes somos</a>
-              <a href="bonos.html">Bonos por casino</a>
+              <a href="contacto.html">Contacto</a>
               <a href="responsable.html">Juego Responsable</a>
               <a href="https://www.juegoresponsable.com.ar" target="_blank" rel="noopener noreferrer">juegoresponsable.com.ar</a>
             </div>

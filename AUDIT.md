@@ -123,7 +123,7 @@ Agregadas a `assets/css/main.css` (de 728 → 1027 líneas):
 > Standard = 55 features. VIP = 100 features. Total = 155.
 
 ### 2.1 Standard (55)
-1. Comparador 25 casas en vivo · 2. Highlight mejor cuota · 3. Diferencia % por outcome ·
+1. Comparador 6 casas legales en vivo · 2. Highlight mejor cuota · 3. Diferencia % por outcome ·
 4. Filtro por deporte (14) · 5. Filtro por liga (16+) · 6. Mini-comparador en landing sin login ·
 7. Detección automática de arbitraje en plan free · 8. Cálculo overround del libro ·
 9. Refresco 30s · 10. Logos SVG oficiales books/leagues/teams ·

@@ -1417,11 +1417,11 @@
       <path d="M22 22 L42 22 L40 42 L24 42 Z" fill="${L.accent}"/>
       <text x="32" y="36" text-anchor="middle" font-family="'Inter'" font-weight="900" font-size="10" fill="${L.primary}">NHL</text>`,
     mls: L => `
-      <rect width="64" height="64" rx="6" fill="${L.primary}"/>
-      <path d="M0 32 L64 32 L64 64 L0 64 Z" fill="${L.accent}"/>
-      <text x="32" y="26" text-anchor="middle" font-family="'Inter'" font-weight="900" font-size="14" fill="#fff">MLS</text>
+      <rect width="64" height="64" rx="10" fill="#ffffff" stroke="${L.primary}" stroke-width="1.5"/>
+      <path d="M10 28 L54 28 L52 36 L12 36 Z" fill="${L.accent}"/>
+      <text x="32" y="22" text-anchor="middle" font-family="'Inter'" font-weight="900" font-size="11" fill="${L.primary}" letter-spacing=".05em">MLS</text>
       <g transform="translate(32 48)">
-        ${[-10, 0, 10].map(x => `<polygon points="${x},-3 ${x + 1.5},-1 ${x + 4},-1 ${x + 2},1 ${x + 3},4 ${x},2 ${x - 3},4 ${x - 2},1 ${x - 4},-1 ${x - 1.5},-1" fill="#fff"/>`).join('')}
+        ${[-10, 0, 10].map(x => `<polygon points="${x},-3 ${x + 1.5},-1 ${x + 4},-1 ${x + 2},1 ${x + 3},4 ${x},2 ${x - 3},4 ${x - 2},1 ${x - 4},-1 ${x - 1.5},-1" fill="${L.primary}"/>`).join('')}
       </g>`,
     ufc: L => `
       <rect width="64" height="64" rx="4" fill="${L.accent}"/>

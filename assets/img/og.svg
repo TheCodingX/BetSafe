@@ -13,7 +13,7 @@
   <g transform="translate(80,160)">
     <text x="0" y="0" font-family="Inter, sans-serif" font-size="96" font-weight="800" fill="#fff">BetSafe</text>
     <text x="0" y="80" font-family="Inter, sans-serif" font-size="36" font-weight="500" fill="#9ce5b8">Análisis cuantitativo de apuestas — Argentina legal</text>
-    <text x="0" y="180" font-family="JetBrains Mono, monospace" font-size="24" fill="#cdf3dc">25 casas · 48 selecciones · 80+ herramientas</text>
+    <text x="0" y="180" font-family="JetBrains Mono, monospace" font-size="24" fill="#cdf3dc">6 casas legales · 48 selecciones · 80+ herramientas</text>
   </g>
   <g transform="translate(900,160)">
     <circle cx="100" cy="100" r="100" fill="none" stroke="url(#g)" stroke-width="10" stroke-dasharray="320 200"/>

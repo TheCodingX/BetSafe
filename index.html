@@ -48,7 +48,7 @@
           <a href="#demo" class="btn btn-outline btn-lg">Ver comparador en vivo</a>
         </div>
         <div class="stat-strip mt-4">
-          <div><div class="kpi-value tabular" data-count="25">0</div><div class="muted tiny">Casas comparadas</div></div>
+          <div><div class="kpi-value tabular" data-count="6">0</div><div class="muted tiny">Casas legales comparadas</div></div>
           <div><div class="kpi-value tabular" data-count="155">0</div><div class="muted tiny">Funciones</div></div>
           <div><div class="kpi-value tabular" data-count="48">0</div><div class="muted tiny">Selecciones WC26</div></div>
           <div><div class="kpi-value tabular" data-count="80" data-suffix="+">0</div><div class="muted tiny">Herramientas</div></div>
@@ -474,9 +474,9 @@
     <div class="section-head mb-6">
       <div>
         <span class="eyebrow-elegant">Lo que hacés con BetSafe</span>
-        <h2 class="h2 mt-2">Trabajá las apuestas con datos, no con corazonadas.</h2>
+        <h2 class="h2 mt-2">Decisiones basadas en datos, no en intuición.</h2>
       </div>
-      <a href="features.html" class="btn btn-outline cta-arrow">Ver las 155 funciones <span class="arrow">→</span></a>
+      <a href="pricing.html" class="btn btn-outline cta-arrow">Ver planes <span class="arrow">→</span></a>
     </div>
     <div class="grid grid-3 reveal-stagger">
       <article class="card card-hover stack">
@@ -488,7 +488,7 @@
       <article class="card card-hover stack">
         <div class="badge badge-brand">IA explicada</div>
         <h3 class="h4">3 picks por partido (cons / equilibrado / agresivo)</h3>
-        <p class="muted">Motor cuántico de IA con análisis táctico en 3 párrafos: probabilístico, contexto, aviso de riesgo. Sin "corazonadas".</p>
+        <p class="muted">Motor cuántico de IA con análisis táctico en 3 párrafos: probabilístico, contexto, aviso de riesgo.</p>
         <a href="dashboard.html#ai" class="text-brand fw-600">Generar picks →</a>
       </article>
       <article class="card card-hover stack">
@@ -513,25 +513,8 @@
         <div class="badge badge-success">Tools</div>
         <h3 class="h4">80+ herramientas profesionales</h3>
         <p class="muted">Same-Game Parlay correlator, Cash-Out Optimizer, EPA, xT, Pythagorean, Power Rankings, Backtesting visual.</p>
-        <a href="tools.html" class="text-brand fw-600">Hub de tools →</a>
+        <a href="dashboard.html#calcpro" class="text-brand fw-600">Ver herramientas →</a>
       </article>
-    </div>
-  </section>
-
-  <!-- AI PICK DEL DÍA -->
-  <section id="ai-pick" class="section">
-    <div class="container">
-      <div class="row between mb-4">
-        <div>
-          <span class="eyebrow-elegant">Pick del día por IA</span>
-          <h2 class="h2 mt-2">El partido con mayor EV de hoy, según el motor</h2>
-          <p class="muted mt-2">Nuestra IA analiza clima, lesiones, movimientos del mercado e histórico de cada partido en vivo.</p>
-        </div>
-        <a href="dashboard.html#ai" class="btn btn-primary">Ver todos los picks</a>
-      </div>
-      <div id="aiPickDailyCard" class="card stack" style="min-height:200px;padding:24px">
-        <div class="cluster muted tiny"><span class="shimmer-text">Backend procesando los partidos del día con IA...</span></div>
-      </div>
     </div>
   </section>
 
@@ -604,7 +587,7 @@
           </ul>
           <div class="row mt-4">
             <a href="pricing.html" class="btn btn-premium mag">Pasar a VIP</a>
-            <a href="features.html#vip" class="btn btn-outline">Ver todo lo VIP</a>
+            <a href="pricing.html#vip" class="btn btn-outline">Ver todo lo VIP</a>
             <span data-ai-status></span>
           </div>
         </div>
@@ -647,32 +630,6 @@
         <div class="cluster"><span class="dot" style="background:var(--brand-600)"></span><strong>Martín · Mendoza</strong></div>
         <p class="muted">"El generador IA con justificación me obliga a pensar antes de apostar. Tilt detector me salvó tres veces."</p>
         <div class="cluster muted tiny"><span class="num">Yield 6.1%</span></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- TRUST METRICS STRIP -->
-  <section class="section container reveal">
-    <div class="trust-row stagger">
-      <div class="trust-row__item">
-        <strong data-count="9.8" data-format="pct">0%</strong>
-        <span>ROI medio Q1 2026</span>
-      </div>
-      <div class="trust-row__item">
-        <strong data-count="2156">0</strong>
-        <span>Surebets detectadas / mes</span>
-      </div>
-      <div class="trust-row__item">
-        <strong data-count="843">0</strong>
-        <span>ms latencia IA real</span>
-      </div>
-      <div class="trust-row__item">
-        <strong data-count="25">0</strong>
-        <span>Casas comparadas</span>
-      </div>
-      <div class="trust-row__item">
-        <strong data-count="155">0</strong>
-        <span>Funciones quant</span>
       </div>
     </div>
   </section>
@@ -1024,8 +981,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Demo comparator
   buildDemoComparator();
 
-  // AI Pick del día (Groq llama-3.3-70b vía /api/picks)
-  buildAiPickDaily();
+  // AI Pick del día — sección eliminada de la landing 2026-05-19.
 
   // Builder demo
   // buildBuilderDemo(); // <- sección Builder removida 2026-05-17
@@ -1047,7 +1003,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Leagues logo strip
   const lls = document.getElementById('leagueLogoStrip');
   if (lls && window.BSLogos) {
-    const lkeys = ['epl','laliga','seriea','bundes','ligue1','ucl','uel','lpfar','libert','nba','nfl','mlb','nhl','mls','ufc','wc26'];
+    const lkeys = ['epl','laliga','seriea','bundes','ligue1','ucl','uel','lpfar','libert','nba','nfl','mlb','nhl','mls','ufc'];
     lls.innerHTML = lkeys.map(k => `
       <span class="logo-strip__item" aria-label="${BSLogos.LEAGUES[k]?.name||k}">
         ${BSLogos.leagueLogo(k,{size:44})}
@@ -1056,114 +1012,9 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
-/* AI Pick del día: fetch a /api/picks?limit=1 (server cachea 5min por evento).
- * Renderiza el partido con mayor EV + rationale del LLM (Groq llama-3.3-70b). */
-async function buildAiPickDaily() {
-  const host = document.getElementById('aiPickDailyCard');
-  if (!host) return;
-
-  function renderEmpty(msg, hint) {
-    host.innerHTML = `<div class="row between" style="align-items:center;flex-wrap:wrap;gap:12px">
-      <div><strong>${msg}</strong>${hint ? `<p class="muted tiny" style="margin-top:4px">${hint}</p>` : ''}</div>
-      <a href="dashboard.html#ai" class="btn btn-outline btn-sm">Ir a AI Picks</a>
-    </div>`;
-  }
-
-  try {
-    const r = await fetch((window.BSLive?.API_BASE || '') + '/api/picks?limit=4');
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    const data = await r.json();
-    const picks = (data.picks || []).filter(p => p?.event && p.selections?.length);
-    if (!picks.length) {
-      renderEmpty('Esperando primer ciclo del motor IA', 'Cuando termine de procesar los partidos del día, el top pick aparece acá.');
-      return;
-    }
-
-    // Elegimos el pick con MEJOR consensusEv en su selection 'eq' (equilibrado).
-    const top = picks
-      .map(p => {
-        const eq = (p.selections || []).find(s => s.type === 'eq') || (p.selections || [])[0];
-        return { p, eq };
-      })
-      .filter(x => x.eq && Number.isFinite(x.eq.consensusEv))
-      .sort((a, b) => (b.eq.consensusEv || -99) - (a.eq.consensusEv || -99))[0];
-
-    if (!top) {
-      renderEmpty('No hay picks con EV positivo en este momento', 'Esperá al próximo ciclo o revisá la sección AI Picks.');
-      return;
-    }
-
-    const { p, eq } = top;
-    const ev = p.event;
-    const homeLogo = window.BSLogos?.teamCrest(ev.home.id, { size: 32, name: ev.home.name, sport: ev.sport }) || BSIcons.teamLogo(ev.home, { size: 32, sport: ev.sport });
-    const awayLogo = window.BSLogos?.teamCrest(ev.away.id, { size: 32, name: ev.away.name, sport: ev.sport }) || BSIcons.teamLogo(ev.away, { size: 32, sport: ev.sport });
-    const provider = p.llmProvider !== 'offline'
-      ? `<span class="badge badge-success tiny">Análisis IA</span>`
-      : `<span class="badge tiny">Análisis</span>`;
-    const evPct = Number.isFinite(eq.consensusEv) ? eq.consensusEv.toFixed(2) : '—';
-    const confPct = Number.isFinite(eq.confidence) ? (eq.confidence * 100).toFixed(0) : '—';
-
-    host.innerHTML = `
-      <div class="row between" style="align-items:flex-start;flex-wrap:wrap;gap:14px">
-        <div class="cluster">
-          ${homeLogo}<strong>${BSUI.esc(ev.home.name)}</strong>
-          <span class="dim">vs</span>
-          <strong>${BSUI.esc(ev.away.name)}</strong>${awayLogo}
-        </div>
-        <div class="cluster" style="gap:6px;flex-wrap:wrap">
-          <span class="badge badge-brand tiny">${BSUI.esc(ev.leagueName || ev.league || '')}</span>
-          <span class="muted tiny">${BSUI.dt(ev.start)}</span>
-          ${provider}
-        </div>
-      </div>
-
-      <div class="grid grid-3" style="gap:12px;margin-top:14px">
-        <div class="card card-pad-sm card-tinted" style="border-left:3px solid var(--brand-500)">
-          <span class="muted tiny">Pick equilibrado</span>
-          <strong style="display:block;margin-top:4px">${BSUI.esc(eq.label || eq.outcome || '')}</strong>
-          <div class="row between" style="margin-top:6px">
-            <span class="num text-brand" style="font-size:1.3rem">${eq.odd?.toFixed?.(2) || '—'}</span>
-            <span class="muted tiny">${BSUI.esc((BSData.ALL_BOOKS||[]).find(b => b.key === eq.book)?.name || eq.book || '')}</span>
-          </div>
-        </div>
-        <div class="card card-pad-sm">
-          <span class="muted tiny">EV vs mercado</span>
-          <strong class="num ${evPct > 0 ? 'text-success' : 'text-danger'}" style="display:block;font-size:1.3rem;margin-top:4px">${evPct > 0 ? '+' : ''}${evPct}%</strong>
-          <span class="muted tiny">Edge sobre la cuota del libro</span>
-        </div>
-        <div class="card card-pad-sm">
-          <span class="muted tiny">Confidence</span>
-          <strong class="num" style="display:block;font-size:1.3rem;margin-top:4px">${confPct}%</strong>
-          <span class="muted tiny">Score de confianza del análisis</span>
-        </div>
-      </div>
-
-      ${p.llmKeyFactor ? `<div class="card card-pad-sm card-tinted" style="margin-top:12px;background:rgba(30,75,200,0.06);border-left:3px solid var(--brand-500)">
-        <strong class="tiny">Factor clave segun IA</strong>
-        <p class="tiny" style="margin-top:4px;line-height:1.5">${BSUI.esc(p.llmKeyFactor)}</p>
-      </div>` : ''}
-
-      ${eq.rationale ? `<div class="card card-pad-sm" style="margin-top:8px">
-        <strong class="tiny">Análisis</strong>
-        <p class="muted tiny" style="margin-top:4px;line-height:1.55">${BSUI.esc(eq.rationale)}</p>
-        ${eq.tacticalNotes ? `<p class="tiny" style="margin-top:6px;line-height:1.5;font-style:italic">${BSUI.esc(eq.tacticalNotes)}</p>` : ''}
-      </div>` : ''}
-
-      ${p.llmSynthesis ? `<details style="margin-top:8px">
-        <summary class="muted tiny" style="cursor:pointer">Lectura completa del partido →</summary>
-        <p class="muted tiny" style="margin-top:8px;line-height:1.55;padding:10px;background:var(--surface-2);border-radius:6px">${BSUI.esc(p.llmSynthesis)}</p>
-      </details>` : ''}
-
-      <div class="row between" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
-        <span class="muted tiny">Actualizado en vivo</span>
-        <a href="dashboard.html#ai" class="text-brand fw-600 tiny">Ver los ${picks.length} picks completos →</a>
-      </div>
-    `;
-  } catch (e) {
-    renderEmpty('Backend AI conectándose...', `Reintentando en 30s. Detalle: ${e?.message?.slice(0, 80) || 'network'}`);
-    setTimeout(buildAiPickDaily, 30000);
-  }
-}
+/* AI Pick del día — función eliminada 2026-05-19 junto con su sección en la
+ * landing. Si en el futuro se quiere reintroducir, la lógica completa está
+ * disponible en dashboard.html (tab AI Picks) y en /api/picks. */
 
 function buildDemoComparator() {
   const host = document.getElementById('demoComparator');

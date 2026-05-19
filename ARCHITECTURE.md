@@ -77,7 +77,7 @@ Definidas en `BSStore.KEYS`:
 1. `overview` — KPIs animados, equity curve, sport switcher, quick actions
 2. `builder` — combinada manual + best-book finder
 3. `ai` — 3 picks por partido + análisis Llama (8B/70B)
-4. `comparator` — tabla 25 casas con auto-refresh 30s + risk slider
+4. `comparator` — tabla 6 casas legales argentinas con auto-refresh 30s + risk slider
 5. `calc` — 9 calculadoras Standard
 6. `calcpro` — 24 herramientas VIP cuantitativas
 7. `arbitrage` — motor en vivo + calc 2-way/3-way + middling + audio

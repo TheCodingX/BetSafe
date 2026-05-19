@@ -199,7 +199,11 @@ body {
 /* ---------- Layout ---------- */
 .container { max-width: var(--container); margin-inline: auto; padding-inline: var(--s-5); }
 .container-wide { max-width: var(--container-wide); margin-inline: auto; padding-inline: var(--s-5); }
-.section { padding-block: clamp(var(--s-12), 6vw, var(--s-24)); }
+/* Spacing compacto premium — landing antes tenía paddings exagerados que
+   hacían que se sintiera larga y poco dinámica. Ahora ~40% más compacto. */
+.section { padding-block: clamp(var(--s-8), 3.5vw, var(--s-14)); }
+.section-head { margin-bottom: clamp(var(--s-4), 2vw, var(--s-6)) !important; }
+.section + .section { padding-top: clamp(var(--s-6), 3vw, var(--s-12)); }
 .row { display: flex; flex-wrap: wrap; gap: var(--s-4); align-items: center; }
 .row-end { display: flex; gap: var(--s-3); align-items: center; justify-content: flex-end; }
 .stack { display: flex; flex-direction: column; gap: var(--s-4); }
