@@ -1516,15 +1516,17 @@
   const remoteLogoPending = new Map();   // promesas en flight para dedup
 
   /* Trigger async para resolver un logo via backend. Cuando llega la URL,
-   * actualiza TODOS los placeholders del DOM con `data-team-resolve` matching. */
-  function resolveRemoteLogo(rawName, sport) {
+   * actualiza TODOS los placeholders del DOM con `data-team-resolve` matching.
+   * El parámetro league se pasa al backend para desambiguar teams ambiguos
+   * (Independiente / Barcelona / America etc) entre países (2026-05-19). */
+  function resolveRemoteLogo(rawName, sport, league) {
     const key = String(rawName || '').trim();
     if (!key) return;
     if (remoteLogoCache.has(key)) return;
     if (remoteLogoPending.has(key)) return;
 
     const apiBase = (window.BSLive?.API_BASE) || '';
-    const url = `${apiBase}/api/logo?team=${encodeURIComponent(key)}${sport ? `&sport=${encodeURIComponent(sport)}` : ''}`;
+    const url = `${apiBase}/api/logo?team=${encodeURIComponent(key)}${sport ? `&sport=${encodeURIComponent(sport)}` : ''}${league ? `&league=${encodeURIComponent(league)}` : ''}`;
     const promise = fetch(url)
       .then(r => r.ok ? r.json() : null)
       .then(data => {
@@ -1679,11 +1681,103 @@
     nuevazelanda:'NZL', newzealand:'NZL'
   };
 
+  /* ─────────────────────────────────────────────────────────────────────
+   * DESAMBIGUACIÓN DE TEAMS AMBIGUOS por liga / país (2026-05-19).
+   *
+   * Bug crítico reportado: cuando el orchestrator trunca "Independiente
+   * Santa Fe" (Colombia) a "Independiente", o "Barcelona Sporting Club"
+   * (Ecuador) a "Barcelona", la key normalizada cae al equipo DEFAULT
+   * (Independiente de Avellaneda / FC Barcelona España) — mostrando el
+   * escudo incorrecto.
+   *
+   * Este map resuelve esos casos usando opts.league / opts.country que
+   * los callers pasan desde el evento (leagueName, sport).
+   *
+   * NOTA importante: SOLO afecta lookups con key ambigua. Si la key/name
+   * ya es específica ("barcelonasc", "independientesantafe"), no se toca.
+   * ───────────────────────────────────────────────────────────────────── */
+  const AMBIGUOUS_TEAMS = {
+    // "Barcelona": ESP (FC Barcelona) vs ECU (Barcelona SC) vs varios
+    barcelona: {
+      default: 'barcelona',          // FC Barcelona ESP (más conocido global)
+      byLeagueRe: [
+        [/liga\s*pro|primera\s*ecu|ecuador|serie\s*a\s*ecu/i, 'barcelonasc'],
+        [/liga\s*betplay|colombia|dimayor/i,                  'barcelonasc']  // poco probable pero safe
+      ],
+      byCountry: { ECU: 'barcelonasc', ESP: 'barcelona' }
+    },
+    // "Independiente": ARG (Avellaneda) vs COL (Santa Fe) vs ECU (del Valle) vs varios
+    independiente: {
+      default: 'independiente',      // Independiente Avellaneda ARG (más conocido)
+      byLeagueRe: [
+        [/liga\s*betplay|colombia|dimayor|primera\s*colombia/i, 'independientesantafe'],
+        [/liga\s*pro|primera\s*ecu|ecuador|serie\s*a\s*ecu/i,   'independientedelvalle'],
+        [/primera\s*medellin|medellin/i,                         'independientemedellin']
+      ],
+      byCountry: { COL: 'independientesantafe', ECU: 'independientedelvalle', ARG: 'independiente' }
+    },
+    // "Gimnasia": LP (default) vs Jujuy vs Mendoza vs Tiro Salta
+    gimnasia: {
+      default: 'gimnasialaplata',    // Gimnasia LP (más conocido)
+      byLeagueRe: [
+        [/primera\s*nacional|nacional\s*b|federal/i, null]  // ambiguo — fallback a default
+      ],
+      byCountry: {}
+    },
+    // "Estudiantes": LP (Primera) vs Caseros (Nacional B) vs Buenos Aires
+    estudiantes: {
+      default: 'estudiantes',        // Estudiantes LP (Primera)
+      byLeagueRe: [
+        [/primera\s*nacional|nacional\s*b/i, 'estudiantesbuenosaires']  // Caseros juega ahí
+      ],
+      byCountry: {}
+    },
+    // "America": Cali COL vs Mineiro BRA vs Liga MX vs MLS
+    america: {
+      default: 'america',
+      byLeagueRe: [
+        [/liga\s*betplay|colombia|dimayor/i,   'americacali'],
+        [/brasileir|serie\s*a\s*brasil/i,      'americamineiro'],
+        [/liga\s*mx|mexicana|mexico/i,         'america'],    // América de México = default 227
+        [/mls|major\s*league/i,                null]
+      ],
+      byCountry: { COL: 'americacali', BRA: 'americamineiro', MEX: 'america' }
+    },
+    // "Atletico" sin sufijo: ATM España vs Mineiro vs Tucumán etc — manejado por
+    // alias "atletico" → CDN id 1068 (ATM España). Si el caller pasa "Atlético"
+    // de otra liga, debería pasar el nombre completo (Atlético Mineiro, etc).
+    // No agregamos resolución contextual acá — los aliases ya cubren los casos.
+  };
+
+  /* Normaliza un nombre de equipo para lookup en CDN/aliases.
+   * Quita espacios, guiones, puntos, apóstrofes, underscores y acentos. */
+  function _normKey(s) {
+    return String(s || '')
+      .toLowerCase()
+      .normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/\s|-|\.|'|_/g, '');
+  }
+
   function teamCrest(key, opts = {}) {
     const size = opts.size || 36;
-    let k = String(key || '').toLowerCase().replace(/\s|-|\.|'|_/g, '');
+    const fullName = opts.name || key;
+    // PRIORIDAD AL NOMBRE COMPLETO ─────────────────────────────────────────
+    // Antes confiábamos solo en `key` (el team.id que el caller deriva del
+    // nombre). Si el caller deriva el id de un nombre TRUNCADO ("Independiente"
+    // en vez de "Independiente Santa Fe"), el lookup CDN matcheaba al equipo
+    // equivocado. Ahora resolvemos primero por nombre completo: si
+    // CDN.team[normalize(name)] existe, ESE es el match — es estrictamente
+    // más específico que la key derivada.
+    const kFromKey  = _normKey(key);
+    const kFromName = _normKey(opts.name);
+    let k = kFromKey;
+    if (kFromName && kFromName !== kFromKey) {
+      // El nombre completo es más específico → priorizamos su match
+      if (CDN.team[kFromName] || TEAM_NAME_ALIASES[kFromName] || TEAMS[kFromName] || COUNTRY_NAME_TO_ISO3[kFromName]) {
+        k = kFromName;
+      }
+    }
     if (TEAM_NAME_ALIASES[k]) k = TEAM_NAME_ALIASES[k];
-    const teamName = opts.name || key;
 
     // PATH 0 (NUEVO 2026-05-18): si es una SELECCIÓN nacional, retornar
     // bandera del país. Maneja variantes ES/EN (irak/iraq, noruega/norway,
@@ -1693,26 +1787,57 @@
       return flag(iso3, { size });
     }
 
+    // DESAMBIGUACIÓN POR LIGA/PAÍS (2026-05-19) ─────────────────────────────
+    // Si la key cae en un team ambiguo (Independiente / Barcelona / Gimnasia /
+    // Estudiantes / America), usamos opts.league (leagueName del evento) o
+    // opts.country para elegir la variante correcta. Sin esto, "Independiente"
+    // de Colombia mostraba el escudo de Avellaneda Argentina.
+    const ambig = AMBIGUOUS_TEAMS[k];
+    if (ambig) {
+      const leagueStr = String(opts.league || opts.leagueName || '').toLowerCase();
+      let resolved = null;
+      if (leagueStr && ambig.byLeagueRe) {
+        for (const [re, target] of ambig.byLeagueRe) {
+          if (re.test(leagueStr)) { resolved = target; break; }
+        }
+      }
+      if (!resolved && opts.country && ambig.byCountry) {
+        resolved = ambig.byCountry[String(opts.country).toUpperCase()];
+      }
+      if (resolved && CDN.team[resolved]) {
+        k = resolved;
+      }
+      // Si resolved es null explícito (regla "ambiguo, mejor caer a shield"),
+      // saltamos el lookup CDN y vamos al fallback de iniciales — preferimos
+      // shield genérico que escudo equivocado.
+      else if (resolved === null) {
+        const t = TEAMS[k];
+        const color = t?.primary || opts.color || '#1f2937';
+        return neutralChip(opts.name || key, color, size);
+      }
+    }
+
     const t = TEAMS[k];
     const color = t?.primary || opts.color || '#1f2937';
-    const fb = neutralChip(t?.name || teamName, color, size);
+    const fb = neutralChip(t?.name || fullName, color, size);
 
     // Path 1: local CDN map
     const localUrl = CDN.team[k];
-    if (localUrl) return imgWithFallback([localUrl], t?.name || key, size, fb);
+    if (localUrl) return imgWithFallback([localUrl], t?.name || fullName, size, fb);
 
-    // Path 2: ya resolvimos remoto antes
-    if (remoteLogoCache.has(teamName)) {
-      const remoteUrl = remoteLogoCache.get(teamName);
+    // Path 2: ya resolvimos remoto antes (cache por nombre completo)
+    if (remoteLogoCache.has(fullName)) {
+      const remoteUrl = remoteLogoCache.get(fullName);
       if (remoteUrl) {
-        return `<img src="${remoteUrl}" alt="${String(teamName).replace(/"/g,'')}" width="${size}" height="${size}" loading="lazy" decoding="async" style="max-width:100%;max-height:100%;object-fit:contain;border-radius:4px"/>`;
+        return `<img src="${remoteUrl}" alt="${String(fullName).replace(/"/g,'')}" width="${size}" height="${size}" loading="lazy" decoding="async" style="max-width:100%;max-height:100%;object-fit:contain;border-radius:4px"/>`;
       }
       return fb;   // resolvimos null, ya no intentamos más
     }
 
-    // Path 3: disparar resolve async + devolver placeholder que se actualizará
-    resolveRemoteLogo(teamName, opts.sport);
-    return `<span data-team-resolve="${String(teamName).replace(/"/g,'&quot;')}" data-size="${size}" style="display:inline-flex;align-items:center;justify-content:center;width:${size}px;height:${size}px">${fb}</span>`;
+    // Path 3: disparar resolve async + devolver placeholder que se actualizará.
+    // Pasamos league al resolver para que el backend pueda desambiguar también.
+    resolveRemoteLogo(fullName, opts.sport, opts.league || opts.leagueName);
+    return `<span data-team-resolve="${String(fullName).replace(/"/g,'&quot;')}" data-size="${size}" style="display:inline-flex;align-items:center;justify-content:center;width:${size}px;height:${size}px">${fb}</span>`;
   }
 
   function shieldInitial(name, size, opts = {}) {

@@ -883,11 +883,11 @@ document.addEventListener('DOMContentLoaded', () => {
       <div class="cmp-hero-title">
         <span class="cmp-hero-league">${BSUI.esc(m.leagueName || 'Live')}</span>
         <div class="cmp-hero-match">
-          ${window.BSLogos?.teamCrest(m.home.id, { size: 32, name: m.home.name, sport: m.sport }) || BSIcons.teamLogo(m.home, { size: 32, sport: m.sport })}
+          ${window.BSLogos?.teamCrest(m.home.id, { size: 32, name: m.home.name, sport: m.sport, league: m.leagueName || m.league }) || BSIcons.teamLogo(m.home, { size: 32, sport: m.sport })}
           <strong>${BSUI.esc(homeName)}</strong>
           <span class="cmp-hero-vs">vs</span>
           <strong>${BSUI.esc(awayName)}</strong>
-          ${window.BSLogos?.teamCrest(m.away.id, { size: 32, name: m.away.name, sport: m.sport }) || BSIcons.teamLogo(m.away, { size: 32, sport: m.sport })}
+          ${window.BSLogos?.teamCrest(m.away.id, { size: 32, name: m.away.name, sport: m.sport, league: m.leagueName || m.league }) || BSIcons.teamLogo(m.away, { size: 32, sport: m.sport })}
         </div>
       </div>
       <div class="cmp3 mt-2" style="${hDraw.length ? '' : 'grid-template-columns:repeat(2,minmax(0,1fr))'}">
@@ -948,8 +948,8 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
     const items = matches.map(m => {
-      const home = window.BSLogos?.teamCrest(m.home.id, { size: 22, name: m.home.name, sport: m.sport }) || BSIcons.teamLogo(m.home, { size: 22, sport: m.sport });
-      const away = window.BSLogos?.teamCrest(m.away.id, { size: 22, name: m.away.name, sport: m.sport }) || BSIcons.teamLogo(m.away, { size: 22, sport: m.sport });
+      const home = window.BSLogos?.teamCrest(m.home.id, { size: 22, name: m.home.name, sport: m.sport, league: m.leagueName || m.league }) || BSIcons.teamLogo(m.home, { size: 22, sport: m.sport });
+      const away = window.BSLogos?.teamCrest(m.away.id, { size: 22, name: m.away.name, sport: m.sport, league: m.leagueName || m.league }) || BSIcons.teamLogo(m.away, { size: 22, sport: m.sport });
       const best = m.bestOdds.h2h.home;
       return `<span class="tk">
         ${home}

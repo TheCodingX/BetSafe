@@ -153,8 +153,8 @@
         market: market || 'h2h', outcome, book
       });
       const bookName = k => (BSData.ALL_BOOKS.find(b => b.key === k)?.name) || k;
-      const homeTeamLogo = window.BSLogos?.teamCrest ? BSLogos.teamCrest(m.home.id, { size: 22, name: m.home.name, sport: m.sport }) : BSIcons.teamLogo(m.home, { size: 22, sport: m.sport });
-      const awayTeamLogo = window.BSLogos?.teamCrest ? BSLogos.teamCrest(m.away.id, { size: 22, name: m.away.name, sport: m.sport }) : BSIcons.teamLogo(m.away, { size: 22, sport: m.sport });
+      const homeTeamLogo = window.BSLogos?.teamCrest ? BSLogos.teamCrest(m.home.id, { size: 22, name: m.home.name, sport: m.sport, league: m.leagueName || m.league }) : BSIcons.teamLogo(m.home, { size: 22, sport: m.sport });
+      const awayTeamLogo = window.BSLogos?.teamCrest ? BSLogos.teamCrest(m.away.id, { size: 22, name: m.away.name, sport: m.sport, league: m.leagueName || m.league }) : BSIcons.teamLogo(m.away, { size: 22, sport: m.sport });
       return `
         <div class="match">
           <div class="teams">

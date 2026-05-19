@@ -1309,8 +1309,8 @@ ${legsText}
     const bookName = (k) => BSData.ALL_BOOKS?.find(b => b.key === k)?.name || k;
     const home = { id: (l.home||'').toLowerCase().replace(/[^a-z]/g,''), name: l.home };
     const away = { id: (l.away||'').toLowerCase().replace(/[^a-z]/g,''), name: l.away };
-    const homeLogo = window.BSLogos?.teamCrest ? BSLogos.teamCrest(home.id, { size: 22, name: l.home, sport: l.sport }) : BSIcons.teamLogo(home, { size: 22, sport: l.sport });
-    const awayLogo = window.BSLogos?.teamCrest ? BSLogos.teamCrest(away.id, { size: 22, name: l.away, sport: l.sport }) : BSIcons.teamLogo(away, { size: 22, sport: l.sport });
+    const homeLogo = window.BSLogos?.teamCrest ? BSLogos.teamCrest(home.id, { size: 22, name: l.home, sport: l.sport, league: l.leagueName || l.league }) : BSIcons.teamLogo(home, { size: 22, sport: l.sport });
+    const awayLogo = window.BSLogos?.teamCrest ? BSLogos.teamCrest(away.id, { size: 22, name: l.away, sport: l.sport, league: l.leagueName || l.league }) : BSIcons.teamLogo(away, { size: 22, sport: l.sport });
     const bookLogo = window.BSLogos && l.book ? BSLogos.bookLogo(l.book, { size: 14 }) : '';
     const isAnalytical = !!l.analytical;
     const marketLabel = MARKET_LABELS[l.market] || l.market || '';
@@ -1553,8 +1553,8 @@ ${legsText}
       .slice()
       .sort((a, b) => (typeOrder[a.type] ?? 9) - (typeOrder[b.type] ?? 9))
       .slice(0, 3);
-    const homeLogo = window.BSLogos?.teamCrest ? BSLogos.teamCrest(ev.home.id, { size: 28, name: ev.home.name, sport: ev.sport }) : BSIcons.teamLogo(ev.home, { size: 28, sport: ev.sport });
-    const awayLogo = window.BSLogos?.teamCrest ? BSLogos.teamCrest(ev.away.id, { size: 28, name: ev.away.name, sport: ev.sport }) : BSIcons.teamLogo(ev.away, { size: 28, sport: ev.sport });
+    const homeLogo = window.BSLogos?.teamCrest ? BSLogos.teamCrest(ev.home.id, { size: 28, name: ev.home.name, sport: ev.sport, league: ev.leagueName || ev.league }) : BSIcons.teamLogo(ev.home, { size: 28, sport: ev.sport });
+    const awayLogo = window.BSLogos?.teamCrest ? BSLogos.teamCrest(ev.away.id, { size: 28, name: ev.away.name, sport: ev.sport, league: ev.leagueName || ev.league }) : BSIcons.teamLogo(ev.away, { size: 28, sport: ev.sport });
     const leagueLogo = window.BSLogos?.leagueLogo ? BSLogos.leagueLogo(ev.league || ev.leagueName, { size: 14 }) : '';
 
     return `

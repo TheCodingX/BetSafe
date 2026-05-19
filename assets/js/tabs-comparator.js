@@ -154,8 +154,8 @@
     function row(scored) {
       const m = scored.match;
       const bn = (k) => BSData.ALL_BOOKS.find(b => b.key === k)?.name || k;
-      const homeLogo = window.BSLogos?.teamCrest ? BSLogos.teamCrest(m.home.id, { size: 26, name: m.home.name, sport: m.sport }) : BSIcons.teamLogo(m.home, { size: 26, sport: m.sport });
-      const awayLogo = window.BSLogos?.teamCrest ? BSLogos.teamCrest(m.away.id, { size: 26, name: m.away.name, sport: m.sport }) : BSIcons.teamLogo(m.away, { size: 26, sport: m.sport });
+      const homeLogo = window.BSLogos?.teamCrest ? BSLogos.teamCrest(m.home.id, { size: 26, name: m.home.name, sport: m.sport, league: m.leagueName || m.league }) : BSIcons.teamLogo(m.home, { size: 26, sport: m.sport });
+      const awayLogo = window.BSLogos?.teamCrest ? BSLogos.teamCrest(m.away.id, { size: 26, name: m.away.name, sport: m.sport, league: m.leagueName || m.league }) : BSIcons.teamLogo(m.away, { size: 26, sport: m.sport });
 
       const renderCol = (label, code, out, sideKey) => {
         if (!out) return `<div class="cmp3-col"><div class="cmp3-col-head"><span class="label">${label}</span><span class="outcome">${code}</span></div><div class="muted tiny" style="padding:8px 10px">Sin cuota comparable</div></div>`;

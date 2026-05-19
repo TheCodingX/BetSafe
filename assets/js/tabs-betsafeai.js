@@ -689,8 +689,8 @@
   function renderLeg(leg, idx) {
     const t = leg.start ? new Date(leg.start) : null;
     const dateStr = t ? `${t.toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' })} · ${t.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}` : '';
-    const homeLogo = window.BSLogos?.teamCrest ? BSLogos.teamCrest(leg.home.id, { size: 36, name: leg.home.name, sport: leg.sport }) : '';
-    const awayLogo = window.BSLogos?.teamCrest ? BSLogos.teamCrest(leg.away.id, { size: 36, name: leg.away.name, sport: leg.sport }) : '';
+    const homeLogo = window.BSLogos?.teamCrest ? BSLogos.teamCrest(leg.home.id, { size: 36, name: leg.home.name, sport: leg.sport, league: leg.leagueName || leg.league }) : '';
+    const awayLogo = window.BSLogos?.teamCrest ? BSLogos.teamCrest(leg.away.id, { size: 36, name: leg.away.name, sport: leg.sport, league: leg.leagueName || leg.league }) : '';
     const leagueLogo = window.BSLogos?.leagueLogo ? BSLogos.leagueLogo(leg.league || leg.leagueName, { size: 16 }) : '';
 
     // SINGLE-BOOK MODE (2026-05-18): NO mostramos logo de casa por leg.
