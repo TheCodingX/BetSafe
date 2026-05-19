@@ -30,12 +30,19 @@
   // BetSafe wordmark — dos PNGs theme-aware:
   // - betsafe-brand.png:      "bet" navy + "safe" dorado (modo claro)
   // - betsafe-brand-dark.png: "bet" blanco + "safe" dorado (modo oscuro)
-  // El CSS muestra el correcto según [data-theme] sin filters que alteran colores.
+  // - betsafe-isotipo.png:    isotipo "b✓" navy + check dorado (theme-agnostic)
+  // El CSS muestra el wordmark correcto según [data-theme]. El isotipo va siempre.
   function brandSvg(className) {
-    return `<picture class="brand-logo-pic">
-      <img src="assets/img/betsafe-brand.png" alt="BetSafe" class="${className} brand-logo-light" draggable="false" />
-      <img src="assets/img/betsafe-brand-dark.png" alt="" aria-hidden="true" class="${className} brand-logo-dark" draggable="false" />
-    </picture>`;
+    return `<span class="brand-mark-wrap" style="display:inline-flex;align-items:center;gap:10px;line-height:1">
+      <img src="assets/img/betsafe-isotipo.png" alt="" aria-hidden="true"
+           class="brand-isotipo" width="32" height="32"
+           style="width:32px;height:32px;border-radius:7px;display:block;flex-shrink:0"
+           draggable="false" />
+      <picture class="brand-logo-pic">
+        <img src="assets/img/betsafe-brand.png" alt="BetSafe" class="${className} brand-logo-light" draggable="false" />
+        <img src="assets/img/betsafe-brand-dark.png" alt="" aria-hidden="true" class="${className} brand-logo-dark" draggable="false" />
+      </picture>
+    </span>`;
   }
 
   const links = [

@@ -114,7 +114,7 @@
         </div>
         <div class="kpi-mini ${clvAvg != null && clvAvg > 0 ? 'kpi-mini--success' : ''}">
           <span class="kpi-mini-label" title="Closing Line Value: cuán mejor fue tu cuota vs la cuota de cierre del mercado. CLV positivo sostenido > rentabilidad a largo plazo.">CLV promedio</span>
-          <strong class="kpi-mini-value">${clvAvg != null ? (clvAvg > 0 ? '+' : '') + clvAvg.toFixed(2) + '%' : '—'}</strong>
+          <strong class="kpi-mini-value">${clvAvg != null ? (clvAvg > 0 ? '+' : '') + BSUI.pctRaw(clvAvg, 2) : '—'}</strong>
         </div>
       </div>
 

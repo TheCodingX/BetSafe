@@ -743,18 +743,6 @@
         BSUI.toast?.({ title: 'Esperá un segundo', message: 'Acabás de generar combinadas. Esperá 3s antes de volver a generar.', type: 'info' });
         return;
       }
-      // Helper para limpiar el estado busy y reactivar el botón ante CUALQUIER
-      // early return de validación. Antes, si validación fallaba después de
-      // setear busy=1, el botón quedaba muerto hasta refresh — bug crítico
-      // reportado por el user ("el botón no devuelve resultados").
-      const releaseBusy = () => {
-        if (_gBtn) {
-          _gBtn.dataset.busy = '0';
-          _gBtn.disabled = false;
-          const lbl = _gBtn.querySelector('.ag-gen-label');
-          if (lbl) lbl.textContent = 'Generar combinadas';
-        }
-      };
       if (_gBtn) _gBtn.dataset.busy = '1';
       // Validar que el usuario haya marcado al menos 1 casino
       const books = selectedBooks();
@@ -768,7 +756,6 @@
         panel.querySelector('.agx-card--books')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
         panel.querySelector('.agx-card--books')?.classList.add('agx-card--pulse');
         setTimeout(() => panel.querySelector('.agx-card--books')?.classList.remove('agx-card--pulse'), 1200);
-        releaseBusy();
         return;
       }
 
@@ -838,20 +825,6 @@
       if (!backendCombos.length) {
         const meta = resp.meta || {};
         const reasons = [];
-        // Si el backend explica explícitamente que no hay combos en el rango
-        // del riesgo elegido, mostramos ESE mensaje arriba de todo (es la
-        // razón más probable cuando el usuario eligió Conservador y el motor
-        // no encontró 3 picks en 1.10-1.40).
-        if (meta.noCombosReason) {
-          reasons.push(`<li><strong>${BSUI.esc(meta.noCombosReason)}</strong></li>`);
-        }
-        if (meta.riskBucket && meta.riskBucket.poolInRange != null) {
-          const rb = meta.riskBucket;
-          const rng = rb.range.max == null
-            ? `≥ ${rb.range.min.toFixed(2)}`
-            : `${rb.range.min.toFixed(2)} – ${rb.range.max.toFixed(2)}`;
-          reasons.push(`<li>Riesgo <strong>${rb.risk}</strong> = cuota por leg ${rng}. Hoy hay <strong>${rb.poolInRange}</strong> pick${rb.poolInRange === 1 ? '' : 's'} del pool dentro de ese rango.</li>`);
-        }
         if (meta.analyzed === 0) reasons.push(`<li>No hay partidos analizados (¿el motor está caído?)</li>`);
         else if (meta.passing === 0) {
           reasons.push(`<li>${meta.analyzed} partidos analizados, pero <strong>0 pasaron tus filtros</strong></li>`);
@@ -862,8 +835,6 @@
           reasons.push(`<li>${meta.passing} partidos pasaron filtros, pero ninguna selection matchea tus mercados/casas</li>`);
           if (books.length < 3) reasons.push(`<li>Sumá MÁS casinos en el paso 1 (tenés ${books.length})</li>`);
           reasons.push(`<li>Asegurate que los mercados elegidos cubran las casas</li>`);
-        } else if (meta.riskBucket && meta.riskBucket.poolInRange < n) {
-          reasons.push(`<li>Pool de ${meta.poolSize} picks total, pero solo ${meta.riskBucket.poolInRange} caen en tu rango de riesgo — probá <strong>cambiar el nivel</strong> a Equilibrado o Agresivo.</li>`);
         } else {
           reasons.push(`<li>Pool de ${meta.poolSize} picks, pero no se pudo armar combo de ${n} legs</li>`);
           reasons.push(`<li>Bajá legs por combinada a 2-3</li>`);
@@ -901,12 +872,7 @@
         aiNarrative: c.aiNarrative,
         aiEdge: c.aiEdge,
         sportsCount: c.sportsCount,
-        legCount: c.legCount,
-        // Diagnóstico riesgo/target del backend
-        rangeExpanded: c.rangeExpanded,
-        rangeFallback: c.rangeFallback,
-        targetOdd: c.targetOdd,
-        targetDelta: c.targetDelta
+        legCount: c.legCount
       }));
       // Meta del motor para mostrar al user "evalué N candidatas, te muestro los K mejores"
       const candidatesEvaluated = resp.meta?.trace?.candidatesEvaluated || backendCombos.length;
@@ -976,19 +942,6 @@
                 <div class="bs-prem__chips">
                   <span class="risk-pill ${c.total<2?'low':c.total<6?'mid':'high'}">${c.total<2?'Bajo':c.total<6?'Medio':'Alto'} riesgo</span>
                   ${qs != null ? `<span class="badge ${qsBadgeClass} tiny" title="Qué tan buena es esta combinada (0-100). Considera la probabilidad real de ganar, lo generosa que es la cuota y que las apuestas se complementen. 50+ es muy buena.">Calidad: ${qsLabel}</span>` : ''}
-                  ${c.targetOdd ? (() => {
-                    const dist = Math.abs(c.targetDelta || 0) / c.targetOdd;
-                    const onTarget = dist <= 0.05;
-                    const close = dist <= 0.15;
-                    const cls = onTarget ? 'badge-success' : close ? 'badge-info' : 'badge-warning';
-                    const sign = (c.targetDelta || 0) >= 0 ? '+' : '';
-                    return `<span class="badge ${cls} tiny" title="La cuota total quedó ${onTarget?'dentro de la tolerancia':'lejos'} de tu cuota objetivo ${c.targetOdd.toFixed(2)}.">${onTarget?'🎯':close?'≈':'⚠'} Objetivo ${c.targetOdd.toFixed(2)} (${sign}${(c.targetDelta||0).toFixed(2)})</span>`;
-                  })() : ''}
-                  ${c.rangeFallback
-                    ? `<span class="badge badge-warning tiny" title="No había suficientes picks dentro del rango estricto del riesgo elegido. El motor relajó el filtro y usó el pool completo. Probá con otro deporte, más ligas o cambiá el riesgo.">⚠ Rango relajado</span>`
-                    : c.rangeExpanded
-                      ? `<span class="badge badge-info tiny" title="Se expandió el rango de cuotas ±15% para llegar a la cantidad de legs pedida.">≈ Rango ampliado</span>`
-                      : ''}
                   ${c.correlation?.warnings?.length
                     ? `<span class="badge badge-warning tiny" title="Algunas apuestas dependen entre sí — si una falla, otra también puede fallar. La cuota se ajustó para reflejar el riesgo real.">⚠ apuestas relacionadas</span>`
                     : `<span class="badge badge-success tiny" title="Cada apuesta es independiente — no se chocan entre sí.">✓ apuestas se complementan</span>`}
@@ -1008,7 +961,7 @@
                 <div class="bs-prem__hero-cell bs-prem__edge-cell">
                   <span class="bs-prem__hero-label" title="Cuán generosa es esta cuota comparada con la 'cuota justa' del mercado. Un +5% quiere decir que la cuota te paga 5% más de lo que debería. A largo plazo, eso es plata para vos.">Ventaja vs casa</span>
                   <span class="bs-prem__edge ${evPct >= 0 ? '' : 'bs-prem__edge--negative'}">${evSign}${evPct.toFixed(1)}%</span>
-                  ${c.evAdjusted < c.ev ? `<span class="bs-prem__edge-explain">sin ajustar: ${evSign}${(c.ev*100).toFixed(1)}%</span>` : ''}
+                  ${c.evAdjusted < c.ev ? `<span class="bs-prem__edge-explain">sin ajustar: ${evSign}${BSUI.pctInt(c.ev, 1)}</span>` : ''}
                 </div>
               </div>
 
@@ -1030,14 +983,7 @@
 
               <!-- Legs list premium -->
               <div class="bs-prem__legs">
-              ${c.legs.map(l => {
-                const lConf = Math.round((l.confidence || 0.5) * 100);
-                const lConfCls = lConf >= 65 ? 'badge-success' : lConf >= 45 ? 'badge-info' : 'badge-warning';
-                const rationale = (l.rationale || '').trim();
-                const tt = rationale
-                  ? rationale.slice(0, 280)
-                  : `Confianza del modelo en esta apuesta: ${lConf}%. EV: ${(l.ev||0).toFixed(1)}%.`;
-                return `
+              ${c.legs.map(l => `
                 <div class="bs-prem__leg">
                   <div class="bs-prem__leg-info">
                     <div class="bs-prem__leg-teams">
@@ -1050,14 +996,11 @@
                     <div class="bs-prem__leg-meta">
                       <span class="bs-prem__leg-mkt">${M[l.market]||l.market}</span>
                       <span>${BSUI.esc(l.label)}</span>
-                      <span class="badge ${lConfCls} tiny" title="${BSUI.esc(tt)}" style="margin-left:4px">conf ${lConf}%</span>
                     </div>
-                    ${rationale ? `<div class="muted tiny" style="margin-top:4px;line-height:1.45;max-width:520px">${BSUI.esc(rationale.slice(0, 180))}${rationale.length>180?'…':''}</div>` : ''}
                   </div>
                   <strong class="bs-prem__leg-odd">${l.odd.toFixed(2)}</strong>
                 </div>
-                `;
-              }).join('')}
+              `).join('')}
               </div>
 
               <!-- Factors usados (clima/lesiones/sharp/H2H) — chips visibles -->
@@ -1149,7 +1092,7 @@
         const html = `
           <div class="stack" style="max-width:600px">
             <h3 class="h4">Análisis IA · Combinada #${i+1}</h3>
-            <p class="muted tiny">Confianza del motor: ${conf}% · EV: ${(c.ev*100).toFixed(1)}%</p>
+            <p class="muted tiny">Confianza del motor: ${conf}% · EV: ${BSUI.pctInt(c.ev, 1)}</p>
             <div class="card stack-sm">
               <strong>Por qué esta combinada</strong>
               <p style="font-size:.85rem;line-height:1.6">El motor eligió estas apuestas porque cada una está mejor pagada de lo justo, o porque se complementan bien entre sí. ${c.ev>=0?'Las cuotas combinadas pagan más de lo que el mercado considera justo — eso es plata para vos a largo plazo.':'La ventaja es chica — solo jugala si tenés alta confianza en el partido.'}</p>

@@ -27,67 +27,68 @@
     history: JSON.parse(localStorage.getItem('bs:betsafe-ai:history') || '[]')
   };
 
+  // SUGGESTIONS — SOLO botones que funcionan con markets reales que tenemos
+  // (h2h, totals, btts, dc, ah, dnb) ampliamente disponibles en las 6 casas AR.
+  //
+  // FUERA del set:
+  // - Mix córners + goles (corners-total solo 60 events en BetWarrior, poco fiable)
+  // - Tarjetas (cards-total = 1 event total, no se puede armar combinada)
+  // - Champions League (UCL no juega todos los días — botón intermitente)
+  // - Goleadores, NBA puntos jugador, UFC método (analytical-only)
+  //
+  // Cada botón usa rangos de cuota REALISTAS para el pool típico AR y NO
+  // restringe a ligas específicas que puedan no tener partidos (excepto LPF
+  // y Premier que son los más comunes). Sin exactDate → flexible.
   const SUGGESTIONS = [
     {
-      icon: '⚽',
-      label: 'Premier League seguro',
-      text: 'Haceme una combinada de 4 partidos de la Premier League, no tan riesgosa, con cuota entre 4 y 8'
+      icon: '🛡️',
+      label: 'Combinada segura',
+      text: 'Combinada de 4 partidos con cuota total entre 2 y 4, conservadora, favoritos claros, para hoy o mañana'
     },
     {
-      icon: '🏆',
-      label: 'Champions League',
-      text: 'Armá una combinada de 3 partidos de Champions League con cuota total de 5 o más, balance entre riesgo y premio'
+      icon: '⚖️',
+      label: 'Equilibrada',
+      text: 'Combinada de 3 partidos equilibrada con cuota total entre 4 y 8, mezcla de h2h y totales, para hoy o mañana'
+    },
+    {
+      icon: '⚡',
+      label: 'Apuesta agresiva',
+      text: 'Combinada agresiva de 5 partidos con cuota total entre 15 y 25, sin esports'
     },
     {
       icon: '🇦🇷',
       label: 'Liga Argentina',
-      text: 'Combinada de 5 partidos de la Liga Profesional Argentina, conservadora, cuota total cerca de 4'
-    },
-    {
-      icon: '🚩',
-      label: 'Mix córners + goles',
-      text: 'Armá una combinada de 4 legs mezclando más de 9.5 córners y más de 2.5 goles en partidos de hoy'
-    },
-    {
-      icon: '🟨',
-      label: 'Tarjetas premier',
-      text: 'Combinada de 3 partidos con más de 4.5 tarjetas, foco en Liga Argentina o Premier League'
+      text: 'Combinada de 3 partidos de la Liga Profesional Argentina, conservadora, cuota total entre 2 y 5'
     },
     {
       icon: '⚽',
-      label: 'Goleadores',
-      text: 'Quiero 3 picks de goleadores anytime en partidos de hoy con favoritos claros'
-    },
-    {
-      icon: '⚡',
-      label: 'Agresiva alta cuota',
-      text: 'Quiero una combinada agresiva de 4 partidos top de Europa, con cuota total mayor a 15'
+      label: 'Premier League',
+      text: 'Combinada de 3 partidos de la Premier League con cuota total entre 3 y 6, para esta semana'
     },
     {
       icon: '🎾',
       label: 'Tenis ATP',
-      text: 'Combinada de 3 partidos de tenis ATP de hoy, favoritos claros, cuota entre 2 y 4'
-    },
-    {
-      icon: '🏀',
-      label: 'NBA puntos jugador',
-      text: 'Combinada NBA: 3 picks de puntos de jugador para los partidos de esta noche'
+      text: 'Combinada de 3 partidos de tenis ATP con favoritos claros, cuota total entre 2 y 4'
     },
     {
       icon: '🏀',
       label: 'NBA totales',
-      text: 'Combiná 3 juegos NBA de hoy con totales (más/menos puntos), cuota total alrededor de 4'
-    },
-    {
-      icon: '⚾',
-      label: 'MLB carreras',
-      text: 'Combinada MLB de 3 juegos con total de carreras y 1ra entrada (YRFI), cuota entre 4 y 8'
-    },
-    {
-      icon: '🥊',
-      label: 'UFC método',
-      text: '2 picks de UFC de esta noche: método de victoria y rounds totales'
+      text: 'Combinada de 3 partidos NBA con totales (más/menos puntos), cuota total entre 3 y 6'
     }
+    // DNB seguros REMOVIDO 2026-05-18: no tira combinada consistentemente.
+    // Aunque DNB tiene 191 events en BetWarrior+Codere, parecía que el pool
+    // queda chico tras single-book consolidation (las ligas con DNB no se
+    // overlappean entre casas). Mantener removido hasta investigar.
+  ];
+
+  // Plantilla de cómo escribir el prompt — guía visible debajo del input
+  const PROMPT_TEMPLATE_STEPS = [
+    { icon: '①', label: 'CANTIDAD', desc: 'cuántos partidos: "3 partidos", "5 legs"' },
+    { icon: '②', label: 'CUOTA', desc: 'rango o target: "entre 5 y 10", "cuota total cerca de 4"' },
+    { icon: '③', label: 'CUÁNDO', desc: 'fecha o ventana: "hoy", "mañana", "el sábado", "esta semana"' },
+    { icon: '④', label: 'INCLUIR', desc: 'liga/deporte: "Premier League", "Liga Argentina", "tenis ATP"' },
+    { icon: '⑤', label: 'EXCLUIR', desc: 'qué NO querés: "sin esports", "no brasileirao", "no tenis"' },
+    { icon: '⑥', label: 'MERCADOS', desc: 'opcional: "córners", "tarjetas", "DNB", "totales"' }
   ];
 
   function render(panel) {
@@ -97,7 +98,7 @@
           <span class="badge-vip">VIP exclusivo</span>
           <h2 class="h2">Coach IA</h2>
           <p class="lead">Pedile a la IA que te arme combinadas a medida en lenguaje natural.</p>
-          <p class="muted">Ejemplo: <em>"haceme una combinada de 4 partidos de mañana de la Premier League, cuota entre 5 y 8, dentro de todo segura"</em>. La IA analiza tu pedido, encuentra los partidos que cumplen tus criterios, busca la mejor casa por cada leg, y te arma la combinada óptima.</p>
+          <p class="muted">Ejemplo: <em>"haceme una combinada de 4 partidos de mañana de la Premier League, cuota entre 5 y 8, dentro de todo segura"</em>. La IA analiza tu pedido, encuentra los partidos que cumplen tus criterios, evalúa lesiones/alineaciones/factores, y elige la casa que más paga toda la combinada.</p>
           <ul class="bsai-locked-feats">
             <li>✓ Lenguaje natural — escribí como hablás</li>
             <li>✓ Cuotas reales verificadas en las 6 casas argentinas</li>
@@ -114,16 +115,18 @@
         <header class="bsai-header">
           <div class="bsai-header__title">
             <span class="bsai-logo" aria-hidden="true">
-              <svg viewBox="0 0 32 32" width="34" height="34" fill="none">
+              <!-- Coach IA logo = mismo sparkle (3 estrellas) que usa el sidebar.
+                   Manteniendo el gradient bg para coherencia visual VIP. -->
+              <svg viewBox="0 0 24 24" width="34" height="34" fill="none">
                 <defs>
                   <linearGradient id="bsaiG1" x1="0" y1="0" x2="1" y2="1">
                     <stop offset="0%" stop-color="#d4a017"/>
                     <stop offset="100%" stop-color="#7b5b0d"/>
                   </linearGradient>
                 </defs>
-                <rect x="2" y="2" width="28" height="28" rx="9" fill="url(#bsaiG1)"/>
-                <path d="M11 11 L16 23 L21 11 M13 17 L19 17" stroke="#fff" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-                <circle cx="24" cy="9" r="2" fill="#fff"/>
+                <rect x="0" y="0" width="24" height="24" rx="7" fill="url(#bsaiG1)"/>
+                <path d="M12 3l1.5 5.5L19 10l-5.5 1.5L12 17l-1.5-5.5L5 10l5.5-1.5L12 3zM19 14l.8 2.7L22 17.5l-2.2.8L19 21l-.8-2.7L16 17.5l2.2-.8L19 14zM5 14l.6 2L7 16.6l-1.4.4L5 19l-.6-2L3 16.6l1.4-.4L5 14z"
+                      fill="#ffffff" stroke="#ffffff" stroke-width="0.6" stroke-linejoin="round"/>
               </svg>
             </span>
             <div>
@@ -149,9 +152,8 @@
               <button class="btn btn-outline btn-icon" id="bsaiVoice" title="Hablale a la IA (dictado por voz)" aria-label="Dictar por voz">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
               </button>
-              <button class="btn btn-outline btn-icon" id="bsaiHistory" title="Ver mis pedidos anteriores" aria-label="Historial">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.74 9.74 0 0 0-6.74 2.74L3 8"/><polyline points="3 3 3 8 8 8"/><polyline points="12 7 12 12 15 14"/></svg>
-              </button>
+              <!-- Botón History REMOVIDO (2026-05-18) a pedido del user -->
+
               <button class="btn btn-gold mag" id="bsaiBuild">
                 <span class="bsai-build-label">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/></svg>
@@ -162,14 +164,27 @@
           </div>
         </section>
 
-        <!-- History drawer (oculto por default) -->
-        <section class="bsai-history-drawer" id="bsaiHistoryDrawer" hidden>
-          <div class="bsai-history-head">
-            <strong>Tus pedidos anteriores</strong>
-            <button class="btn-ghost btn-icon btn-sm" id="bsaiHistoryClose" aria-label="Cerrar">×</button>
+        <!-- TEMPLATE DE COMO PEDIR — guía step-by-step para que el user
+             escriba prompts completos y la IA pueda cumplir todo -->
+        <section class="bsai-template" aria-label="Cómo armar tu pedido" style="margin:8px 0 16px;padding:14px 16px;background:rgba(196,154,26,0.06);border:1px solid rgba(196,154,26,0.18);border-radius:10px">
+          <strong style="display:block;margin-bottom:10px;color:#c49a1a;font-size:.85rem">💡 Cómo armar tu pedido — paso a paso</strong>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px 14px;font-size:.82rem">
+            ${PROMPT_TEMPLATE_STEPS.map(s => `
+              <div style="display:flex;gap:8px;align-items:flex-start">
+                <span style="font-weight:700;color:#c49a1a;font-size:1.1rem;line-height:1">${s.icon}</span>
+                <div>
+                  <strong style="display:block;font-size:.78rem;letter-spacing:.4px;text-transform:uppercase;color:#c49a1a">${s.label}</strong>
+                  <span class="muted" style="font-size:.78rem">${s.desc}</span>
+                </div>
+              </div>
+            `).join('')}
           </div>
-          <div id="bsaiHistoryList" class="bsai-history-list"></div>
+          <p class="muted" style="margin:10px 0 0;font-size:.75rem;line-height:1.5">
+            <strong>Ejemplo completo:</strong> <em>"Combinada de <strong>4 legs</strong>, cuota total <strong>entre 5 y 10</strong>, para <strong>hoy</strong>, en <strong>Premier League o Champions</strong>, <strong>sin esports ni brasileirao</strong>, mezclando <strong>córners y totales</strong>"</em>
+          </p>
         </section>
+
+        <!-- History drawer REMOVIDO (2026-05-18) a pedido del user -->
 
         <section class="bsai-suggestions" id="bsaiSuggestions" aria-label="Ejemplos rápidos">
           <span class="muted tiny" style="display:block;margin-bottom:6px">O probá uno de estos:</span>
@@ -200,7 +215,7 @@
     const charEl = panel.querySelector('#bsaiCharCount');
     const buildBtn = panel.querySelector('#bsaiBuild');
     const voiceBtn = panel.querySelector('#bsaiVoice');
-    const historyBtn = panel.querySelector('#bsaiHistory');
+    // historyBtn removido (2026-05-18)
     const suggestionsHost = panel.querySelector('#bsaiSuggestions');
 
     promptEl.addEventListener('input', () => {
@@ -309,76 +324,26 @@
       rec.start();
     });
 
-    // ── HISTORY DRAWER ────────────────────────────────────────────────
-    historyBtn?.addEventListener('click', () => {
-      const drawer = panel.querySelector('#bsaiHistoryDrawer');
-      if (!drawer) return;
-      const list = panel.querySelector('#bsaiHistoryList');
-      if (!state.history.length) {
-        list.innerHTML = `<div class="empty" style="padding:24px;text-align:center"><p class="muted">Tu primer pedido va a quedar guardado acá.</p></div>`;
-      } else {
-        list.innerHTML = state.history.map((h, i) => `
-          <button class="bsai-history-item" data-history-idx="${i}">
-            <div class="bsai-history-item__text">${BSUI.esc(h.prompt)}</div>
-            <div class="bsai-history-item__meta">
-              <span>${h.legs || '?'} legs</span>
-              <span>·</span>
-              <span class="num">${(h.totalOdd || 0).toFixed(2)}</span>
-              <span>·</span>
-              <span class="muted">${BSUI.dt ? BSUI.dt(h.ts) : new Date(h.ts).toLocaleString('es-AR')}</span>
-            </div>
-          </button>
-        `).join('') + `
-          <button class="btn btn-outline btn-sm" id="bsaiHistoryClear" style="align-self:flex-start;margin-top:6px">Vaciar historial</button>
-        `;
-        list.querySelectorAll('[data-history-idx]').forEach(b => b.addEventListener('click', () => {
-          const idx = Number(b.dataset.historyIdx);
-          const h = state.history[idx];
-          if (!h) return;
-          promptEl.value = h.prompt;
-          charEl.textContent = `${h.prompt.length} / 500`;
-          drawer.hidden = true;
-          promptEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          promptEl.focus();
-        }));
-        list.querySelector('#bsaiHistoryClear')?.addEventListener('click', () => {
-          if (confirm('¿Borrar todos los pedidos guardados?')) {
-            state.history = [];
-            localStorage.setItem('bs:betsafe-ai:history', '[]');
-            drawer.hidden = true;
-          }
-        });
-      }
-      drawer.hidden = !drawer.hidden;
-      if (!drawer.hidden) drawer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    });
-
-    panel.querySelector('#bsaiHistoryClose')?.addEventListener('click', () => {
-      panel.querySelector('#bsaiHistoryDrawer').hidden = true;
-    });
+    // ── HISTORY DRAWER REMOVIDO (2026-05-18) ─────────────────────────
+    // El usuario pidió quitar el botón y el cuadro de "Tus pedidos anteriores".
+    // El state.history se mantiene en localStorage por compatibilidad histórica
+    // pero no se muestra UI.
   }
 
-  async function buildCombo(panel, prompt, opts = {}) {
+  async function buildCombo(panel, prompt) {
     state.loading = true;
     state.error = null;
     state.lastPrompt = prompt;
-    // forceIncludeEventIds: ids de partidos que el user agregó manualmente
-    // pulsando "Agregar partido" en una versión anterior de la combinada.
-    state.lastForceInclude = Array.isArray(opts.forceIncludeEventIds)
-      ? opts.forceIncludeEventIds.slice()
-      : [];
     renderOutput(panel);
 
     try {
       // 180s timeout — Gemini analiza 14-20 partidos + curador final
       const ctrl = new AbortController();
       const timeoutId = setTimeout(() => ctrl.abort(), 180000);
-      const body = { prompt };
-      if (state.lastForceInclude.length) body.forceIncludeEventIds = state.lastForceInclude;
       const res = await fetch('/api/betsafe-ai/build', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ prompt }),
         signal: ctrl.signal
       });
       clearTimeout(timeoutId);
@@ -417,9 +382,9 @@
           <ul class="bsai-loading__steps">
             <li class="is-active"><span class="bsai-tick"></span>Entendiendo tu pedido</li>
             <li><span class="bsai-tick"></span>Buscando partidos que cumplan los criterios</li>
-            <li><span class="bsai-tick"></span>Analizando cada partido con IA</li>
-            <li><span class="bsai-tick"></span>Encontrando la mejor casa por cada leg</li>
-            <li><span class="bsai-tick"></span>Armando la combinada óptima</li>
+            <li><span class="bsai-tick"></span>Analizando cada partido con IA (lesiones, alineaciones, factores)</li>
+            <li><span class="bsai-tick"></span>Buscando la casa que más paga TODA la combinada</li>
+            <li><span class="bsai-tick"></span>Armando la combinada en una sola casa</li>
           </ul>
         </div>`;
       // Activar paso por paso (simulación visual mientras el backend trabaja)
@@ -463,12 +428,12 @@
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.5 5.5L19 10l-5.5 1.5L12 17l-1.5-5.5L5 10l5.5-1.5L12 3z"/><path d="M19 14l.8 2.7L22 17.5l-2.2.8L19 21l-.8-2.7L16 17.5l2.2-.8L19 14z"/></svg>
           </div>
           <strong class="bs-empty-prem__title">Esperá tu primera combinada del Coach</strong>
-          <p class="bs-empty-prem__hint">Decile en lenguaje natural qué querés (cantidad de partidos, liga, cuota target, riesgo). El motor entiende el pedido, busca partidos que lo cumplan, analiza cada uno con IA y encuentra la mejor casa por leg.</p>
+          <p class="bs-empty-prem__hint">Decile en lenguaje natural qué querés (cantidad de partidos, liga, cuota target, riesgo). El motor entiende el pedido, busca partidos que lo cumplan, analiza cada uno con IA y elige la casa que más paga la combinada completa.</p>
           <div class="bsai-empty-steps">
             <span><strong>1</strong> Entiende tu pedido</span>
             <span><strong>2</strong> Encuentra partidos</span>
             <span><strong>3</strong> Analiza con IA</span>
-            <span><strong>4</strong> Arma la combinada</span>
+            <span><strong>4</strong> Arma la combinada en una casa</span>
           </div>
         </div>`;
       return;
@@ -476,17 +441,41 @@
 
     const r = state.result;
     if (!r.ok) {
+      // Tipos de fallo:
+      //   no-events: no había partidos en el rango
+      //   no-single-book: no se pudo unificar la combinada en una sola casa
+      //   filters-not-met: hay degradedAttempt con la combinada parcial + issues
+      const reasonTitle = {
+        'no-events': 'No encontramos partidos',
+        'no-single-book': 'No se pudo armar single-book',
+        'filters-not-met': 'No se respetaron todos los filtros'
+      }[r.reason] || 'Pool insuficiente';
+
+      let degradedHtml = '';
+      if (r.degradedAttempt && Array.isArray(r.degradedAttempt.legs) && r.degradedAttempt.legs.length) {
+        // Render la combinada parcial como degraded para que el user vea qué se intentó
+        const fakeR = { ...r, ...r.degradedAttempt, ok: true, filtersFullyRespected: false };
+        degradedHtml = `
+          <div style="margin-top:16px;padding:12px;background:rgba(244,162,97,0.08);border-left:3px solid #f4a261;border-radius:8px">
+            <strong style="display:block;margin-bottom:8px;color:#f4a261">⚠ Combinada parcial (NO respeta todos los filtros)</strong>
+            <p class="muted tiny" style="margin:0 0 10px">Te muestro lo que pude armar — pero NO cumple todo lo que pediste. Mirá los avisos en rojo abajo.</p>
+            ${renderCombo(fakeR)}
+          </div>`;
+      }
+
       host.innerHTML = `
         <div class="bsai-empty-card">
           <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <strong>${BSUI.esc(r.reason === 'no-events' ? 'No encontramos partidos' : 'Pool insuficiente')}</strong>
+          <strong>${BSUI.esc(reasonTitle)}</strong>
           <p class="muted">${BSUI.esc(r.message || 'Probá relajar los criterios.')}</p>
-        </div>`;
+        </div>
+        ${degradedHtml}`;
+      if (degradedHtml) bindComboActions(host, { ...r, ...r.degradedAttempt, ok: true, filtersFullyRespected: false });
       return;
     }
 
     host.innerHTML = renderCombo(r);
-    bindComboActions(panel, host, r);
+    bindComboActions(host, r);
   }
 
   function renderCombo(r) {
@@ -526,7 +515,7 @@
             </div>
             <div class="bsai-stat">
               <span class="bsai-stat__label">Confianza</span>
-              <strong class="bsai-stat__value">${(r.avgConfidence * 100).toFixed(0)}%</strong>
+              <strong class="bsai-stat__value">${BSUI.pctInt(r.avgConfidence, 0)}</strong>
             </div>
             <div class="bsai-stat">
               <span class="bsai-stat__label">Legs</span>
@@ -542,20 +531,35 @@
           </div>
         ` : ''}
 
-        ${Array.isArray(r.validationIssues) && r.validationIssues.length ? `
-          <div style="padding:12px 14px;background:rgba(212,160,23,0.10);border-left:3px solid #c49a1a;border-radius:8px;margin:10px 0;font-size:.85rem">
-            <strong style="color:#c49a1a;display:block;margin-bottom:6px">⚠ La combinada no respeta del todo lo que pediste</strong>
-            <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px">
-              ${r.validationIssues.map(v => `<li>${BSUI.esc(v.message)}</li>`).join('')}
-            </ul>
-          </div>
-        ` : (r.filtersFullyRespected ? `
+        ${Array.isArray(r.validationIssues) && r.validationIssues.length ? (() => {
+          // Diferenciamos críticas (rojo) de warnings (amarillo).
+          const critical = r.validationIssues.filter(v => v.critical);
+          const warnings = r.validationIssues.filter(v => !v.critical);
+          let html = '';
+          if (critical.length) {
+            html += `
+              <div style="padding:12px 14px;background:rgba(220,53,69,0.12);border-left:4px solid #dc3545;border-radius:8px;margin:10px 0;font-size:.88rem">
+                <strong style="color:#dc3545;display:block;margin-bottom:6px;font-size:.95rem">⚠ La combinada NO respeta lo que pediste</strong>
+                <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px;color:#e8a4ad">
+                  ${critical.map(v => `<li>${BSUI.esc(v.message)}</li>`).join('')}
+                </ul>
+              </div>`;
+          }
+          if (warnings.length) {
+            html += `
+              <div style="padding:10px 14px;background:rgba(212,160,23,0.10);border-left:3px solid #c49a1a;border-radius:8px;margin:10px 0;font-size:.85rem">
+                <strong style="color:#c49a1a;display:block;margin-bottom:6px">⚠ Avisos secundarios</strong>
+                <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px">
+                  ${warnings.map(v => `<li>${BSUI.esc(v.message)}</li>`).join('')}
+                </ul>
+              </div>`;
+          }
+          return html;
+        })() : (r.filtersFullyRespected ? `
           <div style="padding:8px 12px;background:rgba(31,138,76,0.08);border-left:3px solid #1f8a4c;border-radius:6px;margin:10px 0;font-size:.78rem">
             <strong style="color:#1f8a4c">✓ Combinada armada respetando todos los filtros pedidos</strong>
           </div>
         ` : '')}
-
-        ${renderRejectedRequestedSection(r)}
 
         <div class="bsai-legs">
           ${r.legs.map((l, i) => renderLeg(l, i)).join('')}
@@ -596,17 +600,13 @@
 
     // SINGLE-BOOK MODE (2026-05-18): NO mostramos logo de casa por leg.
     // La casa única se muestra UNA SOLA VEZ en el header de la combinada.
-    const requestedBadge = leg.userRequested
-      ? `<span class="badge badge-info tiny" style="margin-left:6px" title="Este partido fue pedido explícitamente por vos en el prompt.">🎯 Tu pedido</span>`
-      : '';
     return `
-      <div class="bsai-leg${leg.userRequested ? ' bsai-leg--requested' : ''}" style="--leg-i:${idx}${leg.userRequested ? ';box-shadow:inset 3px 0 0 var(--brand-500,#2563eb)' : ''}">
+      <div class="bsai-leg" style="--leg-i:${idx}">
         <div class="bsai-leg__num">${idx + 1}</div>
         <div class="bsai-leg__main">
           <div class="bsai-leg__league">
             ${leagueLogo}<span class="muted tiny">${BSUI.esc(leg.leagueName || '')}</span>
             ${dateStr ? `<span class="muted tiny">· ${dateStr}</span>` : ''}
-            ${requestedBadge}
           </div>
           <div class="bsai-leg__teams">
             <div class="bsai-leg__team">${homeLogo}<strong>${BSUI.esc(leg.home.name)}</strong></div>
@@ -625,67 +625,6 @@
           </div>
         </div>
       </div>
-    `;
-  }
-
-  // Sección "Partidos pedidos no incluidos" — solo se renderiza si el motor
-  // rechazó algún partido que el user pidió explícitamente, O si no encontró
-  // un partido que el user nombró. Cada item tiene su botón "Agregar partido"
-  // (excepto los not-found, que no se pueden agregar porque no existen).
-  function renderRejectedRequestedSection(r) {
-    const rejected = Array.isArray(r.rejectedRequestedEvents) ? r.rejectedRequestedEvents : [];
-    const notFound = Array.isArray(r.requestedMatchReport)
-      ? r.requestedMatchReport.filter(rm => rm.status === 'not-found')
-      : [];
-    if (!rejected.length && !notFound.length) return '';
-
-    const _fmtDate = (ts) => {
-      if (!ts) return '';
-      const d = new Date(ts);
-      return `${d.toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' })} · ${d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}`;
-    };
-
-    const rejectedHtml = rejected.map((it) => `
-      <div class="bsai-rejected-item" data-event-id="${BSUI.esc(it.eventId)}" style="padding:12px 14px;background:rgba(212,160,23,0.06);border:1px solid rgba(212,160,23,0.25);border-radius:10px;display:flex;flex-direction:column;gap:8px">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">
-          <div style="min-width:0;flex:1">
-            <strong style="display:block;font-size:.92rem">${BSUI.esc(it.home || '?')} vs ${BSUI.esc(it.away || '?')}</strong>
-            <span class="muted tiny" style="display:block;margin-top:2px">${BSUI.esc(it.leagueName || '')}${it.start ? ' · ' + _fmtDate(it.start) : ''}</span>
-          </div>
-          <span class="badge badge-warning tiny" title="La IA analizó este partido pero decidió no incluirlo. Razón abajo.">⚠ analizado, no incluido</span>
-        </div>
-        <p class="muted tiny" style="margin:0;line-height:1.5">${BSUI.esc(it.message || '')}</p>
-        ${it.canForceAdd ? `
-          <div>
-            <button class="btn btn-outline btn-sm" data-force-add="${BSUI.esc(it.eventId)}" title="Forzar la inclusión del partido. La IA recalcula la combinada con este partido adentro y vos asumís los riesgos detectados.">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><path d="M12 5v14M5 12h14"/></svg>
-              Agregar partido
-            </button>
-            <span class="muted tiny" style="margin-left:8px">Podés agregarlo igual entendiendo los riesgos detectados por la IA.</span>
-          </div>` : ''}
-      </div>
-    `).join('');
-
-    const notFoundHtml = notFound.map((it) => `
-      <div style="padding:12px 14px;background:rgba(220,38,38,0.05);border:1px solid rgba(220,38,38,0.20);border-radius:10px;display:flex;flex-direction:column;gap:6px">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
-          <strong style="font-size:.92rem">${BSUI.esc(it.requested)}</strong>
-          <span class="badge badge-danger tiny">❌ no encontrado</span>
-        </div>
-        <p class="muted tiny" style="margin:0;line-height:1.5">${BSUI.esc(it.message)}</p>
-      </div>
-    `).join('');
-
-    return `
-      <section class="bsai-rejected-section" style="margin:14px 0;display:flex;flex-direction:column;gap:10px">
-        <header style="display:flex;align-items:center;gap:8px">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-          <strong style="font-size:.92rem">Partidos pedidos que NO entraron en la combinada</strong>
-        </header>
-        <p class="muted tiny" style="margin:0;line-height:1.5">La IA es transparente: te explica por qué descartó cada uno. Si querés agregarlos igualmente, usá el botón "Agregar partido" y se rearma la combinada.</p>
-        ${rejectedHtml}
-        ${notFoundHtml}
-      </section>
     `;
   }
 
@@ -709,38 +648,7 @@
     return ranking;
   }
 
-  function bindComboActions(panel, host, r) {
-    // ── "Agregar partido" sobre partidos rechazados ─────────────────────
-    // Acumula el eventId al state.lastForceInclude y regenera la combinada.
-    host.querySelectorAll('[data-force-add]').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const eventId = btn.dataset.forceAdd;
-        if (!eventId) return;
-        // Acumular: mantener los forces previos + este nuevo (sin duplicar)
-        const previous = Array.isArray(state.lastForceInclude) ? state.lastForceInclude.slice() : [];
-        if (!previous.includes(eventId)) previous.push(eventId);
-        btn.disabled = true;
-        btn.textContent = 'Recalculando…';
-        try {
-          await buildCombo(panel, state.lastPrompt, {
-            forceIncludeEventIds: previous
-          });
-          BSUI.toast?.({
-            title: 'Combinada recalculada',
-            message: 'Incluí el partido y rearmé el resto de las legs.',
-            type: 'success'
-          });
-        } catch (e) {
-          btn.disabled = false;
-          btn.textContent = 'Agregar partido';
-          BSUI.toast?.({
-            title: 'No pude recalcular',
-            message: e?.message || 'Intentá de nuevo en unos segundos.',
-            type: 'error'
-          });
-        }
-      });
-    });
+  function bindComboActions(host, r) {
     // Toggle alternatives per leg
     host.querySelectorAll('[data-toggle-alts]').forEach(btn => {
       btn.addEventListener('click', () => {

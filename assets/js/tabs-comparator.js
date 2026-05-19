@@ -169,8 +169,13 @@
             </div>
             ${top3.map((it, i) => {
               const addPayload = JSON.stringify({ matchId: m.id, eventId: m.id, label, odd: it.price, book: it.book, market: 'h2h', outcome: sideKey });
+              // Logo del casino — antes el span quedaba VACÍO (yellow placeholder).
+              // Ahora se inyecta el bookLogo real desde BSLogos.
+              const bookLogoHtml = window.BSLogos?.bookLogo
+                ? BSLogos.bookLogo(it.book, { size: 24 })
+                : '';
               return `<button class="cmp3-row${i===0?' is-best':''}" data-add='${addPayload}' aria-label="${BSUI.esc(bn(it.book))} paga ${it.price.toFixed(2)}">
-                <span class="rank rank-book" data-book="${it.book}"></span>
+                <span class="rank rank-book" data-book="${it.book}">${bookLogoHtml}</span>
                 <span class="book">${BSUI.esc(bn(it.book))}</span>
                 <span class="price">${it.price.toFixed(2)}</span>
               </button>`;

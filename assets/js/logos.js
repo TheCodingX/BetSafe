@@ -1621,57 +1621,78 @@
     // ── Independiente — varios equipos en Sudamérica ──
     'independienterivadaviadelacarlosa': 'independienterivadavia',
     'independienterivadavia': 'independienterivadavia',
-    'cairivadavia': 'independienterivadavia',
-    // Independiente Santa Fe (Colombia) — variantes que llegan desde data
-    // sources. NO mapear a 'independiente' a secas (=== Avellaneda); siempre
-    // a la versión específica colombiana.
-    'independientesantafe':       'independientesantafe',
-    'cdindependientesantafe':     'independientesantafe',
-    'cdisantafe':                 'independientesantafe',
-    'isantafe':                   'independientesantafe',
-    'indsantafe':                 'independientesantafe',
-    'indepsantafe':               'independientesantafe',
-    'independientestafe':         'independientesantafe',
-    // Otros clubes "homónimos" frecuentes — protegemos contra que el
-    // matcheo caiga al "default" del nombre corto:
-    // Nacional (Uruguay) vs Atlético Nacional (Medellín)
-    'atleticonacional':           'atleticonacional',
-    'atleticonacionalmedellin':   'atleticonacional',
-    'clubnacionaldefootball':     'nacional',          // Nacional Uruguay
-    'clubnacional':               'nacional',
-    // América (Colombia) vs América (México) — el catálogo ya distingue,
-    // pero el shortname "America" sin sufijo era ambiguo.
-    'americadecali':              'americadecali',
-    'americacf':                  'americadecali',
-    // Sporting Cristal (Peru) — diferente de Sporting CP / Sporting Gijón
-    'clubsportingcristal':        'sportingcristal',
-    // Universidad Católica — diferente país por defecto
-    'universidadcatolicachile':   'universidadcatolica',
-    'universidadcatolicaequipo':  'universidadcatolica'
+    'cairivadavia': 'independienterivadavia'
+  };
+
+  // Map de nombres de SELECCIONES nacionales (español/inglés) → código ISO3.
+  // Cuando teamCrest detecta uno de estos, retorna la bandera del país en
+  // lugar del shield genérico. Cubre WC 2026 + ligas internacionales.
+  const COUNTRY_NAME_TO_ISO3 = {
+    // Sudamérica
+    argentina:'ARG', brasil:'BRA', brazil:'BRA', uruguay:'URU', colombia:'COL',
+    chile:'CHI', peru:'PER', perú:'PER', paraguay:'PAR', ecuador:'ECU',
+    bolivia:'BOL', venezuela:'VEN',
+    // Europa
+    españa:'ESP', espana:'ESP', spain:'ESP',
+    francia:'FRA', france:'FRA',
+    alemania:'GER', germany:'GER', deutschland:'GER',
+    inglaterra:'ENG', england:'ENG',
+    italia:'ITA', italy:'ITA',
+    portugal:'POR',
+    paisesbajos:'NED', holanda:'NED', netherlands:'NED',
+    belgica:'BEL', bélgica:'BEL', belgium:'BEL',
+    croacia:'CRO', croatia:'CRO',
+    suiza:'SUI', switzerland:'SUI',
+    austria:'AUT',
+    dinamarca:'DEN', denmark:'DEN',
+    polonia:'POL', poland:'POL',
+    noruega:'NOR', norway:'NOR',
+    turquia:'TUR', turquía:'TUR', turkey:'TUR', türkiye:'TUR',
+    chequia:'CZE', republicacheca:'CZE', repúblicacheca:'CZE', czechia:'CZE',
+    suecia:'SWE', sweden:'SWE',
+    // CONCACAF
+    mexico:'MEX', méxico:'MEX',
+    canada:'CAN', canadá:'CAN',
+    estadosunidos:'USA', eeuu:'USA', usa:'USA',
+    costarica:'CRC',
+    panama:'PAN', panamá:'PAN',
+    jamaica:'JAM',
+    // AFC
+    japon:'JPN', japón:'JPN', japan:'JPN',
+    coreadelsur:'KOR', corea:'KOR', southkorea:'KOR',
+    australia:'AUS',
+    iran:'IRN', irán:'IRN',
+    arabiasaudi:'KSA', arabiasaudí:'KSA', saudiarabia:'KSA',
+    qatar:'QAT',
+    irak:'IRQ', iraq:'IRQ',                              // ← user reportó este
+    uzbekistan:'UZB', uzbekistán:'UZB',
+    // CAF
+    marruecos:'MAR', morocco:'MAR',
+    senegal:'SEN', senegal:'SEN',
+    egipto:'EGY', egypt:'EGY',
+    nigeria:'NGA',
+    costademarfil:'CIV', costadeumarfil:'CIV', ivorycoast:'CIV',
+    ghana:'GHA',
+    tunez:'TUN', túnez:'TUN', tunisia:'TUN',
+    argelia:'DZA', algeria:'DZA',
+    // OFC
+    nuevazelanda:'NZL', newzealand:'NZL'
   };
 
   function teamCrest(key, opts = {}) {
     const size = opts.size || 36;
-    const normalizeName = s => String(s || '').toLowerCase().replace(/\s|-|\.|'|_/g, '');
-    const kFromKey = normalizeName(key);
-    const kFromName = normalizeName(opts.name);
-
-    // PRIORIDAD AL NOMBRE COMPLETO ─────────────────────────────────────────
-    // Antes confiábamos solo en `key` (el team.id que el caller deriva del
-    // nombre). Si el caller deriva el id de un nombre TRUNCADO ("Independiente"
-    // en vez de "Independiente Santa Fe"), el lookup CDN matcheaba al equipo
-    // equivocado (Independiente de Avellaneda) porque "independiente" sí está
-    // en el catálogo. Ahora resolvemos primero por nombre completo: si
-    // CDN.team[normalize(name)] existe, ESE es el match — es estrictamente
-    // más específico que la key.
-    let k = kFromKey;
-    if (kFromName && kFromName !== kFromKey) {
-      if (CDN.team[kFromName] || TEAM_NAME_ALIASES[kFromName]) {
-        k = kFromName;
-      }
-    }
+    let k = String(key || '').toLowerCase().replace(/\s|-|\.|'|_/g, '');
     if (TEAM_NAME_ALIASES[k]) k = TEAM_NAME_ALIASES[k];
     const teamName = opts.name || key;
+
+    // PATH 0 (NUEVO 2026-05-18): si es una SELECCIÓN nacional, retornar
+    // bandera del país. Maneja variantes ES/EN (irak/iraq, noruega/norway,
+    // brasil/brazil, etc.) que antes caían al shield genérico.
+    const iso3 = COUNTRY_NAME_TO_ISO3[k];
+    if (iso3) {
+      return flag(iso3, { size });
+    }
+
     const t = TEAMS[k];
     const color = t?.primary || opts.color || '#1f2937';
     const fb = neutralChip(t?.name || teamName, color, size);

@@ -204,7 +204,7 @@
         <div class="grid grid-2 gap-3">
           <label class="field"><span class="field-label">Profit bruto (ARS)</span><input class="input" id="t_p" type="number" value="100000"></label>
           <label class="field"><span class="field-label">Jurisdicción</span>
-            <select class="select" id="t_j">${Object.entries(BSData.TAX_RATES_AR).map(([k,v])=>`<option value="${v}">${k} (${(v*100).toFixed(2)}%)</option>`).join('')}</select>
+            <select class="select" id="t_j">${Object.entries(BSData.TAX_RATES_AR).map(([k,v])=>`<option value="${v}">${k} (${BSUI.pctInt(v, 2)})</option>`).join('')}</select>
           </label>
         </div>
         <div id="tOut" class="mt-3"></div>`;
@@ -234,7 +234,7 @@
         const ovr = BSMath.overround(o);
         host.querySelector('#nvOut').innerHTML = `
           <div class="grid grid-3 mt-3">${o.map((x,i)=>`<div class="card card-tinted card-pad-sm"><div class="muted tiny">Tomada ${x.toFixed(2)}</div><strong class="num">Justa ${fair[i].toFixed(2)}</strong></div>`).join('')}</div>
-          <div class="row between mt-3"><span>Overround</span><strong class="num">${(ovr*100).toFixed(2)}%</strong></div>`;
+          <div class="row between mt-3"><span>Overround</span><strong class="num">${BSUI.pctInt(ovr, 2)}</strong></div>`;
       };
       host.querySelector('#nv_o').addEventListener('input', recalc); recalc();
       return;
@@ -513,8 +513,8 @@
             body: JSON.stringify({ legs })
           }).then(x => x.json());
           host.querySelector('#corOut').innerHTML = `
-            <div class="row between"><span>Max correlación</span><strong class="num">${(r.maxCorrelation * 100).toFixed(1)}%</strong></div>
-            <div class="row between"><span>EV adjustment</span><strong class="num">${(r.evAdjustment * 100).toFixed(2)}%</strong></div>
+            <div class="row between"><span>Max correlación</span><strong class="num">${BSUI.pctInt(r.maxCorrelation, 1)}</strong></div>
+            <div class="row between"><span>EV adjustment</span><strong class="num">${BSUI.pctInt(r.evAdjustment, 2)}</strong></div>
             ${r.warnings?.length ? `<div class="cluster mt-2" style="flex-wrap:wrap;gap:4px">${r.warnings.map(w => `<span class="badge badge-warning tiny">⚠ ${BSUI.esc(w.note || '')}</span>`).join('')}</div>` : '<p class="muted tiny mt-2">✓ Legs no correlacionadas — combinada limpia.</p>'}`;
         } catch (e) {
           host.querySelector('#corOut').innerHTML = '<p class="muted">El análisis de correlación no está disponible por ahora.</p>';

@@ -209,7 +209,7 @@ Sin emojis, sin promesas de ganancia, sin lenguaje promocional.`;
       const fairP = impP * 1.05;
       const ev = BSEngine.expectedValue(fairP, odd);
       const kelly = BSEngine.kellyFraction(fairP, odd, 0.5);
-      evNote = `\nProbabilidad implícita: ${(impP * 100).toFixed(1)}%. EV estimado: ${(ev * 100).toFixed(1)}%. Stake recomendado: ${(kelly * 100).toFixed(2)}% de banca (½ Kelly).`;
+      evNote = `\nProbabilidad implícita: ${BSUI.pctInt(impP, 1)}. EV estimado: ${BSUI.pctInt(ev, 1)}. Stake recomendado: ${BSUI.pctInt(kelly, 2)} de banca (½ Kelly).`;
     }
     return `**Análisis probabilístico**
 La probabilidad implícita de las cuotas observadas refleja un mercado con margen estimado de ~5%. Para perfil ${tone}, evaluamos si el valor esperado supera el break-even.${evNote}

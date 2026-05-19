@@ -573,7 +573,72 @@ const TEAM_ALIASES = {
   'chivas':'chivas','chivas guadalajara':'chivas','guadalajara':'chivas','cd guadalajara':'chivas',
   'america':'america','club america':'america','club américa':'america',
   // PSG variantes
-  'paris saint-germain':'psg','paris saint germain':'psg','paris sg':'psg','psg':'psg','paris':'psg'
+  'paris saint-germain':'psg','paris saint germain':'psg','paris sg':'psg','psg':'psg','paris':'psg',
+
+  // ═══════════════════════════════════════════════════════════════════
+  // NBA — 30 equipos con abreviaturas comunes (2/3 letras) + full name
+  // ═══════════════════════════════════════════════════════════════════
+  // Bug histórico: "OKC Thunder" vs "Oklahoma City Thunder" producía 2
+  // ids distintos (okc-thunder y oklahoma-city-thunder), por lo que Coach
+  // IA metía el mismo partido 2 veces. Estos aliases unifican.
+  'atlanta hawks':'hawks','atl hawks':'hawks','hawks':'hawks',
+  'boston celtics':'celtics','bos celtics':'celtics','celtics':'celtics',
+  'brooklyn nets':'nets','bkn nets':'nets','bk nets':'nets','nets':'nets',
+  'charlotte hornets':'hornets','cha hornets':'hornets','hornets':'hornets',
+  'chicago bulls':'bulls','chi bulls':'bulls','bulls':'bulls',
+  'cleveland cavaliers':'cavaliers','cle cavaliers':'cavaliers','cavaliers':'cavaliers','cavs':'cavaliers',
+  'dallas mavericks':'mavericks','dal mavericks':'mavericks','mavericks':'mavericks','mavs':'mavericks',
+  'denver nuggets':'nuggets','den nuggets':'nuggets','nuggets':'nuggets',
+  'detroit pistons':'pistons','det pistons':'pistons','pistons':'pistons',
+  'golden state warriors':'warriors','gs warriors':'warriors','gsw warriors':'warriors','warriors':'warriors',
+  'houston rockets':'rockets','hou rockets':'rockets','rockets':'rockets',
+  'indiana pacers':'pacers','ind pacers':'pacers','pacers':'pacers',
+  'la clippers':'clippers','lac clippers':'clippers','los angeles clippers':'clippers','clippers':'clippers',
+  'los angeles lakers':'lakers','la lakers':'lakers','lal lakers':'lakers','lakers':'lakers',
+  'memphis grizzlies':'grizzlies','mem grizzlies':'grizzlies','grizzlies':'grizzlies',
+  'miami heat':'heat','mia heat':'heat','heat':'heat',
+  'milwaukee bucks':'bucks','mil bucks':'bucks','bucks':'bucks',
+  'minnesota timberwolves':'timberwolves','min timberwolves':'timberwolves','timberwolves':'timberwolves','wolves':'timberwolves',
+  'new orleans pelicans':'pelicans','no pelicans':'pelicans','nop pelicans':'pelicans','pelicans':'pelicans',
+  'new york knicks':'knicks','ny knicks':'knicks','nyk knicks':'knicks','knicks':'knicks',
+  'oklahoma city thunder':'thunder','okc thunder':'thunder','thunder':'thunder','okc':'thunder',
+  'orlando magic':'magic','orl magic':'magic','magic':'magic',
+  'philadelphia 76ers':'76ers','phi 76ers':'76ers','phila 76ers':'76ers','76ers':'76ers','sixers':'76ers',
+  'phoenix suns':'suns','phx suns':'suns','suns':'suns',
+  'portland trail blazers':'blazers','por blazers':'blazers','blazers':'blazers','trail blazers':'blazers',
+  'sacramento kings':'kings','sac kings':'kings','kings':'kings',
+  'san antonio spurs':'spurs','sa spurs':'spurs','sas spurs':'spurs','spurs':'spurs','sa':'spurs',
+  'toronto raptors':'raptors','tor raptors':'raptors','raptors':'raptors',
+  'utah jazz':'jazz','uta jazz':'jazz','jazz':'jazz',
+  'washington wizards':'wizards','was wizards':'wizards','wsh wizards':'wizards','wizards':'wizards',
+
+  // NFL — top equipos con abreviaturas
+  'kansas city chiefs':'chiefs','kc chiefs':'chiefs','chiefs':'chiefs',
+  'philadelphia eagles':'eagles','phi eagles':'eagles','eagles':'eagles',
+  'san francisco 49ers':'49ers','sf 49ers':'49ers','49ers':'49ers','niners':'49ers',
+  'dallas cowboys':'cowboys','dal cowboys':'cowboys','cowboys':'cowboys',
+  'green bay packers':'packers','gb packers':'packers','packers':'packers',
+  'new england patriots':'patriots','ne patriots':'patriots','patriots':'patriots',
+  'pittsburgh steelers':'steelers','pit steelers':'steelers','steelers':'steelers',
+  'baltimore ravens':'ravens','bal ravens':'ravens','ravens':'ravens',
+  'buffalo bills':'bills','buf bills':'bills','bills':'bills',
+  'miami dolphins':'dolphins','mia dolphins':'dolphins','dolphins':'dolphins',
+
+  // MLB — top equipos
+  'new york yankees':'yankees','ny yankees':'yankees','nyy yankees':'yankees','yankees':'yankees',
+  'los angeles dodgers':'dodgers','la dodgers':'dodgers','lad dodgers':'dodgers','dodgers':'dodgers',
+  'boston red sox':'redsox','bos red sox':'redsox','red sox':'redsox',
+  'chicago cubs':'cubs','chc cubs':'cubs','cubs':'cubs',
+  'houston astros':'astros','hou astros':'astros','astros':'astros',
+  'texas rangers':'rangers','tex rangers':'rangers',
+  'arizona diamondbacks':'diamondbacks','ari diamondbacks':'diamondbacks','diamondbacks':'diamondbacks','dbacks':'diamondbacks',
+  'san francisco giants':'giants','sf giants':'giants','sfg giants':'giants',
+
+  // NHL — top equipos
+  'new york rangers':'nyrangers','ny rangers':'nyrangers','nyr rangers':'nyrangers',
+  'boston bruins':'bruins','bos bruins':'bruins','bruins':'bruins',
+  'toronto maple leafs':'mapleleafs','tor maple leafs':'mapleleafs','maple leafs':'mapleleafs','leafs':'mapleleafs',
+  'edmonton oilers':'oilers','edm oilers':'oilers','oilers':'oilers'
 };
 
 function normalizeTeam(name) {

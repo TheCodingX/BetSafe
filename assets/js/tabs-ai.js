@@ -212,7 +212,7 @@
 
           <!-- Kelly fraction slider -->
           <div class="bsai-cmd-field" title="Fracción de Kelly para sizing. 1.0 = Kelly completo (agresivo). 0.25 = un cuarto Kelly (conservador, recomendado).">
-            <span class="bsai-cmd-field__label">Riesgo Kelly: <strong id="aiKellyVal">${(state.kellyFraction * 100).toFixed(0)}%</strong></span>
+            <span class="bsai-cmd-field__label">Riesgo Kelly: <strong id="aiKellyVal">${BSUI.pctInt(state.kellyFraction, 0)}</strong></span>
             <input type="range" id="aiKellySlider" min="0.05" max="1" step="0.05" value="${state.kellyFraction}" class="bsai-slider">
           </div>
 
@@ -445,7 +445,7 @@
     kSlider?.addEventListener('input', () => {
       const v = Number(kSlider.value);
       saveKelly(v);
-      if (kVal) kVal.textContent = `${(v * 100).toFixed(0)}%`;
+      if (kVal) kVal.textContent = `${BSUI.pctInt(v, 0)}`;
       renderCombos(panel);
     });
 
@@ -908,19 +908,19 @@ ${legsText}
         <div class="bsai-stat-tile__label">combinadas curadas</div>
       </div>
       <div class="bsai-stat-tile ${evClass}">
-        <div class="bsai-stat-tile__num">${s.avgEvPct > 0 ? '+' : ''}${s.avgEvPct}%</div>
+        <div class="bsai-stat-tile__num">${Number.isFinite(s.avgEvPct) ? `${s.avgEvPct > 0 ? '+' : ''}${s.avgEvPct}%` : '—'}</div>
         <div class="bsai-stat-tile__label">EV promedio</div>
       </div>
       <div class="bsai-stat-tile ${sharpClass}">
-        <div class="bsai-stat-tile__num">${s.totalSharpMoves}</div>
+        <div class="bsai-stat-tile__num">${Number.isFinite(s.totalSharpMoves) ? s.totalSharpMoves : '—'}</div>
         <div class="bsai-stat-tile__label">sharp moves activos</div>
       </div>
       <div class="bsai-stat-tile">
-        <div class="bsai-stat-tile__num">${s.avgConfidence}%</div>
+        <div class="bsai-stat-tile__num">${Number.isFinite(s.avgConfidence) ? `${s.avgConfidence}%` : '—'}</div>
         <div class="bsai-stat-tile__label">confianza promedio</div>
       </div>
       <div class="bsai-stat-tile">
-        <div class="bsai-stat-tile__num">${s.ligasCount}</div>
+        <div class="bsai-stat-tile__num">${Number.isFinite(s.ligasCount) ? s.ligasCount : '—'}</div>
         <div class="bsai-stat-tile__label">ligas representadas</div>
       </div>
     `;
@@ -1073,12 +1073,12 @@ ${legsText}
         </div>
         <div class="bsai-mmbar__rows">
           ${models.map(m => `
-            <div class="bsai-mmbar__row" title="${m.label}: ${(m.v * 100).toFixed(1)}%${m.key === 'consensus' ? ' (ponderado)' : ''}">
+            <div class="bsai-mmbar__row" title="${m.label}: ${BSUI.pctInt(m.v, 1)}${m.key === 'consensus' ? ' (ponderado)' : ''}">
               <span class="bsai-mmbar__label">${m.label}</span>
               <span class="bsai-mmbar__track">
-                <span class="bsai-mmbar__fill" style="width:${(m.v * 100).toFixed(1)}%;background:${m.color}${m.key === 'consensus' ? ';box-shadow:0 0 8px ' + m.color + '88' : ''}"></span>
+                <span class="bsai-mmbar__fill" style="width:${BSUI.pctInt(m.v, 1)};background:${m.color}${m.key === 'consensus' ? ';box-shadow:0 0 8px ' + m.color + '88' : ''}"></span>
               </span>
-              <strong class="bsai-mmbar__num num">${(m.v * 100).toFixed(0)}%</strong>
+              <strong class="bsai-mmbar__num num">${BSUI.pctInt(m.v, 0)}</strong>
             </div>
           `).join('')}
         </div>
@@ -1228,7 +1228,7 @@ ${legsText}
               <span>·</span>
               <span>${c.sportsCount > 1 ? `${c.sportsCount} deportes` : (c.legs[0]?.sport || 'multi-deporte')}</span>
               <span>·</span>
-              <span>Confianza ${(c.avgConfidence * 100).toFixed(0)}%</span>
+              <span>Confianza ${BSUI.pctInt(c.avgConfidence, 0)}</span>
               <span>·</span>
               <span class="${c.avgEv > 0 ? 'text-success' : 'muted'}">EV ${c.avgEv > 0 ? '+' : ''}${c.avgEv.toFixed(1)}%</span>
             </div>
@@ -1244,7 +1244,7 @@ ${legsText}
         <!-- STAKE / PAYOUT BAR -->
         <div class="bsai-pro-card__money">
           <div class="bsai-pro-card__money-tile">
-            <span class="bsai-pro-card__money-lbl">Stake recomendado <span class="muted tiny">(Kelly ${(state.kellyFraction*100).toFixed(0)}%)</span></span>
+            <span class="bsai-pro-card__money-lbl">Stake recomendado <span class="muted tiny">(Kelly ${BSUI.pctInt(state.kellyFraction, 0)})</span></span>
             <strong class="bsai-pro-card__money-num">${BSUI.money(stakeRecommended)}</strong>
             <span class="muted tiny">${stakeRecommended > 0 ? `${(stakeRecommended/state.bankroll*100).toFixed(1)}% de tu banca` : 'EV insuficiente — no apostar'}</span>
           </div>
@@ -1255,7 +1255,7 @@ ${legsText}
           </div>
           <div class="bsai-pro-card__money-tile">
             <span class="bsai-pro-card__money-lbl">Probabilidad estimada</span>
-            <strong class="bsai-pro-card__money-num">${(combinedProb * 100).toFixed(1)}%</strong>
+            <strong class="bsai-pro-card__money-num">${BSUI.pctInt(combinedProb, 1)}</strong>
             <span class="muted tiny">prob. implícita: ${(100/totalOdd).toFixed(1)}%</span>
           </div>
         </div>
@@ -1517,7 +1517,7 @@ ${legsText}
         <div class="row between" style="font-size:.72rem;padding:8px 10px;background:rgba(255,255,255,0.03);border-radius:6px;margin-bottom:10px">
           <div>
             <div class="muted">Confianza promedio</div>
-            <strong>${(c.avgConfidence * 100).toFixed(0)}%</strong>
+            <strong>${BSUI.pctInt(c.avgConfidence, 0)}</strong>
           </div>
           <div>
             <div class="muted">Ventaja promedio</div>
@@ -1659,8 +1659,11 @@ ${legsText}
     // Edge sign/class para mostrar como pill prominente (igual que combinadas)
     const evSign = ev_pct != null && ev_pct >= 0 ? '+' : '';
     const edgeCls = ev_pct == null ? '' : ev_pct >= 0 ? '' : 'bs-prem__edge--negative';
-    const confPct = Math.round(conf * 100);
-    const confLevel = confPct >= 70 ? 'high' : confPct >= 50 ? '' : 'low';
+    // Safe: si conf es NaN/null, confPct = null y se renderiza '—%' → '—'
+    const confPct = Number.isFinite(conf) ? Math.round(conf * 100) : null;
+    const confLabel = confPct == null ? '—' : `${confPct}%`;
+    const confLevel = confPct == null ? '' : (confPct >= 70 ? 'high' : confPct >= 50 ? '' : 'low');
+    const confBarWidth = confPct == null ? 0 : confPct;
 
     return `
       <div class="ai-pick ai-pick--prem" data-type="${s.type}"${isCombo ? ' data-combo="1"' : ''}>
@@ -1681,17 +1684,17 @@ ${legsText}
         </div>
         <div class="bs-prem__conf" style="padding:8px 10px;margin-top:8px">
           <div class="bs-prem__conf-head">
-            <span>Confianza del modelo</span><strong>${confPct}%</strong>
+            <span>Confianza del modelo</span><strong>${confLabel}</strong>
           </div>
           <div class="bs-prem__conf-track">
-            <div class="bs-prem__conf-fill ${confLevel ? 'bs-prem__conf-fill--' + confLevel : ''}" style="width:${confPct}%"></div>
+            <div class="bs-prem__conf-fill ${confLevel ? 'bs-prem__conf-fill--' + confLevel : ''}" style="width:${confBarWidth}%"></div>
           </div>
         </div>
-        ${probs.length ? `<div class="ai-probs">${probs.map(p => `<span class="ai-prob${p.highlight?' is-consensus':''}"><span class="muted tiny">${p.label}</span><strong>${(p.v*100).toFixed(0)}%</strong></span>`).join('')}</div>` : ''}
+        ${probs.length ? `<div class="ai-probs">${probs.map(p => `<span class="ai-prob${p.highlight?' is-consensus':''}"><span class="muted tiny">${p.label}</span><strong>${BSUI.pctInt(p.v, 0)}</strong></span>`).join('')}</div>` : ''}
         <div class="ai-metrics-grid">
           ${s.valueGap != null ? `<div class="ai-metric" title="Cuán diferente es la probabilidad REAL de la probabilidad que sugiere la cuota. Positivo = la cuota está sobreestimando la dificultad — te conviene jugarla."><span class="muted tiny">Valor extra</span><strong class="${s.valueGap > 0 ? 'text-success' : 'muted'}">${s.valueGap > 0 ? '+' : ''}${s.valueGap.toFixed(1)}%</strong></div>` : ''}
           ${s.modelConvergence ? `<div class="ai-metric" title="Si los distintos modelos (estadístico, forma reciente, IA) coinciden en el pronóstico"><span class="muted tiny">Modelos</span><strong class="${s.modelConvergence === 'alta' ? 'text-success' : s.modelConvergence === 'baja' ? 'text-warning' : ''}">${s.modelConvergence === 'alta' ? 'coinciden' : s.modelConvergence === 'baja' ? 'discrepan' : 'parcial'}</strong></div>` : ''}
-          ${s.kellyFractional ? `<div class="ai-metric" title="Cuánto de tu plata total te conviene apostar — calculado para crecer la banca sin riesgo de quemarla. Es conservador, podés apostar menos si querés."><span class="muted tiny">Apostá</span><strong>${(s.kellyFractional*100).toFixed(1)}% de tu plata</strong></div>` : ''}
+          ${s.kellyFractional ? `<div class="ai-metric" title="Cuánto de tu plata total te conviene apostar — calculado para crecer la banca sin riesgo de quemarla. Es conservador, podés apostar menos si querés."><span class="muted tiny">Apostá</span><strong>${BSUI.pctInt(s.kellyFractional, 1)} de tu plata</strong></div>` : ''}
         </div>
         ${s.rationale ? `<p class="muted tiny" style="margin-top:8px;line-height:1.4">${BSUI.esc(s.rationale).slice(0, 180)}${s.rationale.length > 180 ? '…' : ''}</p>` : ''}
         ${(s.warnings || []).length ? `<div class="cluster tiny" style="margin-top:6px;flex-wrap:wrap">${s.warnings.map(w => `<span class="badge badge-warning tiny">⚠ ${BSUI.esc(w)}</span>`).join('')}</div>` : ''}
@@ -1849,7 +1852,7 @@ ${legsText}
     const sharp = f.sharp?.score || 0;
     if (sharp > 0) {
       const cls = sharp > 0.5 ? 'ai-factor-hot' : '';
-      items.push(`<span class="ai-factor ${cls}"><span class="ai-factor-ic">💰</span><strong class="tiny">Sharp money</strong><span class="muted tiny">${(sharp*100).toFixed(0)}%</span></span>`);
+      items.push(`<span class="ai-factor ${cls}"><span class="ai-factor-ic">💰</span><strong class="tiny">Sharp money</strong><span class="muted tiny">${BSUI.pctInt(sharp, 0)}</span></span>`);
     } else {
       items.push(`<span class="ai-factor ai-factor-na"><span class="ai-factor-ic">💰</span><strong class="tiny">Sharp money</strong><span class="muted tiny">sin señal</span></span>`);
     }
@@ -1857,7 +1860,7 @@ ${legsText}
     // Histórico H2H
     if (f.historical && !f.historical.unavailable && f.historical.h2h?.matches > 0) {
       const h = f.historical.h2h;
-      items.push(`<span class="ai-factor"><span class="ai-factor-ic">📊</span><strong class="tiny">H2H</strong><span class="muted tiny">${h.matches} partidos · local ${(h.homeWinRate*100).toFixed(0)}%</span></span>`);
+      items.push(`<span class="ai-factor"><span class="ai-factor-ic">📊</span><strong class="tiny">H2H</strong><span class="muted tiny">${h.matches} partidos · local ${BSUI.pctInt(h.homeWinRate, 0)}</span></span>`);
     }
 
     // Modelo de goles esperados (xG)
@@ -1932,9 +1935,9 @@ ${legsText}
       sections.push(`<div class="card stack">
         <strong>📊 Histórico y forma reciente</strong>
         ${h?.matches > 0 ? `<div class="grid grid-3 gap-2">
-          <div><span class="muted tiny">H2H (${h.matches})</span><div>${(h.homeWinRate*100).toFixed(0)}% / ${(h.drawRate*100).toFixed(0)}% / ${(h.awayWinRate*100).toFixed(0)}%</div></div>
+          <div><span class="muted tiny">H2H (${h.matches})</span><div>${BSUI.pctInt(h.homeWinRate, 0)} / ${BSUI.pctInt(h.drawRate, 0)} / ${BSUI.pctInt(h.awayWinRate, 0)}</div></div>
           <div><span class="muted tiny">Goles avg H2H</span><div class="num">${h.avgGoals?.toFixed(2)}</div></div>
-          <div><span class="muted tiny">BTTS H2H</span><div class="num">${(h.bttsRate*100).toFixed(0)}%</div></div>
+          <div><span class="muted tiny">BTTS H2H</span><div class="num">${BSUI.pctInt(h.bttsRate, 0)}</div></div>
         </div>` : ''}
         <div class="grid grid-2 gap-2">
           ${fh ? `<div><strong class="tiny">${BSUI.esc(ev.home.name)} forma</strong><div class="tiny">${fh.wdl} · ${fh.pointsPerGame} ppg · ${fh.goalsFor}/${fh.goalsAgainst}</div></div>` : ''}
@@ -1947,7 +1950,7 @@ ${legsText}
     if (f.sharp) {
       sections.push(`<div class="card stack">
         <strong>💰 Sharp money</strong>
-        <div class="row between"><span class="muted tiny">Score</span><strong class="num">${(f.sharp.score*100).toFixed(0)}%</strong></div>
+        <div class="row between"><span class="muted tiny">Score</span><strong class="num">${BSUI.pctInt(f.sharp.score, 0)}</strong></div>
         <div class="row between"><span class="muted tiny">Steam moves detectados</span><strong>${f.sharp.steamMoves?.length || 0}</strong></div>
         <div class="row between"><span class="muted tiny">Surebet activa</span><strong>${f.sharp.hasArbActive ? 'SÍ' : 'no'}</strong></div>
         ${(f.sharp.steamMoves || []).slice(0, 5).map(s => `<div class="tiny muted">• ${BSUI.esc(s.side)} ${s.from?.toFixed(2)} → ${s.to?.toFixed(2)} (${s.deltaPct > 0 ? '+' : ''}${s.deltaPct}%)</div>`).join('')}
@@ -1962,7 +1965,7 @@ ${legsText}
         <div class="grid grid-3 gap-2">
           <div><span class="muted tiny">Margen libro</span><div class="num">${q.margin?.toFixed(2)}%</div></div>
           <div><span class="muted tiny" title="Cuota matemáticamente justa (sin margen de la casa)">Cuota justa</span><div class="tiny">${(q.fairOdds || []).map(o => o?.toFixed(2) || '—').join(' / ')}</div></div>
-          <div><span class="muted tiny">Ventaja sobre la casa</span><div class="tiny">${(q.ev || []).map(v => (v > 0 ? '+' : '') + v.toFixed(2) + '%').join(' / ')}</div></div>
+          <div><span class="muted tiny">Ventaja sobre la casa</span><div class="tiny">${(q.ev || []).map(v => (v > 0 ? '+' : '') + BSUI.pctRaw(v, 2)).join(' / ')}</div></div>
         </div>
       </div>`);
     }

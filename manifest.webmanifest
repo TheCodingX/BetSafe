@@ -6,23 +6,23 @@
   "scope": "/",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#ffffff",
-  "theme_color": "#0b6b3a",
+  "background_color": "#0d1b3a",
+  "theme_color": "#0d1b3a",
   "lang": "es-AR",
   "dir": "ltr",
   "categories": ["finance", "sports", "productivity"],
   "icons": [
     {
-      "src": "assets/img/icon-192.svg",
-      "sizes": "192x192",
-      "type": "image/svg+xml",
+      "src": "assets/img/betsafe-isotipo.png",
+      "sizes": "1254x1254",
+      "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "assets/img/icon-512.svg",
-      "sizes": "512x512",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "src": "assets/img/betsafe-isotipo.png",
+      "sizes": "1254x1254",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ],
   "shortcuts": [

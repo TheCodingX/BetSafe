@@ -10,6 +10,24 @@
   function money(n) { if (!isFinite(n)) return '—'; return fmtAR.format(n); }
   function pct(n) { if (!isFinite(n)) return '—'; return fmtPct.format(n); }
   function num(n, d) { if (!isFinite(n)) return '—'; return d != null ? fmtNumX(d).format(n) : fmtNum.format(n); }
+  // pctInt(0.654) → "65%"  /  pctInt(0.654, 1) → "65.4%"  /  pctInt(null) → "—"
+  // Equivalente safe a `(n * 100).toFixed(d) + '%'` que devuelve '—' si NaN/null.
+  // Usar SIEMPRE esto en lugar de `(x * 100).toFixed(0) + '%'` para evitar "NaN%".
+  function pctInt(n, digits = 0, fallback = '—') {
+    if (n == null || !Number.isFinite(n)) return fallback;
+    const v = n * 100;
+    return v.toFixed(digits) + '%';
+  }
+  // Versión cuando n ya viene multiplicado (0-100): `pctRaw(65.4)` → "65%"
+  function pctRaw(n, digits = 0, fallback = '—') {
+    if (n == null || !Number.isFinite(n)) return fallback;
+    return n.toFixed(digits) + '%';
+  }
+  // safeFixed: equivalente a Number.toFixed pero null-safe.
+  function safeFixed(n, digits = 2, fallback = '—') {
+    if (n == null || !Number.isFinite(n)) return fallback;
+    return n.toFixed(digits);
+  }
   function dt(ts) { return new Date(ts).toLocaleString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }); }
   function dur(ms) {
     const s = Math.max(0, Math.floor(ms / 1000));
@@ -365,19 +383,43 @@
   function bindScrollProgress() {
     const bar = document.querySelector('.scroll-progress');
     if (!bar) return;
-    const onScroll = () => {
+    // PERF (2026-05-18): throttle con rAF — antes el handler corría 60+ veces/seg
+    // forzando sync layout en cada call. Ahora se ejecuta máximo 1x por frame.
+    let ticking = false;
+    const apply = () => {
       const h = document.documentElement;
       const p = h.scrollTop / Math.max(1, h.scrollHeight - h.clientHeight);
       bar.style.transform = `scaleX(${p})`;
+      ticking = false;
+    };
+    const onScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(apply);
     };
     window.addEventListener('scroll', onScroll, { passive: true });
-    onScroll();
+    apply();
   }
 
   function bindHeaderShadow() {
     const h = document.querySelector('.site-header'); if (!h) return;
-    const onS = () => { h.classList.toggle('scrolled', window.scrollY > 8); };
-    window.addEventListener('scroll', onS, { passive: true }); onS();
+    // PERF (2026-05-18): throttle con rAF + early-exit si state no cambió.
+    let ticking = false;
+    let lastState = null;
+    const apply = () => {
+      const scrolled = window.scrollY > 8;
+      if (scrolled !== lastState) {
+        h.classList.toggle('scrolled', scrolled);
+        lastState = scrolled;
+      }
+      ticking = false;
+    };
+    const onS = () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(apply);
+    };
+    window.addEventListener('scroll', onS, { passive: true }); apply();
   }
 
   // ---- Command palette ----
@@ -633,6 +675,19 @@
       h.prepend(div);
       // NOTE: do NOT add `spotlight` here — that class is reserved for the
       // onboarding tour overlay and would paint a dark veil over the hero.
+
+      // PERF (2026-05-18): pausar animaciones cuando hero NO está visible.
+      // Sin esto, los orbs blur seguían animándose mientras el user
+      // scrolleaba la página → repaint constante → lag de scroll.
+      if ('IntersectionObserver' in window) {
+        const io = new IntersectionObserver((entries) => {
+          for (const e of entries) {
+            if (e.isIntersecting) div.classList.remove('bs-paused');
+            else div.classList.add('bs-paused');
+          }
+        }, { threshold: 0.05 });
+        io.observe(h);
+      }
     });
   }
 
@@ -657,8 +712,102 @@
     $$('[data-count]', scope).forEach(el => io.observe(el));
   }
 
+  // ──────────────────────────────────────────────────────────────────────
+  // NaN% CLEANER (defensive runtime)
+  // ──────────────────────────────────────────────────────────────────────
+  // Observa el DOM y reemplaza CUALQUIER texto "NaN%" o "Infinity%" por '—'.
+  // Esto cubre TODOS los lugares donde código viejo pueda renderizar NaN%
+  // sin pasar por BSUI.pctInt(). Belt-and-suspenders.
+  function _cleanNaNPctInNode(root) {
+    if (!root) return;
+    // TreeWalker para buscar text nodes con "NaN%" o "Infinity%"
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode: (n) => /\b(NaN|Infinity|-Infinity)\s*%/.test(n.nodeValue || '')
+        ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT
+    });
+    const dirty = [];
+    let node;
+    while ((node = walker.nextNode())) dirty.push(node);
+    for (const n of dirty) {
+      n.nodeValue = n.nodeValue.replace(/\b-?(NaN|Infinity)\s*%/g, '—');
+    }
+  }
+  // Set up MutationObserver para limpiar cualquier DOM nuevo
+  let _nanObserver = null;
+  function bindNaNPctCleaner() {
+    if (_nanObserver) return;  // ya bound
+    // Limpieza inicial
+    _cleanNaNPctInNode(document.body);
+    // Observer para futuros cambios
+    _nanObserver = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        // Cleanup nodos agregados
+        for (const added of m.addedNodes) {
+          if (added.nodeType === 1) _cleanNaNPctInNode(added);
+          else if (added.nodeType === 3 && /\b(NaN|Infinity)\s*%/.test(added.nodeValue || '')) {
+            added.nodeValue = added.nodeValue.replace(/\b-?(NaN|Infinity)\s*%/g, '—');
+          }
+        }
+        // Cleanup characterData changes
+        if (m.type === 'characterData' && m.target.nodeType === 3) {
+          if (/\b(NaN|Infinity)\s*%/.test(m.target.nodeValue || '')) {
+            m.target.nodeValue = m.target.nodeValue.replace(/\b-?(NaN|Infinity)\s*%/g, '—');
+          }
+        }
+      }
+    });
+    _nanObserver.observe(document.body, {
+      childList: true, subtree: true, characterData: true
+    });
+  }
+  // Auto-bind al cargar el DOM
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bindNaNPctCleaner, { once: true });
+  } else {
+    bindNaNPctCleaner();
+  }
+
+  // ──────────────────────────────────────────────────────────────────────
+  // TITLE LOCK (defensive guard 2026-05-18)
+  // ──────────────────────────────────────────────────────────────────────
+  // Pedido del user: el <title> de la pestaña SIEMPRE debe ser "BetSafe".
+  // No counters, no nombres de tabs, no texto dinámico. Esta guardia evita
+  // que cualquier código futuro (router SPA, scripts terceros, tab handlers,
+  // etc.) rompa el branding. Usa MutationObserver sobre <title> y revierte.
+  const LOCKED_TITLE = 'BetSafe';
+  function lockTabTitle() {
+    if (document.title !== LOCKED_TITLE) document.title = LOCKED_TITLE;
+    const titleEl = document.querySelector('head > title');
+    if (!titleEl) return;
+    // Observa cambios en el text node del <title> y los revierte
+    const titleObs = new MutationObserver(() => {
+      if (document.title !== LOCKED_TITLE) document.title = LOCKED_TITLE;
+    });
+    titleObs.observe(titleEl, { childList: true, characterData: true, subtree: true });
+    // Bonus: observar si <head> agrega un nuevo <title> (algunos SPA hacen eso)
+    const headObs = new MutationObserver((muts) => {
+      for (const m of muts) {
+        for (const node of m.addedNodes) {
+          if (node.nodeName === 'TITLE') {
+            // Si llegó un nuevo title, garantizamos el contenido
+            if (node.textContent !== LOCKED_TITLE) node.textContent = LOCKED_TITLE;
+            // Y observamos ese nuevo tambien
+            titleObs.observe(node, { childList: true, characterData: true, subtree: true });
+          }
+        }
+      }
+    });
+    headObs.observe(document.head, { childList: true });
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', lockTabTitle, { once: true });
+  } else {
+    lockTabTitle();
+  }
+
   global.BSUI = {
-    money, pct, num, dt, dur, fmtAR,
+    money, pct, num, pctInt, pctRaw, safeFixed, dt, dur, fmtAR,
+    bindNaNPctCleaner,
     applyTheme, initTheme, toggleTheme, applyVip,
     toast, openModal, closeModal, openDrawer,
     bindTooltips, bindHelpPortalTooltips, bindReveal, countUp, sparkline,

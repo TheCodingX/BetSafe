@@ -1709,54 +1709,11 @@ app.post('/api/generator', express.json(), async (req, res) => {
   // useAiBuilder default TRUE — user pidió "TODO ANALISIS IA". Solo false si explícitamente lo apaga.
   const useAiBuilder = req.body?.useAiBuilder !== false;
 
-  // Rangos de cuota POR LEG según riesgo elegido por el usuario.
-  // El texto de la UI promete: cons 1.10-1.40, eq 1.40-2.30, agg 2.30+.
-  // Aquí lo hacemos LEY: ninguna leg fuera de su rango se acepta en pasada 1.
-  // Pasadas 2-3 expanden ±10% solo si no se llega a `legs` candidatos.
-  const RISK_ODD_RANGES = {
-    cons: { min: 1.10, max: 1.40 },
-    eq:   { min: 1.40, max: 2.30 },
-    agg:  { min: 2.30, max: Infinity }
-  };
-
   function buildOneCombo(targetType, excludeSigs, comboIdx = 0) {
-    // FILTRO ESTRICTO ABSOLUTO por rango de cuota del riesgo.
-    // Spec del usuario (2026-05-18): "Si una leg supera 1.40 automáticamente
-    // descartarla". NUNCA aceptar legs fuera del rango.
-    //
-    //   cons: 1.10 – 1.40
-    //   eq:   1.40 – 2.30
-    //   agg:  ≥ 2.30
-    //
-    // Si no hay suficientes picks en el rango → la combinada NO se arma.
-    // Antes había fallback a pool completo + warning, eso violaba la promesa
-    // del UI. Si Conservador no tiene 3 picks en 1.10-1.40, devolvemos menos
-    // (o ninguna) combinada, no una con legs a 1.85 o 2.75.
-    const range = RISK_ODD_RANGES[targetType] || RISK_ODD_RANGES.eq;
-    const inRange = (odd) =>
-      typeof odd === 'number' && odd >= range.min && odd <= range.max;
-    let candidates = pool.filter(p => inRange(p.sel.odd));
-    // Sin candidatos suficientes en rango STRICT → abortar la combinada.
-    // El caller (loop de buildOneCombo en allCandidates) intenta varias veces;
-    // si nunca alcanzan, allCandidates queda chico y el response.meta lo refleja.
-    if (candidates.length < legs) return null;
-    const rangeExpanded = false;
-    const rangeFallback = false;
-
-    // Si el user fijó targetOdd, reordenamos candidates ANTES de elegir:
-    // ordenamos por proximidad (en log) al "odd ideal por leg" = target^(1/legs).
-    // Así el greedy de abajo prioriza legs que apuntan al target acumulado.
-    if (targetOdd && legs > 0) {
-      const idealPerLeg = Math.pow(targetOdd, 1 / legs);
-      const logIdeal = Math.log(idealPerLeg);
-      candidates = candidates.slice().sort((a, b) => {
-        const da = Math.abs(Math.log(a.sel.odd) - logIdeal);
-        const db = Math.abs(Math.log(b.sel.odd) - logIdeal);
-        if (Math.abs(da - db) > 0.02) return da - db;
-        // tie-break: score (calidad)
-        return b.score - a.score;
-      });
-    }
+    // Filtrar por tipo si lo pidieron (cons/eq/agg). Si no hay del tipo,
+    // RELAJAMOS — mejor devolver un combo que ninguno.
+    let candidates = pool.filter(p => p.sel.type === targetType);
+    if (candidates.length < legs) candidates = pool;
 
     // ROTACIÓN: para combo 0 → top picks, combo 1 → picks 2-5, combo 2 → picks 4-7
     // Esto evita que las 3 combos llamadas seguidas devuelvan exactamente las mismas legs.
@@ -1824,40 +1781,28 @@ app.post('/api/generator', express.json(), async (req, res) => {
     }
     if (chosen.length === 0) return null;
 
-    // Si pedimos targetOdd: hacemos swaps iterativos hasta caer dentro de
-    // ±5% del target (antes era ±30% con UN solo swap → quedaba lejísimo).
-    // Tolerancia y cantidad de pasadas más ajustadas → el user que pide
-    // cuota objetivo 6.00 espera 5.80-6.30, no 2.90 ni 11.50.
+    // Si pedimos targetOdd, reordenamos: priorizar legs con cuotas que nos
+    // acerquen al target acumulando producto, no tomando los top EV puros.
     if (targetOdd && chosen.length === legs) {
-      const TOL = 0.05;             // tolerancia final ±5%
-      const MAX_PASSES = 6;         // hasta 6 swaps por combo
-      const used = new Set(chosen.map(c => c.sel));
-      for (let pass = 0; pass < MAX_PASSES; pass++) {
-        const prod = chosen.reduce((a, c) => a * c.sel.odd, 1);
-        const dev = (prod - targetOdd) / targetOdd;
-        if (Math.abs(dev) <= TOL) break;
-        // Para acercarnos: si prod > target, queremos bajar; si prod < target subir.
-        // Elegimos el leg de chosen cuya cuota más contribuye a la desviación,
-        // y buscamos un reemplazo entre candidates que minimice |prod' - target|.
-        let bestSwap = null;
-        let bestDist = Math.abs(prod - targetOdd);
+      let prod = chosen.reduce((a, c) => a * c.sel.odd, 1);
+      // Si la cuota total quedó muy lejos del target, intentamos ajustar
+      // swapping un leg por uno con cuota más alta/baja.
+      const tolerance = 0.3;   // ±30%
+      if (prod < targetOdd * (1 - tolerance) || prod > targetOdd * (1 + tolerance)) {
+        const ratio = targetOdd / prod;
+        // Buscar un swap que acerque el producto al target
         for (let i = 0; i < chosen.length; i++) {
-          const cur = chosen[i];
-          for (const cand of candidates) {
-            if (used.has(cand.sel)) continue;
-            if (cand.sel === cur.sel) continue;
-            const newProd = (prod / cur.sel.odd) * cand.sel.odd;
-            const dist = Math.abs(newProd - targetOdd);
-            if (dist < bestDist) {
-              bestDist = dist;
-              bestSwap = { i, cand, prev: cur };
-            }
+          const want = chosen[i].sel.odd * ratio;
+          const replacement = candidates.find(c =>
+            !chosen.some(ch => ch.sel === c.sel) &&
+            Math.abs(c.sel.odd - want) < want * 0.4
+          );
+          if (replacement) {
+            chosen[i] = replacement;
+            prod = chosen.reduce((a, c) => a * c.sel.odd, 1);
+            if (Math.abs(prod - targetOdd) / targetOdd < tolerance) break;
           }
         }
-        if (!bestSwap) break;
-        used.delete(bestSwap.prev.sel);
-        used.add(bestSwap.cand.sel);
-        chosen[bestSwap.i] = bestSwap.cand;
       }
     }
 
@@ -1879,10 +1824,8 @@ app.post('/api/generator', express.json(), async (req, res) => {
     const skipCorrCheck = legsPerMatch > 1;
     if (skipCorrelated && !skipCorrCheck && !corr.ok && corr.warnings?.length) {
       // Intentar reemplazar leg correlacionada con la siguiente mejor opción
-      // DENTRO DEL RANGO de cuotas (no pool entero, para no romper el riesgo)
       const corrIdx = corr.warnings[0]?.i ?? 0;
-      const replacement = candidates.find(p =>
-        inRange(p.sel.odd) &&
+      const replacement = pool.find(p =>
         !chosen.some(c => c.sel === p.sel) &&
         !comboLegs.some(l => l.eventId === p.event.id)
       );
@@ -1898,16 +1841,6 @@ app.post('/api/generator', express.json(), async (req, res) => {
           rationale: replacement.sel.rationale, tacticalNotes: replacement.sel.tacticalNotes
         };
       }
-    }
-
-    // ── VALIDACIÓN FINAL HARDCODE: TODAS las legs deben estar en rango ──
-    // Es el último candado: si por algún motivo (correlation swap, bug futuro,
-    // datos corruptos) una leg quedó fuera del bucket del riesgo elegido,
-    // descartamos la combinada entera. El loop superior intentará otra.
-    const outOfRangeLegs = comboLegs.filter(l => !inRange(l.odd));
-    if (outOfRangeLegs.length > 0) {
-      log(`[generator] combo descartado por leg fuera de rango ${targetType} [${range.min}-${range.max === Infinity ? '∞' : range.max}]: ${outOfRangeLegs.map(l => `${l.label || l.outcome}@${l.odd}`).join(', ')}`);
-      return null;
     }
 
     const totalOdd = comboLegs.reduce((a, b) => a * b.odd, 1);
@@ -1934,17 +1867,7 @@ app.post('/api/generator', express.json(), async (req, res) => {
       correlation: finalCorr,
       type: targetType,
       legCount: comboLegs.length,
-      sportsCount: new Set(comboLegs.map(l => l.sport)).size,
-      // Flags de diagnóstico → el frontend muestra disclaimer si el motor
-      // tuvo que relajar el rango porque no había suficientes picks en el
-      // bucket estricto del riesgo elegido.
-      rangeExpanded,
-      rangeFallback,
-      // Target compliance: el frontend puede mostrar "±0.18 del target".
-      targetOdd: targetOdd || null,
-      targetDelta: targetOdd
-        ? Number((totalOdd - targetOdd).toFixed(2))
-        : null
+      sportsCount: new Set(comboLegs.map(l => l.sport)).size
     };
   }
 
@@ -1958,13 +1881,15 @@ app.post('/api/generator', express.json(), async (req, res) => {
   const allCandidates = [];
   const seenSigs = new Set();
   const t0Combo = Date.now();
-  // RESPETAR estrictamente el riesgo elegido por el user — antes alternábamos
-  // entre cons/eq/agg "para diversidad" pero eso violaba la promesa de la UI
-  // ("cuotas 1.10-1.40"). Si el user pidió cons, todas las combinadas son cons.
+  // Alternamos tipo para diversidad — el risk del user es el primary type,
+  // pero rotamos para no devolver siempre el mismo perfil.
+  const typeOrder = [risk, risk === 'cons' ? 'eq' : risk === 'eq' ? 'agg' : 'eq',
+                     'eq', risk === 'agg' ? 'eq' : 'agg', 'cons'];
   let attempts = 0;
   while (allCandidates.length < TARGET_CANDIDATES && attempts < TARGET_CANDIDATES * 4) {
     if (Date.now() - t0Combo > TIME_BUDGET_MS) break;
-    const combo = buildOneCombo(risk, seenSigs, allCandidates.length);
+    const t = typeOrder[attempts % typeOrder.length];
+    const combo = buildOneCombo(t, seenSigs, allCandidates.length);
     if (combo) allCandidates.push(combo);
     attempts++;
   }
@@ -1983,23 +1908,11 @@ app.post('/api/generator', express.json(), async (req, res) => {
           + edgeAdj * 0.6                // edge adjusted descontado por correlación
           + diversity * 5                // diversidad de mercados
           + (c.sportsCount || 1) * 1.5;  // mixSports bonus suave
-    // Target_odd compliance: penalización AGRESIVA y NO LINEAL.
-    //  • ±5%  → casi sin penalización (target cumplido)
-    //  • ±15% → penalización fuerte (-15)
-    //  • ±50%+ → demoler el score (-100+, casi nunca top-K)
-    // Antes era 25 × distance lineal → un combo a 2.90 con target 6.00 quedaba
-    // a -12.9 de penalización, fácilmente compensable por otro factor.
+    // Target_odd compliance: si el user lo pidió, penalizar combos lejos del target.
     if (targetOdd) {
       const distance = Math.abs(c.totalOdd - targetOdd) / targetOdd;
-      const pen = distance <= 0.05 ? distance * 10        // tolerancia
-                : distance <= 0.20 ? distance * 80        // zona ajustable
-                : distance <= 0.50 ? distance * 180       // ya quedó lejos
-                : 100 + distance * 100;                   // descalificado
-      s -= pen;
+      s -= distance * 25;                // 25% de penalización por cada 100% de desvío
     }
-    // Penalización si tuvimos que relajar el rango de cuotas (out-of-bucket).
-    if (c.rangeFallback) s -= 30;
-    else if (c.rangeExpanded) s -= 8;
     // Penalizar correlación positiva fuerte entre legs (book inflando cuota).
     const maxCorr = c.correlation?.maxPositiveCorrelation || 0;
     if (maxCorr > 0.30) s -= maxCorr * 20;
@@ -2025,39 +1938,10 @@ app.post('/api/generator', express.json(), async (req, res) => {
                          process.env.BS_GROQ_API_KEY || process.env.GROQ_API_KEY);
   if (useAiBuilder && pool.length >= legs && HAS_ANY_LLM) {
     try {
-      // Restringir el pool entregado al LLM al rango de cuota del riesgo.
-      // El LLM antes elegía picks fuera del rango "porque tenían buen EV",
-      // violando la promesa del UI ("Cuotas 1.10-1.40", etc).
-      const riskRange = RISK_ODD_RANGES[risk] || RISK_ODD_RANGES.eq;
-      const inRangePool = pool.filter(p =>
-        typeof p.sel.odd === 'number' &&
-        p.sel.odd >= riskRange.min &&
-        p.sel.odd <= riskRange.max
-      );
-      // Si por algún motivo casi no hay picks en rango, expandimos ±15% como
-      // hicimos en buildOneCombo — mejor LLM con margen chico que LLM ciego.
-      let poolForLLM = inRangePool;
-      if (poolForLLM.length < Math.max(legs * 2, 6)) {
-        const widerMin = Math.max(1.01, riskRange.min * 0.85);
-        const widerMax = riskRange.max === Infinity ? Infinity : riskRange.max * 1.15;
-        poolForLLM = pool.filter(p =>
-          typeof p.sel.odd === 'number' &&
-          p.sel.odd >= widerMin &&
-          p.sel.odd <= widerMax
-        );
-      }
-      // Si SIGUE sin haber suficiente → uso pool completo pero el LLM ya tiene
-      // las instrucciones de respetar el rango en el prompt.
-      if (poolForLLM.length < legs) poolForLLM = pool;
-
-      const topPool = poolForLLM.slice(0, Math.min(30, poolForLLM.length));
-      const rangeTxt = riskRange.max === Infinity
-        ? `≥ ${riskRange.min.toFixed(2)}`
-        : `${riskRange.min.toFixed(2)} – ${riskRange.max.toFixed(2)}`;
+      const topPool = pool.slice(0, Math.min(30, pool.length));
       const aiPrompt = `Tenés ${topPool.length} picks candidatos de partidos de hoy. El user quiere ${count} combinada(s) de ${legs} legs cada una.
-Riesgo: ${risk}. RANGO ESTRICTO de cuota POR LEG: ${rangeTxt}. NO elijas legs fuera de ese rango.
-Mezclar deportes: ${mixSports}. Legs por partido máx: ${legsPerMatch}.
-${targetOdd ? `Cuota total objetivo: ~${targetOdd.toFixed(2)} (tolerancia ±5%). Elegí legs cuyo producto se acerque al objetivo.` : ''}
+Riesgo: ${risk}. Mezclar deportes: ${mixSports}. Legs por partido máx: ${legsPerMatch}.
+${targetOdd ? `Cuota total objetivo: ~${targetOdd.toFixed(2)}` : ''}
 
 Tu tarea: analizar profundamente y ELEGIR las ${count} mejores combinaciones, justificando POR QUÉ esas legs se complementan (no solo EV puro — considerá: historial H2H, lesiones, importancia de la liga, ritmo del partido, correlación negativa, momento sharp).
 
@@ -2101,20 +1985,6 @@ JSON estricto:
           if (!Array.isArray(ac.legIndices)) continue;
           const sel = ac.legIndices.map(i => topPool[i]).filter(Boolean);
           if (sel.length < 2) continue;
-          // VALIDACIÓN HARDCODE post-LLM: el LLM a veces ignora la restricción
-          // de rango. Si alguna leg cae fuera del bucket del riesgo, descartamos
-          // este combo del LLM (el motor cuantitativo ya generó alternativas
-          // dentro de rango). Solo aceptamos un combo del LLM si TODAS las
-          // legs respetan el rango.
-          const allInRange = sel.every(p =>
-            typeof p.sel.odd === 'number' &&
-            p.sel.odd >= riskRange.min &&
-            p.sel.odd <= riskRange.max
-          );
-          if (!allInRange) {
-            log(`[generator:llm] combo descartado — legs fuera del rango ${rangeTxt}`);
-            continue;
-          }
           const legs = sel.map(p => ({
             eventId: p.event.id, home: p.event.home?.name, away: p.event.away?.name,
             sport: p.event.sport, league: p.event.leagueName,
@@ -2124,13 +1994,6 @@ JSON estricto:
             rationale: p.sel.rationale, tacticalNotes: p.sel.tacticalNotes
           }));
           const totalOdd = legs.reduce((a, b) => a * b.odd, 1);
-          // Si hay targetOdd y la cuota total del LLM está muy lejos (>20%),
-          // también descartamos — el motor cuantitativo (con swap iterativo)
-          // probablemente tenga algo más cerca del objetivo.
-          if (targetOdd && Math.abs(totalOdd - targetOdd) / targetOdd > 0.20) {
-            log(`[generator:llm] combo descartado — totalOdd ${totalOdd.toFixed(2)} muy lejos del target ${targetOdd}`);
-            continue;
-          }
           const corrR = analyzeCombo(legs);
           const sumEvR = legs.reduce((a, b) => a + (b.ev || 0), 0);
           const evAdjR = Number(corrR.evAdjustment) || 0;
@@ -2144,10 +2007,7 @@ JSON estricto:
             legCount: legs.length,
             sportsCount: new Set(legs.map(l => l.sport)).size,
             aiNarrative: String(ac.narrative || '').slice(0, 400),
-            aiEdge: String(ac.edge || '').slice(0, 200),
-            // Coherencia con buildOneCombo: exponer target compliance
-            targetOdd: targetOdd || null,
-            targetDelta: targetOdd ? Number((totalOdd - targetOdd).toFixed(2)) : null
+            aiEdge: String(ac.edge || '').slice(0, 200)
           });
         }
         if (aiCombos.length) {
@@ -2161,37 +2021,8 @@ JSON estricto:
     }
   }
 
-  // ── ÚLTIMO CANDADO API-LEVEL ───────────────────────────────────────────
-  // Antes de devolver combos al cliente, validamos UNA vez más que CADA leg
-  // de CADA combo respete el rango del riesgo. Si algún combo tiene aunque
-  // sea UNA leg fuera del bucket, se descarta entero. Spec del usuario:
-  // "NO mostrar combinadas inválidas".
-  const _finalRange = RISK_ODD_RANGES[risk] || RISK_ODD_RANGES.eq;
-  const _legInRange = (odd) =>
-    typeof odd === 'number' && odd >= _finalRange.min && odd <= _finalRange.max;
-  const finalCombos = combos.filter(c => {
-    const bad = (c.legs || []).filter(l => !_legInRange(l.odd));
-    if (bad.length) {
-      log(`[generator] FINAL FILTER: combo descartado — legs ${bad.map(l => `${l.label || l.outcome}@${l.odd}`).join(', ')} fuera de ${risk} [${_finalRange.min}-${_finalRange.max === Infinity ? '∞' : _finalRange.max}]`);
-      return false;
-    }
-    return true;
-  });
-
-  const _poolInRange = pool.filter(p => _legInRange(p.sel.odd)).length;
-  // Si después de TODO el pipeline no hay combos válidos en el rango, devolvemos
-  // explicación útil en vez de array vacío silencioso. El frontend ya tiene
-  // lógica para `combos: []` pero le agregamos meta para que muestre razón clara.
-  const noCombosReason = finalCombos.length === 0
-    ? (
-        _poolInRange < legs
-          ? `Solo encontré ${_poolInRange} pick${_poolInRange === 1 ? '' : 's'} con cuota entre ${_finalRange.min.toFixed(2)} y ${_finalRange.max === Infinity ? '∞' : _finalRange.max.toFixed(2)} (riesgo ${risk}) — no alcanzan para una combinada de ${legs} legs. Probá cambiar el nivel de riesgo, sumar ligas, o reducir la cantidad de legs.`
-          : `El motor evaluó ${allCandidates.length} combinaciones pero ninguna pasó la validación final del rango ${risk}. Refrescá o cambiá el riesgo.`
-      )
-    : null;
-
   res.json({
-    combos: finalCombos.slice(0, count),
+    combos: combos.slice(0, count),
     aiNarrative,
     aiProvider,                                  // 'gemini' | 'groq' | null
     aiHealth: aiProvider                         // estado para que el frontend
@@ -2209,20 +2040,6 @@ JSON estricto:
       // Disclaimer cuando llmOk == 0 → el motor cuantitativo solo (Poisson+Elo)
       // armó los combos. Análisis menos profundo que con LLM.
       llmDegraded: llmOk === 0 && llmOffline > 0,
-      // riskBucket: rango aplicado + qué se filtró por estar fuera. Útil para
-      // explicar al usuario "no hay 3 picks Conservadores hoy" en vez de
-      // entregar legs a 2.75 que rompen la promesa del UI.
-      riskBucket: {
-        risk,
-        range: {
-          min: _finalRange.min,
-          max: _finalRange.max === Infinity ? null : _finalRange.max
-        },
-        poolInRange: _poolInRange,
-        candidatesEvaluated: allCandidates.length,
-        droppedByRange: combos.length - finalCombos.length
-      },
-      noCombosReason,
       trace,  // diag: tamaños por filtro step
       filtersApplied: { minSharp, skipInjured, skipBadWeather, skipCorrelated, legsPerMatch, mixSports, useAiBuilder, targetOdd }
     }
@@ -2478,38 +2295,23 @@ SCHEMA DEL JSON QUE TENÉS QUE DEVOLVER:
   "legs": 2-8 o null si no menciona,
   "sport": un slug de SPORTS arriba o "all" si ambiguo,
   "leagues": [array de slugs de LEAGUES, vacío si no menciona],
+  "excludeSports": [array de slugs de SPORTS a EXCLUIR — ej "no esports" → ["esports"]],
+  "excludeLeagues": [array de slugs de LEAGUES a EXCLUIR — ej "menos brasileirao" → ["brasileirao"]],
+  "specificMatches": [array de "TeamA vs TeamB" si el user PIDE partidos específicos — ej "que incluya Boca vs River" → ["Boca vs River"]],
   "books": [array de slugs de BOOKS, vacío si no menciona],
   "markets": [array de slugs de MARKETS, vacío si no menciona — significa "todos"],
   "risk": "cons" | "eq" | "agg",
   "targetOdd": número (cuota total deseada) o null,
+  "minTotalOdd": número (cuota total mínima — ej "entre 10x y 15x" → 10) o null,
+  "maxTotalOdd": número (cuota total máxima — ej "entre 10x y 15x" → 15) o null,
   "minOddPerLeg": número o null,
   "maxOddPerLeg": número o null,
   "exactDate": "YYYY-MM-DD" o null (fecha calendario exacta en ART),
+  "exactDateRange": ["YYYY-MM-DD inicio", "YYYY-MM-DD fin"] o null (rango de fechas explícito, ej "del 18 al 20 de mayo"),
   "timeWindow": "today" | "tomorrow" | "weekend" | "week" | "any",
   "preferTopTeams": true/false,
-  "userIntent": "<frase de 1 línea resumiendo qué pidió el usuario>",
-  "excludeSports": [array de slugs de SPORTS — "no incluyas esports" → ["esports"]],
-  "requestedMatches": [{"home":"<equipo local>","away":"<equipo visitante>"}, ...],
-  "requestedTeams": ["<equipo>", "<equipo>", ...]
+  "userIntent": "<frase de 1 línea resumiendo qué pidió el usuario>"
 }
-
-REGLA CRÍTICA — PARTIDOS / EQUIPOS PEDIDOS EXPLÍCITAMENTE:
-══════════════════════════════════════════════════════════════
-Cuando el user nombra un partido específico ("incluí Boca Juniors vs Cruzeiro",
-"que esté el partido de Real Madrid contra Barcelona", "agregame el River - Boca")
-extraelo en requestedMatches con home/away tal como los nombra el user (no inventes
-nombres completos, dejá lo que el user escribió — el motor hace fuzzy match después).
-
-Cuando el user nombra UN equipo sin oponente ("incluí Real Madrid", "que esté el
-partido de Boca"), agregalo a requestedTeams.
-
-Estos partidos / equipos son PRIORIDAD ABSOLUTA. El motor los va a incluir
-sí o sí en el análisis (o explicarle al user por qué no son aptos).
-
-REGLA DE EXCLUSIONES:
-══════════════════════════════════════════════════════════════
-"no incluyas X" / "sin X" / "evitá X" → agregar X a excludeSports si es un
-deporte. Ej: "no incluyas esports" → excludeSports: ["esports"].
 
 REGLAS DE RISK:
 • "segura"/"tranqui"/"baja"/"conservadora"/"sin riesgo" → cons
@@ -2517,38 +2319,44 @@ REGLAS DE RISK:
 • "agresiva"/"arriesgada"/"alta cuota"/"para pagar fuerte"/"recuperar" → agg
 
 REGLAS DE CUOTA:
-• "cuota 3" / "cuota total 3" / "pague 3" / "x3" / "por 3" / "que pague más de 3" → targetOdd: 3
-• "cuota mayor a 2 por leg" / "mín 2 cada leg" → minOddPerLeg: 2
+• "cuota 3" / "cuota total 3" / "pague 3" / "x3" / "por 3" → targetOdd: 3
+• "entre X y Y" / "de X a Y" / "rango X-Y" → minTotalOdd: X, maxTotalOdd: Y
+  (ejemplo: "entre 10x y 15x" → minTotalOdd: 10, maxTotalOdd: 15, targetOdd: null)
+• "cuota mayor a X por leg" / "mín X cada leg" → minOddPerLeg: X
 • "cuota total alrededor de X" / "cerca de X" / "como X" → targetOdd: X
-• Cuando el user dice "más de X" sin clarificar leg, asumí targetOdd (cuota total)
+• "más de X" sin más contexto → minTotalOdd: X
+• "menos de X" sin más contexto → maxTotalOdd: X
+• Cuando el user dice "que pague más de X" sin clarificar leg → minTotalOdd (cuota total mínima)
+
+REGLAS DE EXCLUSIÓN (CRÍTICO):
+• "no incluyas X" / "sin X" / "menos X" / "que no haya X" / "no quiero X" → excludeSports o excludeLeagues
+  Ejemplos:
+  - "no esports" / "sin esports" / "que no haya esports" → excludeSports: ["esports"]
+  - "no incluyas brasileirao" → excludeLeagues: ["brasileirao"]
+  - "menos NBA, sin tenis" → excludeSports: ["tennis"], excludeLeagues: ["nba"]
+  CRUCIAL: cuando el user dice "no esports", marcalo en excludeSports — sino el motor IGNORA esa exclusión.
 
 ═══════════════════════════════════════════════════════════════════════
 EJEMPLOS — INTERPRETÁ EXACTAMENTE ASÍ:
 ═══════════════════════════════════════════════════════════════════════
 
+User: "haceme una combinada de 5 legs entre 10x y 15x para el 18 de mayo, no incluyas esports"
+→ { "legs": 5, "sport": "all", "leagues": [], "excludeSports": ["esports"], "excludeLeagues": [], "specificMatches": [], "books": [], "markets": [], "risk": "agg", "targetOdd": null, "minTotalOdd": 10, "maxTotalOdd": 15, "minOddPerLeg": null, "maxOddPerLeg": null, "exactDate": "2026-05-18", "exactDateRange": null, "timeWindow": "custom", "preferTopTeams": true, "userIntent": "Combinada de 5 legs cuota total 10-15 para el 18 de mayo, sin esports" }
+
 User: "haceme una combinada agresiva que pague mas de x3 pero segura con varias legs y varios deportes para mañana 18 de mayo"
-→ { "legs": 4, "sport": "all", "leagues": [], "books": [], "markets": [], "risk": "agg", "targetOdd": 3, "minOddPerLeg": null, "maxOddPerLeg": null, "exactDate": "${fmt(tomorrowArt)}", "timeWindow": "tomorrow", "preferTopTeams": true, "userIntent": "Combinada agresiva multi-deporte cuota >3 para mañana" }
+→ { "legs": 4, "sport": "all", "leagues": [], "excludeSports": [], "excludeLeagues": [], "specificMatches": [], "books": [], "markets": [], "risk": "agg", "targetOdd": null, "minTotalOdd": 3, "maxTotalOdd": null, "minOddPerLeg": null, "maxOddPerLeg": null, "exactDate": "${fmt(tomorrowArt)}", "exactDateRange": null, "timeWindow": "tomorrow", "preferTopTeams": true, "userIntent": "Combinada agresiva multi-deporte cuota >3 para mañana" }
 
 User: "algo seguro para el partido de Boca de esta noche"
-→ { "legs": 2, "sport": "soccer", "leagues": ["lpf"], "books": [], "markets": [], "risk": "cons", "targetOdd": null, "minOddPerLeg": null, "maxOddPerLeg": null, "exactDate": "${todayArtIso}", "timeWindow": "today", "preferTopTeams": true, "userIntent": "Combinada segura sobre Boca esta noche" }
+→ { "legs": 2, "sport": "soccer", "leagues": ["lpf"], "excludeSports": [], "excludeLeagues": [], "specificMatches": ["Boca"], "books": [], "markets": [], "risk": "cons", "targetOdd": null, "minTotalOdd": null, "maxTotalOdd": null, "minOddPerLeg": null, "maxOddPerLeg": null, "exactDate": "${todayArtIso}", "exactDateRange": null, "timeWindow": "today", "preferTopTeams": true, "userIntent": "Combinada segura sobre Boca esta noche" }
 
-User: "necesito recuperar lo perdido, algo arriesgado de la nba para mañana"
-→ { "legs": 4, "sport": "basketball", "leagues": ["nba"], "books": [], "markets": [], "risk": "agg", "targetOdd": null, "minOddPerLeg": null, "maxOddPerLeg": null, "exactDate": "${fmt(tomorrowArt)}", "timeWindow": "tomorrow", "preferTopTeams": false, "userIntent": "Combinada NBA agresiva para recuperar pérdida (mañana)" }
+User: "necesito recuperar lo perdido, algo arriesgado de la nba para mañana, sin tenis ni esports"
+→ { "legs": 4, "sport": "basketball", "leagues": ["nba"], "excludeSports": ["tennis", "esports"], "excludeLeagues": [], "specificMatches": [], "books": [], "markets": [], "risk": "agg", "targetOdd": null, "minTotalOdd": null, "maxTotalOdd": null, "minOddPerLeg": null, "maxOddPerLeg": null, "exactDate": "${fmt(tomorrowArt)}", "exactDateRange": null, "timeWindow": "tomorrow", "preferTopTeams": false, "userIntent": "Combinada NBA agresiva para recuperar pérdida, sin tenis ni esports" }
 
 User: "combinada con corners y tarjetas de premier para el sabado"
-→ { "legs": 3, "sport": "soccer", "leagues": ["premier-league"], "books": [], "markets": ["corners-total","cards-total"], "risk": "eq", "targetOdd": null, "minOddPerLeg": null, "maxOddPerLeg": null, "exactDate": "<ISO del próximo sábado>", "timeWindow": "weekend", "preferTopTeams": true, "userIntent": "Combinada Premier con córners y tarjetas sábado" }
-
-User: "alguito para el clasico" (sin más contexto)
-→ { "legs": 3, "sport": "soccer", "leagues": ["lpf"], "books": [], "markets": [], "risk": "eq", "targetOdd": null, "minOddPerLeg": null, "maxOddPerLeg": null, "exactDate": null, "timeWindow": "weekend", "preferTopTeams": true, "userIntent": "Combinada sobre algún clásico (Boca-River o similar)" }
+→ { "legs": 3, "sport": "soccer", "leagues": ["premier-league"], "excludeSports": [], "excludeLeagues": [], "specificMatches": [], "books": [], "markets": ["corners-total","cards-total"], "risk": "eq", "targetOdd": null, "minTotalOdd": null, "maxTotalOdd": null, "minOddPerLeg": null, "maxOddPerLeg": null, "exactDate": "<ISO del próximo sábado>", "exactDateRange": null, "timeWindow": "weekend", "preferTopTeams": true, "userIntent": "Combinada Premier con córners y tarjetas sábado" }
 
 User: "10 partidos de la champions super agresivo, que multiplique por 30"
-→ { "legs": 8, "sport": "soccer", "leagues": ["ucl"], "books": [], "markets": [], "risk": "agg", "targetOdd": 30, "minOddPerLeg": null, "maxOddPerLeg": null, "exactDate": null, "timeWindow": "any", "preferTopTeams": true, "userIntent": "Champions multi-leg muy agresiva con cuota total 30" }
-
-User: "Haceme una combinada de 3 partidos con 3 legs con una cuota total cerca de 12 para el día de mañana enfocándose en la Copa Libertadores y Premier League e incluí el partido de Boca Juniors vs Cruzeiro, no incluyas esports."
-→ { "legs": 3, "sport": "soccer", "leagues": ["libertadores","premier-league"], "books": [], "markets": [], "risk": "eq", "targetOdd": 12, "minOddPerLeg": null, "maxOddPerLeg": null, "exactDate": "${fmt(tomorrowArt)}", "timeWindow": "tomorrow", "preferTopTeams": true, "userIntent": "Combinada 3 legs cuota ~12 mañana de Libertadores + Premier, incluyendo Boca vs Cruzeiro", "excludeSports": ["esports"], "requestedMatches": [{"home":"Boca Juniors","away":"Cruzeiro"}], "requestedTeams": [] }
-
-User: "armame una combinada con Real Madrid de la semana"
-→ { "legs": 3, "sport": "soccer", "leagues": [], "books": [], "markets": [], "risk": "eq", "targetOdd": null, "minOddPerLeg": null, "maxOddPerLeg": null, "exactDate": null, "timeWindow": "week", "preferTopTeams": true, "userIntent": "Combinada esta semana con Real Madrid incluido", "requestedTeams": ["Real Madrid"], "requestedMatches": [] }
+→ { "legs": 8, "sport": "soccer", "leagues": ["ucl"], "excludeSports": [], "excludeLeagues": [], "specificMatches": [], "books": [], "markets": [], "risk": "agg", "targetOdd": 30, "minTotalOdd": null, "maxTotalOdd": null, "minOddPerLeg": null, "maxOddPerLeg": null, "exactDate": null, "exactDateRange": null, "timeWindow": "any", "preferTopTeams": true, "userIntent": "Champions multi-leg muy agresiva con cuota total 30" }
 
 ═══════════════════════════════════════════════════════════════════════
 INSTRUCCIONES FINALES:
@@ -2586,46 +2394,37 @@ INSTRUCCIONES FINALES:
     return { start, end, label: `${String(d).padStart(2,'0')}/${String(m).padStart(2,'0')}/${y}`, iso };
   }
 
+  // exactDateRange: si el user pide rango ["2026-05-18", "2026-05-20"]
+  function isoRangeToArt(arr) {
+    if (!Array.isArray(arr) || arr.length !== 2) return null;
+    const a = isoToArtRange(arr[0]);
+    const b = isoToArtRange(arr[1]);
+    if (!a || !b) return null;
+    return { start: a.start, end: b.end, label: `${a.label} → ${b.label}`, iso: `${a.iso}..${b.iso}` };
+  }
+
   const filters = {
     legs: Number.isFinite(Number(parsed.legs)) ? clamp(Number(parsed.legs), 2, 8) : 3,
     sport: typeof parsed.sport === 'string' ? parsed.sport : 'all',
     leagues: Array.isArray(parsed.leagues) ? parsed.leagues.map(String) : [],
+    excludeSports: Array.isArray(parsed.excludeSports) ? parsed.excludeSports.map(s => String(s).toLowerCase().trim()).filter(Boolean) : [],
+    excludeLeagues: Array.isArray(parsed.excludeLeagues) ? parsed.excludeLeagues.map(s => String(s).toLowerCase().trim()).filter(Boolean) : [],
+    specificMatches: Array.isArray(parsed.specificMatches) ? parsed.specificMatches.map(String).filter(Boolean) : [],
     books: Array.isArray(parsed.books) ? parsed.books.map(b => String(b).toLowerCase().trim()) : [],
     markets: Array.isArray(parsed.markets) ? parsed.markets.map(m => String(m).toLowerCase().trim()) : [],
     risk: ['cons','eq','agg'].includes(parsed.risk) ? parsed.risk : 'eq',
     targetOdd: Number.isFinite(Number(parsed.targetOdd)) ? Number(parsed.targetOdd) : null,
+    minTotalOdd: Number.isFinite(Number(parsed.minTotalOdd)) ? Number(parsed.minTotalOdd) : null,
+    maxTotalOdd: Number.isFinite(Number(parsed.maxTotalOdd)) ? Number(parsed.maxTotalOdd) : null,
     minOddPerLeg: Number.isFinite(Number(parsed.minOddPerLeg)) ? Number(parsed.minOddPerLeg) : null,
     maxOddPerLeg: Number.isFinite(Number(parsed.maxOddPerLeg)) ? Number(parsed.maxOddPerLeg) : null,
-    timeWindow: ['today','tomorrow','weekend','week','any'].includes(parsed.timeWindow) ? parsed.timeWindow : 'any',
+    timeWindow: ['today','tomorrow','weekend','week','any','custom'].includes(parsed.timeWindow) ? parsed.timeWindow : 'any',
     preferTopTeams: parsed.preferTopTeams !== false,
     userIntent: String(parsed.userIntent || prompt).slice(0, 250),
     exactDate: isoToArtRange(parsed.exactDate),
-    // NEW (2026-05-18): partidos / equipos / deportes a EXCLUIR explícitos
-    excludeSports: Array.isArray(parsed.excludeSports)
-      ? parsed.excludeSports.map(s => String(s).toLowerCase().trim()).filter(Boolean)
-      : [],
-    requestedMatches: Array.isArray(parsed.requestedMatches)
-      ? parsed.requestedMatches
-          .map(m => ({
-            home: String(m?.home || '').trim(),
-            away: String(m?.away || '').trim()
-          }))
-          .filter(m => m.home && m.away)
-          .slice(0, 6)
-      : [],
-    requestedTeams: Array.isArray(parsed.requestedTeams)
-      ? parsed.requestedTeams.map(t => String(t).trim()).filter(Boolean).slice(0, 6)
-      : []
+    exactDateRange: isoRangeToArt(parsed.exactDateRange)
   };
-  if (filters.exactDate) filters.timeWindow = 'custom';
-
-  // ── FORCE-INCLUDE: el frontend manda forceIncludeEventIds cuando el user
-  //    pulsa "Agregar partido" sobre un partido que la IA había rechazado.
-  //    Esto manda al motor a INCLUIR esos eventos sí o sí (override de score),
-  //    eligiendo el mejor mercado disponible para cada uno.
-  const forceIncludeEventIds = Array.isArray(req.body?.forceIncludeEventIds)
-    ? req.body.forceIncludeEventIds.map(String).filter(Boolean).slice(0, 8)
-    : [];
+  if (filters.exactDate || filters.exactDateRange) filters.timeWindow = 'custom';
 
   // ── BOOK LOCK desde selector del frontend ──────────────────────────────
   // Si el user eligió un casino específico en el dropdown, lo forzamos
@@ -2641,31 +2440,153 @@ INSTRUCCIONES FINALES:
 
   // 2) Buscar eventos REALES del orchestrator que matcheen
   const now = Date.now();
-  // exactDate (fecha calendario específica detectada por regex) PISA timeWindow
-  const timeRange = filters.exactDate
-    ? [filters.exactDate.start, filters.exactDate.end]
-    : ({
-        today:    [now, now + 24*3600*1000],
-        tomorrow: [now + 16*3600*1000, now + 48*3600*1000],
-        weekend:  [now, now + 5*24*3600*1000],
-        week:     [now, now + 8*24*3600*1000],
-        any:      [now, now + 14*24*3600*1000]
-      }[filters.timeWindow] || [now, now + 14*24*3600*1000]);
+  // exactDateRange > exactDate > timeWindow (en orden de prioridad)
+  // Para "today"/"tomorrow" usamos el día CALENDARIO ART, no ventanas de 24h
+  // (sino "today" a las 02:00 incluiría toda la mañana siguiente).
+  function calendarDayArt(offsetDays = 0) {
+    const d = new Date(now + ART_OFFSET_MS + offsetDays * 24*3600*1000);
+    const y = d.getUTCFullYear(), m = d.getUTCMonth(), day = d.getUTCDate();
+    return {
+      start: Date.UTC(y, m, day, 3, 0, 0),               // 00:00 ART = 03:00 UTC
+      end:   Date.UTC(y, m, day + 1, 2, 59, 59, 999)     // 23:59 ART
+    };
+  }
+  const timeRange = filters.exactDateRange
+    ? [filters.exactDateRange.start, filters.exactDateRange.end]
+    : filters.exactDate
+      ? [filters.exactDate.start, filters.exactDate.end]
+      : (filters.timeWindow === 'today'
+          ? (() => { const d = calendarDayArt(0); return [d.start, d.end]; })()
+          : filters.timeWindow === 'tomorrow'
+            ? (() => { const d = calendarDayArt(1); return [d.start, d.end]; })()
+            : ({
+                weekend: [now, now + 5*24*3600*1000],
+                week:    [now, now + 8*24*3600*1000],
+                any:     [now, now + 14*24*3600*1000]
+              }[filters.timeWindow] || [now, now + 14*24*3600*1000]));
   let candidates = orchestrator.events({ sport: filters.sport === 'all' ? 'all' : filters.sport });
   // Filtro de tiempo (STRICT — si exactDate, solo ese día calendario en ART)
   candidates = candidates.filter(e => Number.isFinite(e.start) && e.start >= timeRange[0] && e.start <= timeRange[1]);
-  // EXCLUSIONES explícitas del user (ej: "no incluyas esports")
+  if (filters.exactDate || filters.exactDateRange) {
+    const lbl = filters.exactDateRange?.label || filters.exactDate?.label;
+    log(`[betsafe-ai] date filter ${lbl}: ${candidates.length} events en rango`);
+  }
+
+  // ── EXCLUSIÓN DE SPORTS (HARD) ──
+  // Si user dijo "no esports" / "sin tenis", se respeta a rajatabla.
   if (filters.excludeSports.length) {
-    const ex = new Set(filters.excludeSports);
+    const before = candidates.length;
+    const excludedSet = new Set(filters.excludeSports);
     candidates = candidates.filter(e => {
-      if (ex.has(String(e.sport || '').toLowerCase())) return false;
-      if (ex.has('esports') && orchestrator.looksLikeEsports?.(e)) return false;
+      // Usar effectiveSport del orchestrator que detecta esports por nombre
+      // incluso si el scraper lo marcó mal como otro sport.
+      const sportRaw = e.sport || 'other';
+      const evSport = orchestrator.effectiveSport ? orchestrator.effectiveSport(e) : sportRaw;
+      // Match contra ambos: declared sport + effective sport
+      if (excludedSet.has(sportRaw) || excludedSet.has(evSport)) return false;
+      // Fallback heurístico AGRESIVO para esports — pesca casos donde
+      // effectiveSport falla. Patrones reales que aparecieron en data:
+      //   "Battle - Premier League - Partido de 2 x 4 minutos"
+      //   "Arsenal (R0ge) (Esports) vs Liverpool (cl1vlind) (Esports)"
+      //   "NBA Batalla - 4x5 min de juego"
+      //   "GG League - H2H - 5x5"
+      // CRITICAL: el regex NO debe tener \b al final cuando captura "min"
+      // porque "min|utos" no tiene boundary entre n y u.
+      if (excludedSet.has('esports')) {
+        const blob = `${e.leagueName || ''} ${e.home?.name || ''} ${e.away?.name || ''}`;
+        const esportsRe = /(esports?|gg\s*league|battle\b|cyber|h2h\s*gg|\d+\s*x\s*\d+\s*min(?:utos?)?|\d+\s*min(?:utos?)?\s*(?:de\s*juego|playing))/i;
+        if (esportsRe.test(blob)) return false;
+        // También: nombres con paréntesis tipo "Team (Handle)" (común en esports)
+        const teamsBlob = `${e.home?.name || ''} ${e.away?.name || ''}`;
+        if (/\(\w{2,8}\)/.test(teamsBlob)) {
+          // Solo si HAY "(Esports)" o pattern claro de handle
+          if (/\(esports?\)|\(\w{3,8}\)\s*\(esports?\)/i.test(teamsBlob)) return false;
+        }
+      }
       return true;
     });
-    log(`[betsafe-ai] excludeSports ${[...ex]}: ${candidates.length} candidates`);
+    log(`[betsafe-ai] excludeSports[${filters.excludeSports.join(',')}]: ${before} → ${candidates.length}`);
   }
-  if (filters.exactDate) {
-    log(`[betsafe-ai] exactDate filter ${filters.exactDate.label}: ${candidates.length} events en ese día`);
+
+  // ── EXCLUSIÓN DE LEAGUES (HARD) ──
+  // Usa regex robusto que matchea variantes con acentos/tildes/sufijos.
+  // CRÍTICO: el user pidió "brasileirao" y se coló "Brasileirão C" (con tilde)
+  // porque substring matching no normaliza accents. Ahora usamos LEAGUE_EXCLUDE_PATTERNS
+  // que cubre variantes ortográficas + acentos + sub-divisiones (A/B/C/2/Serie).
+  const LEAGUE_EXCLUDE_PATTERNS = {
+    // Brasileirão = el user pidió "toda la liga brasilera" — agressivo:
+    // brasileir[áaãei]?[oa]s? (brasileiro/a/as/os), brasilero, brazilian, copa do brasil,
+    // serie A/B/C/D/Brasil, paulista, carioca, gaucho, mineiro (ligas regionales)
+    'brasileirao':       /brasileir[ãaáei]?[oa]s?|brasilero|brazilian|copa\s*do\s*brasil|s[ée]rie\s*[abcd]?\s*brasil|brasil(?:e[ñn]o)?\s*s[ée]rie|paulist[ao]|carioca|gaucho|mineiro|catarinense/i,
+    'premier-league':    /premier\s*league|premiership\b|english.*premier|epl/i,
+    'la-liga':           /la\s*liga|laliga|primera\s*divisi[óo]n\s*esp/i,
+    'serie-a':           /serie\s*a\b/i,
+    'bundesliga':        /bundesliga/i,
+    'ligue-1':           /ligue\s*[1u]/i,
+    'ucl':               /champions\s*league|uefa\s*champions|^ucl\b/i,
+    'uel':               /europa\s*league|^uel\b/i,
+    'libertadores':      /libertadores/i,
+    'sudamericana':      /sudamericana/i,
+    'lpf':               /(?:liga\s*profesional\s*de\s*f[úu]tbol|liga\s*profesional\s*argentina|liga\s*argentina|primera\s*argentina|\blpf\b)/i,
+    'liga-mx':           /liga\s*mx|liga\s*mexicana/i,
+    'mls':               /\bmls\b|major\s*league\s*soccer/i,
+    'nba':               /\bnba\b/i,
+    'nfl':               /\bnfl\b/i,
+    'mlb':               /\bmlb\b/i,
+    'nhl':               /\bnhl\b/i,
+    'ufc':               /\bufc\b/i,
+    'copa-argentina':    /copa\s*argentina/i,
+    'primera-nacional':  /primera\s*nacional|nacional\s*b\b/i
+  };
+  // Helper: normaliza accents para fallback substring match (sin tilde)
+  function stripAccents(s) {
+    return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '');
+  }
+
+  if (filters.excludeLeagues.length) {
+    const before = candidates.length;
+    // Construir matchers: usa regex predefinido si existe, sino fallback genérico
+    const excludeMatchers = filters.excludeLeagues.map(slug => {
+      const s = slug.toLowerCase().trim();
+      if (LEAGUE_EXCLUDE_PATTERNS[s]) return { slug: s, re: LEAGUE_EXCLUDE_PATTERNS[s] };
+      // Fallback: regex genérico con escape, también buscamos en versión sin acentos
+      const escaped = s.replace(/[-]/g, '[\\s-]?').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      return { slug: s, re: new RegExp(escaped, 'i') };
+    });
+
+    candidates = candidates.filter(e => {
+      const lg = (e.league || '').toLowerCase();
+      const lgName = e.leagueName || '';
+      const lgNameNorm = stripAccents(lgName).toLowerCase();
+      return !excludeMatchers.some(({ slug, re }) => {
+        if (lg === slug) return true;
+        if (re.test(lgName) || re.test(lgNameNorm)) return true;
+        // Substring backup (con accents normalizados)
+        if (lgNameNorm.includes(slug.replace(/-/g, ' '))) return true;
+        if (lgNameNorm.includes(slug)) return true;
+        return false;
+      });
+    });
+    log(`[betsafe-ai] excludeLeagues[${filters.excludeLeagues.join(',')}]: ${before} → ${candidates.length}`);
+  }
+
+  // ── SPECIFIC MATCHES (force include / boost) ──
+  // Si user pidió "que incluya Boca vs River", marcamos esos eventos como PRIORITY=999
+  // para que SIEMPRE se elijan primero (siempre que tengan picks válidos).
+  if (filters.specificMatches.length) {
+    const matchTerms = filters.specificMatches.map(s => s.toLowerCase());
+    candidates.forEach(e => {
+      const blob = `${e.home?.name || ''} vs ${e.away?.name || ''}`.toLowerCase();
+      if (matchTerms.some(t => {
+        // Soporta "Boca vs River" o solo "Boca"
+        const parts = t.split(/\s+vs?\s+/);
+        return parts.every(p => blob.includes(p.trim()));
+      })) {
+        e._coachSpecificMatch = true;
+      }
+    });
+    const matched = candidates.filter(e => e._coachSpecificMatch).length;
+    log(`[betsafe-ai] specificMatches[${filters.specificMatches.join('|')}]: matched ${matched}/${candidates.length}`);
   }
   // ── Filtro de liga ROBUSTO ──
   // Antes, el slug 'lpf' no matcheaba leagueName "Liga Profesional de Fútbol"
@@ -2804,115 +2725,28 @@ INSTRUCCIONES FINALES:
 
   // 3) Analizar los top candidates con la pipeline.
   // TOP_N: pool de eventos a analizar antes de seleccionar las legs finales.
-  // Si hay filtros restrictivos (minOdd, books), ampliamos el pool para tener
-  // más opciones antes de rechazar por filtros.
+  //
+  // ESTRATEGIA EXPANDIDA (2026-05-18): cuando el user es EXPLÍCITO con filtros
+  // restrictivos (cuota range, legs ≥4, excludes, specific matches, fecha),
+  // necesitamos un pool MÁS GRANDE para tener picks que cumplan tras single-book.
+  // Antes capábamos en 14-20 → ahora hasta 60 con filtros explícitos.
+  //
+  // Trade-off: 60 análisis × ~2s con concurrency=8 → ~15s total. Aceptable
+  // para Coach IA (es VIP feature, latency 10-20s tolerable a cambio de fit real).
   const steam = orchestrator.steamMoves();
   const surebets = arbEngine.snapshot().detected;
-  const hasRestrictiveFilters = !!(filters.minOddPerLeg || filters.books.length);
+  const hasRestrictiveFilters = !!(filters.minOddPerLeg || filters.books.length
+    || filters.minTotalOdd != null || filters.maxTotalOdd != null
+    || filters.excludeSports.length || filters.excludeLeagues.length
+    || filters.specificMatches.length);
+  const isExplicit = hasRestrictiveFilters || filters.legs >= 4;
   const TOP_N = Math.min(
-    hasRestrictiveFilters ? 20 : 14,
-    Math.max(8, filters.legs * 2),
+    isExplicit ? 60 : (hasRestrictiveFilters ? 20 : 14),
+    Math.max(8, filters.legs * 6),  // tras single-book, ~2-3x del target es safe
     candidates.length
   );
-
-  // ── MATCHING DE PARTIDOS/EQUIPOS PEDIDOS POR EL USER ────────────────────
-  // Buscamos en TODO el universo (no solo en candidates filtrados por liga/
-  // tiempo) para poder explicar al user si el partido pedido NO existe vs
-  // existe-pero-fuera-de-filtros. Comparamos por nombre normalizado +
-  // substring tolerante a typos/aliases ("Boca" matchea "Boca Juniors",
-  // "Cruzeiro" matchea "Cruzeiro EC", etc).
-  const allEventsUniverse = orchestrator.events({ sport: 'all' });
-  const _norm = s => String(s || '')
-    .toLowerCase()
-    .normalize('NFD').replace(/[̀-ͯ]/g, '')   // strip accents
-    .replace(/[^a-z0-9]/g, '');
-  function teamMatches(eventName, requestedName) {
-    const a = _norm(eventName), b = _norm(requestedName);
-    if (!a || !b) return false;
-    if (a === b) return true;
-    // Substring bidireccional, mínimo 4 chars (evita falsos positivos con palabras cortas)
-    if (b.length >= 4 && a.includes(b)) return true;
-    if (a.length >= 4 && b.includes(a)) return true;
-    return false;
-  }
-  function findEventForMatch(home, away) {
-    return allEventsUniverse.find(e =>
-      teamMatches(e.home?.name, home) && teamMatches(e.away?.name, away)
-    ) || allEventsUniverse.find(e =>
-      // permutar home/away (a veces el user invierte el orden)
-      teamMatches(e.home?.name, away) && teamMatches(e.away?.name, home)
-    ) || null;
-  }
-  function findEventsForTeam(teamName) {
-    return allEventsUniverse.filter(e =>
-      teamMatches(e.home?.name, teamName) || teamMatches(e.away?.name, teamName)
-    );
-  }
-
-  // Lista FINAL de eventos a forzar en el análisis (vienen del user prompt
-  // O del frontend cuando el usuario pulsa "Agregar partido"):
-  const forcedEvents = [];
-  const requestedMatchReport = [];   // detalle para devolver al frontend
-
-  for (const rm of filters.requestedMatches) {
-    const ev = findEventForMatch(rm.home, rm.away);
-    if (ev) {
-      forcedEvents.push(ev);
-      requestedMatchReport.push({
-        requested: `${rm.home} vs ${rm.away}`,
-        status: 'found',
-        eventId: ev.id,
-        home: ev.home?.name,
-        away: ev.away?.name,
-        start: ev.start,
-        leagueName: ev.leagueName,
-        sport: ev.sport
-      });
-    } else {
-      requestedMatchReport.push({
-        requested: `${rm.home} vs ${rm.away}`,
-        status: 'not-found',
-        message: `No encontré el partido ${rm.home} vs ${rm.away} en los próximos 14 días. Puede ser que aún no se haya publicado, que el nombre del equipo esté distinto en mi base, o que ya se haya jugado.`
-      });
-    }
-  }
-  for (const team of filters.requestedTeams) {
-    const matches = findEventsForTeam(team);
-    if (matches.length) {
-      // El partido más próximo es el más relevante para "incluí a X"
-      matches.sort((a, b) => a.start - b.start);
-      const ev = matches[0];
-      if (!forcedEvents.some(f => f.id === ev.id)) forcedEvents.push(ev);
-      requestedMatchReport.push({
-        requested: team,
-        status: 'found',
-        eventId: ev.id,
-        home: ev.home?.name,
-        away: ev.away?.name,
-        start: ev.start,
-        leagueName: ev.leagueName,
-        sport: ev.sport
-      });
-    } else {
-      requestedMatchReport.push({
-        requested: team,
-        status: 'not-found',
-        message: `No encontré ningún partido de ${team} en los próximos 14 días.`
-      });
-    }
-  }
-
-  // forceIncludeEventIds (del body, vía "Agregar partido"): sumamos al final
-  for (const id of forceIncludeEventIds) {
-    const ev = allEventsUniverse.find(e => e.id === id);
-    if (ev && !forcedEvents.some(f => f.id === ev.id)) forcedEvents.push(ev);
-  }
-
-  // Asegurar que los forced events estén en el conjunto a analizar.
-  // Los anteponemos al `top` aunque excedan TOP_N (queremos analizarlos siempre).
-  const baseTop = candidates.slice(0, TOP_N);
-  const forcedIds = new Set(forcedEvents.map(e => e.id));
-  const top = [...forcedEvents, ...baseTop.filter(e => !forcedIds.has(e.id))];
+  log(`[betsafe-ai] analyzing top=${TOP_N}/${candidates.length} candidates (explicit=${isExplicit})`);
+  const top = candidates.slice(0, TOP_N);
   const analyzeLimit = pLimit(Number(process.env.PICKS_CONCURRENCY || 4));
   const analyzed = await Promise.allSettled(
     top.map(ev => analyzeLimit(() => analyzeMatch(ev, { steamMoves: steam, surebets })))
@@ -2964,17 +2798,44 @@ INSTRUCCIONES FINALES:
   }
 
   // ── BUILD POOL con flag de book lock (refactor 2026-05-17) ──────────────
-  // Antes el pool se armaba 1 vez con todos los filtros. Si el book lock dejaba
-  // el pool muy chico, el endpoint devolvía "no encontramos partidos". Ahora
-  // si el primer pass queda < legs, hacemos un segundo pass SIN book lock y
-  // marcamos el filter como relajado para que el frontend avise al user.
   //
-  // REAL-ONLY MODE (2026-05-18): Coach IA SOLO debe sugerir bets que estén
-  // disponibles en al menos UNA casa real. Los picks analytical (sintéticos
-  // de extendedMarkets.js: corners-team, tennis-totals-games, esports-maps,
-  // player props, etc.) NO se incluyen porque le ponemos casa fake al user.
-  // Si querés permitirlos explícitamente: BS_COACH_ALLOW_ANALYTICAL=true.
-  const allowAnalytical = process.env.BS_COACH_ALLOW_ANALYTICAL === 'true';
+  // REAL-ONLY vs ANALYTICAL handling (refactor 2026-05-19):
+  // Markets que SOLO existen como analítico (no scrapeados de casas AR):
+  //   - goalscorer-anytime, first-goalscorer (goleadores)
+  //   - player-points, player-rebounds, player-assists (NBA props)
+  //   - mma-method, mma-rounds (UFC método/rounds)
+  //   - corners-team, corners-ht
+  //   - yrfi, nrfi, f5 (MLB innings)
+  //   - tennis-totals-games, tennis-aces (props tennis)
+  //   - nfl player props, nhl player props
+  //
+  // REGLA: Si el user PIDE explícitamente uno de estos markets en su prompt
+  // (filters.markets incluye uno analítico-only), permitimos analytical PARA
+  // ESE request. Sino, modo conservador (solo casas reales). Esto fixea
+  // los botones de Goleadores/NBA puntos/UFC método/MLB carreras que
+  // devolvían vacío por filtrar agresivamente.
+  const ANALYTICAL_ONLY_MARKETS = new Set([
+    'goalscorer-anytime', 'first-goalscorer', 'last-goalscorer',
+    'player-points', 'player-rebounds', 'player-assists', 'player-threes',
+    'player-blocks', 'player-steals', 'player-double-double', 'player-triple-double',
+    'mma-method', 'mma-rounds', 'mma-distance',
+    'corners-team', 'corners-ht',
+    'cards-team', 'cards-ht',
+    'yrfi', 'nrfi', 'f5-runs', 'f5-result',
+    'tennis-totals-games', 'tennis-tiebreak', 'tennis-aces-total', 'tennis-doublefaults',
+    'esports-maps-total', 'esports-rounds-total', 'esports-kills-total', 'esports-firstblood',
+    'shots-on-target-total', 'shots-total', 'fouls-total',
+    'penalty', 'red-card', 'pass-completions',
+    'nfl-spread', 'nfl-totals', 'nfl-td-first', 'nfl-td-anytime',
+    'nfl-yards-passing', 'nfl-yards-rushing', 'nfl-yards-receiving',
+    'nhl-goals', 'nhl-shots', 'nhl-pucks',
+    'totals-points', 'spread'
+  ]);
+  const userAskedAnalytical = (filters.markets || []).some(m => ANALYTICAL_ONLY_MARKETS.has(m));
+  const allowAnalytical = process.env.BS_COACH_ALLOW_ANALYTICAL === 'true' || userAskedAnalytical;
+  if (userAskedAnalytical) {
+    log(`[betsafe-ai] user asked analytical markets [${filters.markets.filter(m => ANALYTICAL_ONLY_MARKETS.has(m)).join(',')}] → enabling analytical pool`);
+  }
 
   function buildPool(applyBookLock) {
     const out = [];
@@ -2989,9 +2850,9 @@ INSTRUCCIONES FINALES:
       }
       for (let sel of candidateSels) {
         if (!sel || !sel.odd) continue;
-        // SKIP analytical: son predicciones sintéticas, no cuotas reales de casas
+        // SKIP analytical UNLESS user pidió analytical-only markets explícitamente
         if (sel.analytical && !allowAnalytical) continue;
-        // SKIP si no tiene book asignado (no es de una casa real)
+        // SKIP si no tiene book asignado (no es de una casa real) — pero permitir si analytical OK
         if (!sel.book && !allowAnalytical) continue;
         if (applyBookLock && filters.books.length) {
           if (sel.analytical) {
@@ -3095,14 +2956,11 @@ INSTRUCCIONES FINALES:
     const away = normalizeTeam(ev?.away?.name || '')?.id || '';
     return `${start}|${home}|${away}`;
   }
-  function pickWithDiversity(maxLegs, preselected = []) {
-    const out = [...preselected];
-    const usedEvents = new Set(preselected.map(p => p.event.id));
-    const usedMatches = new Set(preselected.map(p => _mkKey(p.event)));
+  function pickWithDiversity(maxLegs) {
+    const out = [];
+    const usedEvents = new Set();      // event.id
+    const usedMatches = new Set();     // start+home+away normalizado (anti cross-source dup)
     const marketCount = new Map();
-    for (const p of preselected) {
-      marketCount.set(p.sel.market, (marketCount.get(p.sel.market) || 0) + 1);
-    }
     while (out.length < maxLegs) {
       // Re-rankear cada vez basado en lo que ya elegimos. Filtramos:
       //   - misma referencia
@@ -3129,150 +2987,56 @@ INSTRUCCIONES FINALES:
     }
     return out;
   }
+  let chosen = pickWithDiversity(filters.legs);
 
-  // ── FORCE-INCLUDE: para cada forcedEvent, elegimos su MEJOR pick disponible
-  //    del pool. Si tiene picks, lo pre-incluimos en chosen[]. Si NO tiene
-  //    picks (filtros lo eliminaron), lo marcamos como "rejected" con motivo.
-  //
-  //    BYPASS mode: cuando el evento viene en `forceIncludeEventIds` (el user
-  //    pulsó "Agregar partido"), el motor IGNORA los filtros para ese evento
-  //    — el user ya aceptó los riesgos.
-  const preselected = [];
-  const rejectedRequestedEvents = [];   // partidos pedidos que NO pudieron entrar
-  const userBypassIds = new Set(forceIncludeEventIds);   // viene del body
-  if (forcedEvents.length) {
-    // Map de eventId → mejor pick del pool (respetando filtros)
-    const poolByEvent = new Map();
-    for (const p of pool) {
-      const cur = poolByEvent.get(p.event.id);
-      if (!cur || legScore(p) > legScore(cur)) poolByEvent.set(p.event.id, p);
-    }
-    // Fallback BYPASS: para forced events que NO entraron al pool, construimos
-    // su pick desde `analyzed` directamente (sin pasar filtros).
-    function buildBypassPick(ev) {
-      const an = analyzed.find(r => r.status === 'fulfilled' && r.value?.event?.id === ev.id)?.value;
-      if (!an || !an.selections?.length) return null;
-      const sels = an.selections.filter(s => s && s.odd);
-      if (!sels.length) return null;
-      // Mejor pick: el de mayor (confidence × EV) — el más sólido del partido.
-      sels.sort((a, b) => {
-        const sa = (a.consensusEv || 0) + (a.confidence || 0) * 50;
-        const sb = (b.consensusEv || 0) + (b.confidence || 0) * 50;
-        return sb - sa;
-      });
-      return { event: an.event, factors: an.factors, sel: sels[0], llmKey: an.llmKeyFactor, llmSynth: an.llmSynthesis };
-    }
-    for (const ev of forcedEvents) {
-      const isBypass = userBypassIds.has(ev.id);
-      const best = poolByEvent.get(ev.id) || (isBypass ? buildBypassPick(ev) : null);
-      if (best) {
-        // Solo aceptamos hasta filters.legs forzados — si pidió más eventos que
-        // legs, los excedentes se reportan como "no caben".
-        if (preselected.length < filters.legs) {
-          preselected.push(best);
-        } else {
-          rejectedRequestedEvents.push({
-            eventId: ev.id,
-            home: ev.home?.name,
-            away: ev.away?.name,
-            leagueName: ev.leagueName,
-            start: ev.start,
-            sport: ev.sport,
-            reason: 'too-many-requested',
-            message: `El partido ${ev.home?.name} vs ${ev.away?.name} fue pedido pero pediste ${filters.legs} legs y ya se completaron con los anteriores.`
-          });
-        }
-      } else {
-        // El evento existe pero el pool no tiene picks aptos. Razones posibles:
-        // - filtros de mercado/casa lo dejaron sin selections
-        // - todos sus picks tienen EV negativo o confianza muy baja
-        // - es analítico y allowAnalytical=false
-        // Buscamos en `analyzed` para dar el motivo concreto.
-        const an = analyzed.find(r => r.status === 'fulfilled' && r.value?.event?.id === ev.id)?.value;
-        let reason = 'no-value';
-        let detail = '';
-        if (!an) {
-          reason = 'not-analyzed';
-          detail = 'No alcanzó el cupo de eventos analizados con IA — refrescá o subí la prioridad del partido.';
-        } else if (!an.selections || !an.selections.length) {
-          reason = 'no-selections';
-          detail = 'El motor analizó el partido pero no encontró ninguna apuesta con valor estadístico ni cobertura de mercado.';
-        } else {
-          const sels = an.selections;
-          const allLowConf = sels.every(s => (s.confidence || 0) < 0.45);
-          const allLowEv = sels.every(s => (s.consensusEv || 0) < 0);
-          const allAnalytical = sels.every(s => s.analytical);
-          if (allAnalytical && !allowAnalytical) {
-            reason = 'only-analytical';
-            detail = 'Solo tiene mercados con cuota ESTIMADA (córners, tarjetas, props) — ninguna casa AR publicó cuotas reales todavía.';
-          } else if (allLowConf) {
-            reason = 'low-confidence';
-            detail = `Confianza promedio bajísima (max ${Math.round(Math.max(...sels.map(s => s.confidence || 0)) * 100)}%). El motor lo considera demasiado impredecible para meterlo en una combinada.`;
-          } else if (allLowEv) {
-            reason = 'negative-ev';
-            detail = 'Todas las cuotas disponibles están infladas (EV negativo). La casa cobra de más por ese partido.';
-          } else if (filters.minOddPerLeg) {
-            reason = 'odd-range';
-            detail = `Ningún pick del partido cumple la cuota mínima por leg que pediste (${filters.minOddPerLeg}).`;
-          } else if (filters.lockedBook) {
-            reason = 'book-coverage';
-            detail = `${filters.lockedBook} no publica cuota para ningún mercado relevante de este partido.`;
-          } else {
-            reason = 'filtered-out';
-            detail = 'Los filtros activos (riesgo / mercados / cuota objetivo) descartaron todos los picks disponibles para este partido.';
-          }
-        }
-        rejectedRequestedEvents.push({
-          eventId: ev.id,
-          home: ev.home?.name,
-          away: ev.away?.name,
-          leagueName: ev.leagueName,
-          start: ev.start,
-          sport: ev.sport,
-          reason,
-          message: `Analicé ${ev.home?.name} vs ${ev.away?.name} pero no lo incluí: ${detail}`,
-          // Si el user pulsa "Agregar partido", el frontend reenvía esto:
-          canForceAdd: true
-        });
-      }
-    }
-  }
-
-  let chosen = pickWithDiversity(filters.legs, preselected);
-
-  if (filters.targetOdd) {
-    // ── Optimization híbrida: greedy + random sampling para targetOdd ──
-    // RESPETAR forced/preselected — NUNCA reemplazarlos al optimizar.
+  // ── ODD OPTIMIZATION: targetOdd OR minTotalOdd/maxTotalOdd ──
+  // Si el user pidió un rango (10x-15x), el algoritmo busca el combo cuyo
+  // producto cae DENTRO del rango. Si pidió target X, busca el más cercano.
+  // Si NO se puede caer en el rango, devuelve el más cercano a la frontera.
+  const hasOddConstraint = !!(filters.targetOdd || filters.minTotalOdd != null || filters.maxTotalOdd != null);
+  if (hasOddConstraint) {
     const N = pool.length;
-    const lockedRefs = new Set(preselected);
     let bestCombo = chosen;
-    let bestComboTotal = chosen.reduce((a, c) => a * c.sel.odd, 1);
     let bestScore = -Infinity;
+
+    // El target sintético del rango: si user pidió [10, 15], target = 12.5 (centro)
+    // Sino, target = targetOdd literal.
+    const rangeMin = filters.minTotalOdd != null ? filters.minTotalOdd : (filters.targetOdd != null ? filters.targetOdd * 0.85 : null);
+    const rangeMax = filters.maxTotalOdd != null ? filters.maxTotalOdd : (filters.targetOdd != null ? filters.targetOdd * 1.15 : null);
+    const syntheticTarget = filters.targetOdd != null
+      ? filters.targetOdd
+      : (rangeMin != null && rangeMax != null ? (rangeMin + rangeMax) / 2 : (rangeMin != null ? rangeMin * 1.1 : rangeMax * 0.9));
 
     function evalCombo(combo) {
       const total = combo.reduce((a, c) => a * c.sel.odd, 1);
-      const diff = Math.abs(total - filters.targetOdd);
+      const inRange = (rangeMin == null || total >= rangeMin) && (rangeMax == null || total <= rangeMax);
+      // Penalty por estar fuera de rango (medido por distance a la frontera más cercana)
+      let outOfRangePenalty = 0;
+      if (!inRange) {
+        if (rangeMin != null && total < rangeMin) outOfRangePenalty = (rangeMin - total) / rangeMin;
+        if (rangeMax != null && total > rangeMax) outOfRangePenalty = (total - rangeMax) / rangeMax;
+      }
+      // Diff vs target (suave) — segundo criterio cuando ya está en rango
+      const diffPct = Math.abs(total - syntheticTarget) / syntheticTarget;
       const avgScore = combo.reduce((a, c) => a + legScore(c), 0) / combo.length;
-      // Función objetivo: minimizar diff de cuota target, maximizar avgScore.
-      // El peso de diff es alto cuando estamos lejos del target.
-      const fit = -diff * 2 + avgScore;
-      return { total, diff, fit };
+      // Función objetivo: PRIORIZA estar en rango. Si fuera, penaliza fuerte.
+      // Si en rango, secundario es: cerca de target + alto avg score.
+      const fit = (inRange ? 10 : 0) - outOfRangePenalty * 20 - diffPct * 2 + avgScore * 0.5;
+      return { total, inRange, fit };
     }
 
-    // 1) Greedy: empezar con top-scored y reemplazar 1 leg a la vez si mejora.
-    //    NO se tocan las legs forzadas (lockedRefs).
+    // 1) Greedy 1-leg swap: empezar con top-scored y reemplazar 1 leg a la vez
     let cur = chosen.slice();
-    for (let iter = 0; iter < 20; iter++) {
-      const { fit } = evalCombo(cur);
+    for (let iter = 0; iter < 40; iter++) {
+      const { fit: curFit } = evalCombo(cur);
       let improved = false;
       for (let i = 0; i < cur.length; i++) {
-        if (lockedRefs.has(cur[i])) continue;   // no reemplazar forced legs
         for (let j = 0; j < N; j++) {
           if (cur.includes(pool[j])) continue;
           const newCur = cur.slice();
           newCur[i] = pool[j];
           const r = evalCombo(newCur);
-          if (r.fit > fit + 0.01) {
+          if (r.fit > curFit + 0.01) {
             cur = newCur;
             improved = true;
             break;
@@ -3283,33 +3047,107 @@ INSTRUCCIONES FINALES:
       if (!improved) break;
     }
     const greedyResult = evalCombo(cur);
-    if (greedyResult.fit > bestScore) {
-      bestScore = greedyResult.fit;
-      bestCombo = cur;
-      bestComboTotal = greedyResult.total;
+    bestScore = greedyResult.fit;
+    bestCombo = cur;
+
+    // 2) Greedy 2-leg swap: si todavía estamos fuera de rango, reemplazar
+    // PARES de legs simultáneamente (encuentra combos que 1-leg swap no
+    // puede). Crucial cuando cada leg individual cambia poco la cuota
+    // total pero pares de legs sí.
+    if (!greedyResult.inRange && N >= filters.legs + 2) {
+      let cur2 = bestCombo.slice();
+      for (let iter = 0; iter < 15; iter++) {
+        const { fit: curFit } = evalCombo(cur2);
+        let improved = false;
+        // Probar todas las combinaciones de 2 legs (i,j) → reemplazar por (a,b) del pool
+        outer: for (let i = 0; i < cur2.length; i++) {
+          for (let j = i + 1; j < cur2.length; j++) {
+            for (let a = 0; a < N; a++) {
+              if (cur2.includes(pool[a])) continue;
+              for (let b = a + 1; b < N; b++) {
+                if (cur2.includes(pool[b])) continue;
+                const newCur = cur2.slice();
+                newCur[i] = pool[a];
+                newCur[j] = pool[b];
+                const r = evalCombo(newCur);
+                if (r.fit > curFit + 0.05) {
+                  cur2 = newCur;
+                  improved = true;
+                  break outer;
+                }
+              }
+            }
+          }
+        }
+        if (!improved) break;
+      }
+      const eval2 = evalCombo(cur2);
+      if (eval2.fit > bestScore) {
+        bestScore = eval2.fit;
+        bestCombo = cur2;
+      }
     }
 
-    // 2) Random sampling: 80 intentos rápidos buscando mejor fit.
-    //    Cada sample DEBE incluir las forced/preselected legs.
-    for (let i = 0; i < 80; i++) {
-      const sample = [...preselected];
-      const used = new Set(preselected.map(p => p.event.id));
-      while (sample.length < filters.legs && used.size < N + preselected.length) {
-        const idx = Math.floor(Math.random() * N);
-        const p = pool[idx];
-        if (!p || used.has(p.event.id)) continue;
-        used.add(p.event.id);
-        sample.push(p);
+    // 3) BRUTE FORCE ENUMERATION cuando es factible
+    // Combinaciones N choose K: si total < 100k, enumeramos TODAS y encontramos
+    // el combo óptimo absoluto. Esto garantiza encontrar combo en rango si existe.
+    // 30 choose 4 = 27.4k → factible
+    // 60 choose 5 = 5.5M → demasiado
+    function binomial(n, k) {
+      if (k < 0 || k > n) return 0;
+      if (k === 0 || k === n) return 1;
+      let r = 1;
+      for (let i = 1; i <= k; i++) r = r * (n - k + i) / i;
+      return r;
+    }
+    const totalCombos = binomial(N, filters.legs);
+    if (totalCombos > 0 && totalCombos < 100_000) {
+      log(`[betsafe-ai] brute force enumeration: ${totalCombos} combos (N=${N}, K=${filters.legs})`);
+      const indexes = Array(filters.legs).fill(0).map((_, i) => i);
+      let bruteCount = 0;
+      const enumerate = () => {
+        const combo = indexes.map(i => pool[i]);
+        const r = evalCombo(combo);
+        if (r.fit > bestScore) {
+          bestScore = r.fit;
+          bestCombo = combo;
+        }
+        bruteCount++;
+      };
+      // Iterar combinaciones con next-combination algoritmo
+      enumerate();
+      while (true) {
+        let i = filters.legs - 1;
+        while (i >= 0 && indexes[i] === N - filters.legs + i) i--;
+        if (i < 0) break;
+        indexes[i]++;
+        for (let j = i + 1; j < filters.legs; j++) indexes[j] = indexes[j - 1] + 1;
+        enumerate();
       }
-      if (sample.length !== filters.legs) continue;
-      const r = evalCombo(sample);
-      if (r.fit > bestScore) {
-        bestScore = r.fit;
-        bestCombo = sample;
-        bestComboTotal = r.total;
+      log(`[betsafe-ai] brute force: enumerated ${bruteCount} combos, bestScore=${bestScore.toFixed(2)}`);
+    } else {
+      // Fallback: random sampling (mucho más cuando enumeración no es viable)
+      for (let i = 0; i < 800; i++) {
+        const sample = [];
+        const used = new Set();
+        while (sample.length < filters.legs && used.size < N) {
+          const idx = Math.floor(Math.random() * N);
+          if (used.has(idx)) continue;
+          used.add(idx);
+          sample.push(pool[idx]);
+        }
+        if (sample.length !== filters.legs) continue;
+        const r = evalCombo(sample);
+        if (r.fit > bestScore) {
+          bestScore = r.fit;
+          bestCombo = sample;
+        }
       }
     }
     chosen = bestCombo;
+    const finalEval = evalCombo(bestCombo);
+    log(`[betsafe-ai] odd optimization FINAL: total=${finalEval.total.toFixed(2)} inRange=${finalEval.inRange} ` +
+        `range=[${rangeMin || '∅'}-${rangeMax || '∅'}] target=${syntheticTarget?.toFixed(2)}`);
   }
   // ── DEDUP ROBUSTO ANTI-DUPLICADOS ───────────────────────────────────────
   // Bug reportado: combinada con OKC vs SA Spurs DOS VECES (uno con id
@@ -3394,27 +3232,25 @@ INSTRUCCIONES FINALES:
 
   const totalOdd = enrichedLegs.reduce((a, l) => a * l.odd, 1);
 
-  // 6) Pedir al LLM una narrative final de POR QUÉ esta combinada cumple lo pedido
-  const narrativeSystem = `Sos un analista que justifica una combinada al usuario en lenguaje natural.
-Escribí un párrafo de 80-120 palabras, en castellano argentino, sin jerga técnica.
-JSON estricto: { "narrative": "<párrafo>", "headline": "<una frase atractiva>" }`;
-  const narrativePrompt = `El usuario pidió: "${filters.userIntent}"
-Le construí esta combinada de ${enrichedLegs.length} partidos con cuota total ${totalOdd.toFixed(2)}:
-${enrichedLegs.map((l, i) => `${i+1}. ${l.home.name} vs ${l.away.name} | ${l.leagueName} | ${l.label} @ ${l.odd}`).join('\n')}
-Explicá brevemente POR QUÉ esta combinada cumple lo pedido + qué tiene de interesante.`;
-  // Cascada universal free-first
+  // NOTA: narrative generation MOVIDA después de single-book consolidation
+  // (más abajo). Antes se generaba acá con `totalOdd` pre-consolidation y
+  // luego la consolidation modificaba enrichedLegs, dejando la narrative
+  // mintiendo sobre "cuota X" cuando la final era distinta.
   let narrative = null;
   let aiProvider = null;
-  try {
-    const r = await llmJsonAny(narrativeSystem, narrativePrompt, { maxTokens: 500, temperature: 0.5 });
-    if (r.result) { narrative = r.result; aiProvider = r.provider; }
-  } catch (e) { log(`[betsafe-ai narrative] ${e?.message?.slice(0, 80)}`); }
 
   // ── VALIDACIÓN STRICT DE FILTROS POST-ARMADO ─────────────────────────────
   // El user reportó: "pedí cuota 3, me dio 2.8 / pedí 18-may, me dio 19-may".
   // Si la combinada armada NO cumple los filtros declarados, devolvemos
   // warnings explícitos para que el frontend los muestre clarito.
+  // En STRICT_MODE, si alguno se incumple, RECHAZAMOS la combinada (mejor
+  // decir "no se pudo" que mentir con "respetando todos los filtros").
   const validationIssues = [];
+
+  // Helper: usa finalTotalOddRef (recalcula post-consolidation cuando esté seteado)
+  // sino usa el totalOdd inicial. Esta variable se reasigna en línea ~3265 a finalTotalOdd.
+  // Por ahora usamos el pre-consolidation totalOdd; la validación detallada se recorre
+  // de nuevo después del consolidate para usar el valor FINAL.
 
   // 1) targetOdd: verificar que la cuota total esté CERCA del target (±15%)
   if (filters.targetOdd) {
@@ -3422,30 +3258,115 @@ Explicá brevemente POR QUÉ esta combinada cumple lo pedido + qué tiene de int
     if (Math.abs(diff) > 0.15) {
       validationIssues.push({
         type: 'target-odd-miss',
+        critical: true,
         message: diff < 0
           ? `Pediste cuota ${filters.targetOdd.toFixed(2)} pero la combinada quedó en ${totalOdd.toFixed(2)} (${Math.abs(diff*100).toFixed(0)}% por debajo). El pool del día no tenía picks con valor para llegar a tu target sin sacrificar calidad.`
           : `Pediste cuota ${filters.targetOdd.toFixed(2)} pero la combinada quedó en ${totalOdd.toFixed(2)} (${Math.abs(diff*100).toFixed(0)}% por encima). Probá pidiendo menos legs o cuota más baja para ajustar.`
       });
     }
   }
-  // 2) exactDate: verificar que TODAS las legs caigan ese día
-  if (filters.exactDate) {
+  // 1b) RANGO de cuota total (minTotalOdd, maxTotalOdd) — STRICT, se re-verifica
+  // post-consolidation también porque single-book puede cambiar la cuota total.
+  if (filters.minTotalOdd && totalOdd < filters.minTotalOdd) {
+    validationIssues.push({
+      type: 'total-odd-below-min',
+      critical: true,
+      message: `Pediste cuota total mínimo ${filters.minTotalOdd.toFixed(2)} pero la combinada quedó en ${totalOdd.toFixed(2)}. El pool no tenía picks con valor suficiente para llegar al mínimo pedido.`
+    });
+  }
+  if (filters.maxTotalOdd && totalOdd > filters.maxTotalOdd) {
+    validationIssues.push({
+      type: 'total-odd-above-max',
+      critical: true,
+      message: `Pediste cuota total máximo ${filters.maxTotalOdd.toFixed(2)} pero la combinada quedó en ${totalOdd.toFixed(2)}. Probá pedir menos legs o cuotas más bajas.`
+    });
+  }
+  // 2) exactDate / exactDateRange: verificar que TODAS las legs caigan en rango
+  if (filters.exactDate || filters.exactDateRange) {
+    const dateRange = filters.exactDateRange || filters.exactDate;
     const legsOffDay = enrichedLegs.filter(l =>
-      !l.start || l.start < filters.exactDate.start || l.start > filters.exactDate.end
+      !l.start || l.start < dateRange.start || l.start > dateRange.end
     );
     if (legsOffDay.length) {
       validationIssues.push({
         type: 'date-mismatch',
-        message: `Pediste partidos del ${filters.exactDate.label} pero ${legsOffDay.length} de las ${enrichedLegs.length} legs son de otra fecha. Eso significa que no había suficientes partidos con valor ese día y completé con los próximos disponibles.`
+        critical: true,
+        message: `Pediste partidos del ${dateRange.label} pero ${legsOffDay.length} de las ${enrichedLegs.length} legs son de otra fecha.`
       });
     }
   }
-  // 3) legs: verificar que armamos el número pedido
-  if (filters.legs && enrichedLegs.length < filters.legs) {
+  // 3) legs: verificar que armamos el número EXACTO pedido
+  if (filters.legs && enrichedLegs.length !== filters.legs) {
     validationIssues.push({
-      type: 'legs-short',
-      message: `Pediste ${filters.legs} legs pero solo encontré ${enrichedLegs.length} con valor real. Mostramos lo mejor disponible.`
+      type: enrichedLegs.length < filters.legs ? 'legs-short' : 'legs-excess',
+      critical: true,
+      message: `Pediste ${filters.legs} legs pero solo armé ${enrichedLegs.length}. ${enrichedLegs.length < filters.legs ? 'El pool no tenía suficientes picks que cumplan tus filtros.' : 'El sistema añadió legs extra por error.'}`
     });
+  }
+  // 3b) excludeSports leak check
+  if (filters.excludeSports.length) {
+    const leaked = enrichedLegs.filter(l => {
+      const sport = orchestrator.effectiveSport
+        ? orchestrator.effectiveSport({ sport: l.sport, leagueName: l.leagueName, home: l.home, away: l.away })
+        : l.sport;
+      return filters.excludeSports.includes(sport) || filters.excludeSports.includes(l.sport);
+    });
+    if (leaked.length) {
+      validationIssues.push({
+        type: 'excluded-sport-leak',
+        critical: true,
+        message: `Pediste EXCLUIR ${filters.excludeSports.join(', ')} pero ${leaked.length} legs son de ese deporte: ${leaked.map(l => `${l.home.name} vs ${l.away.name}`).join(', ')}.`
+      });
+    }
+  }
+  // 3c) excludeLeagues leak check — usa misma logica que candidates filter
+  // (regex + accents normalize). Sino daba false negatives con acentos.
+  if (filters.excludeLeagues.length) {
+    const leakMatchers = filters.excludeLeagues.map(slug => {
+      const s = slug.toLowerCase().trim();
+      if (LEAGUE_EXCLUDE_PATTERNS[s]) return { slug: s, re: LEAGUE_EXCLUDE_PATTERNS[s] };
+      const escaped = s.replace(/[-]/g, '[\\s-]?').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      return { slug: s, re: new RegExp(escaped, 'i') };
+    });
+    const leaked = enrichedLegs.filter(l => {
+      const lg = (l.league || '').toLowerCase();
+      const lgName = l.leagueName || '';
+      const lgNameNorm = stripAccents(lgName).toLowerCase();
+      return leakMatchers.some(({ slug, re }) => {
+        if (lg === slug) return true;
+        if (re.test(lgName) || re.test(lgNameNorm)) return true;
+        if (lgNameNorm.includes(slug.replace(/-/g, ' '))) return true;
+        if (lgNameNorm.includes(slug)) return true;
+        return false;
+      });
+    });
+    if (leaked.length) {
+      validationIssues.push({
+        type: 'excluded-league-leak',
+        critical: true,
+        message: `Pediste EXCLUIR ligas ${filters.excludeLeagues.join(', ')} pero ${leaked.length} legs son de esas ligas: ${leaked.map(l => l.leagueName).join(', ')}.`
+      });
+    }
+  }
+  // 3d) specificMatches: verificar que TODOS los pedidos estén incluidos
+  if (filters.specificMatches.length) {
+    const matchesNotIncluded = [];
+    for (const wanted of filters.specificMatches) {
+      const wantedLower = wanted.toLowerCase();
+      const parts = wantedLower.split(/\s+vs?\s+/);
+      const found = enrichedLegs.some(l => {
+        const blob = `${l.home?.name || ''} vs ${l.away?.name || ''}`.toLowerCase();
+        return parts.every(p => blob.includes(p.trim()));
+      });
+      if (!found) matchesNotIncluded.push(wanted);
+    }
+    if (matchesNotIncluded.length) {
+      validationIssues.push({
+        type: 'specific-match-missing',
+        critical: true,
+        message: `Pediste específicamente: ${matchesNotIncluded.join(', ')}. NO se encontraron picks con valor en esos partidos (puede que no haya en nuestras casas o ya hayan empezado).`
+      });
+    }
   }
   // 4) markets: verificar que todas las legs usen los mercados pedidos
   if (filters.markets.length) {
@@ -3489,68 +3410,202 @@ Explicá brevemente POR QUÉ esta combinada cumple lo pedido + qué tiene de int
     log(`[betsafe-ai] book coverage en ${filters.lockedBook}: ${realLegs.length - wrongBook.length}/${realLegs.length} reales + ${analyticCount} analíticas`);
   }
 
-  // ── SINGLE-BOOK CONSOLIDATION (2026-05-18) ────────────────────────────
-  // El user quiere que TODA la combinada se juegue en UNA misma casa.
-  // Algoritmo STRICT (modo single-book real):
-  //   1) Contamos por book cuántas legs lo tienen disponible
-  //   2) Elegimos el book con MÁS cobertura (tie-breaker: mejor producto de odds)
-  //   3) DROPEAMOS las legs que el book elegido NO ofrece (en vez de dejarlas
-  //      con otra casa, lo que rompía la promesa "toda en un casino")
-  //   4) Si quedan < 2 legs, fallback: usamos el mejor book con ≥2 legs
+  // ── SINGLE-BOOK CONSOLIDATION (2026-05-18, mejorado 2026-05-19) ──────
+  // Algoritmo STRICT: TODA la combinada en UNA casa.
+  //
+  // SKIP cuando legs son MAYORMENTE analíticas (markets like goleadores,
+  // player props, MMA método — no existen en casas AR). En ese caso, no
+  // hay book real que cubra, así que dejamos el combo como analítico puro
+  // (frontend muestra disclaimer "verificá en tu casa").
+  const realLegsCount = enrichedLegs.filter(l => !l.analytical).length;
+  const skipSingleBook = enrichedLegs.length > 0 && realLegsCount < Math.ceil(enrichedLegs.length / 2);
+  if (skipSingleBook) {
+    log(`[betsafe-ai] skipping single-book consolidation: ${enrichedLegs.length - realLegsCount}/${enrichedLegs.length} legs analíticas`);
+  }
+
   const bookCoverage = {};  // book → { count, totalOdd }
-  for (const leg of enrichedLegs) {
-    for (const alt of (leg.bookAlternatives || [])) {
-      if (!bookCoverage[alt.book]) bookCoverage[alt.book] = { count: 0, totalOdd: 1 };
-      bookCoverage[alt.book].count++;
-      bookCoverage[alt.book].totalOdd *= alt.odd;
+  if (!skipSingleBook) {
+    for (const leg of enrichedLegs) {
+      for (const alt of (leg.bookAlternatives || [])) {
+        if (!bookCoverage[alt.book]) bookCoverage[alt.book] = { count: 0, totalOdd: 1 };
+        bookCoverage[alt.book].count++;
+        bookCoverage[alt.book].totalOdd *= alt.odd;
+      }
     }
   }
   let combinationBook = null;
   let droppedLegs = 0;
   if (Object.keys(bookCoverage).length) {
-    // Sort: 1° más cobertura, 2° mayor cuota total
+    // PRIORIZAR: 1° book que cubra TODAS las legs (preserva count),
+    // 2° book con más cobertura (drop algunas), 3° tiebreaker mejor odd
+    const targetLegs = filters.legs || enrichedLegs.length;
     const sorted = Object.entries(bookCoverage).sort((a, b) => {
+      // Si A cubre todas las legs y B no → A primero
+      const aFull = a[1].count >= enrichedLegs.length ? 1 : 0;
+      const bFull = b[1].count >= enrichedLegs.length ? 1 : 0;
+      if (aFull !== bFull) return bFull - aFull;
+      // Sino: el de más cobertura
       if (b[1].count !== a[1].count) return b[1].count - a[1].count;
       return b[1].totalOdd - a[1].totalOdd;
     });
-    combinationBook = sorted[0][0];
 
-    // Filtrar legs: SOLO las que estén disponibles en combinationBook
-    const filteredLegs = [];
-    for (const leg of enrichedLegs) {
-      const alt = (leg.bookAlternatives || []).find(a => a.book === combinationBook);
-      if (alt) {
-        leg.odd = alt.odd;
-        leg.book = combinationBook;
-        filteredLegs.push(leg);
-      } else {
-        droppedLegs++;
-      }
-    }
-
-    // Si tras filtrar quedó muy chico (<2 legs), tratamos de elegir otro book
-    // que mantenga más legs. Iteramos sorted[] buscando un book con ≥2 legs.
-    if (filteredLegs.length < 2 && sorted.length > 1) {
-      for (const [altBook, altInfo] of sorted) {
-        if (altInfo.count < 2) continue;
-        const altFilter = enrichedLegs.filter(l => (l.bookAlternatives || []).some(a => a.book === altBook));
-        if (altFilter.length >= 2) {
-          combinationBook = altBook;
-          for (const leg of altFilter) {
-            const alt = leg.bookAlternatives.find(a => a.book === altBook);
-            leg.odd = alt.odd;
-            leg.book = altBook;
-          }
-          // Reemplazar legs por las filtradas en el segundo intento
-          enrichedLegs.length = 0;
-          enrichedLegs.push(...altFilter);
-          droppedLegs = chosen.length - altFilter.length;
-          break;
+    // INTENTO 1: con cada book candidato, ver cuántas legs retiene
+    let bestAttempt = null;
+    for (const [book, info] of sorted.slice(0, 6)) {  // top 6 books
+      const filteredLegs = [];
+      for (const leg of enrichedLegs) {
+        const alt = (leg.bookAlternatives || []).find(a => a.book === book);
+        if (alt) {
+          // Crear copia para no mutar el original durante el test
+          filteredLegs.push({ ...leg, odd: alt.odd, book });
         }
       }
-    } else {
+      // Si este book retiene MÁS legs que el mejor anterior, lo elegimos
+      if (!bestAttempt || filteredLegs.length > bestAttempt.legs.length) {
+        bestAttempt = { book, legs: filteredLegs };
+      }
+      // Si ya tenemos cobertura completa, paramos
+      if (filteredLegs.length === enrichedLegs.length) break;
+    }
+
+    if (bestAttempt && bestAttempt.legs.length >= 2) {
+      combinationBook = bestAttempt.book;
+      droppedLegs = enrichedLegs.length - bestAttempt.legs.length;
       enrichedLegs.length = 0;
-      enrichedLegs.push(...filteredLegs);
+      enrichedLegs.push(...bestAttempt.legs);
+
+      // INTENTO 2: si quedamos cortos (drop > 0) Y aún no llegamos a
+      // filters.legs target, BUSCAR picks adicionales del pool original
+      // que ESTÉN disponibles en combinationBook.
+      if (filters.legs && enrichedLegs.length < filters.legs) {
+        // CRÍTICO: usamos la MISMA función matchKey() del dedup principal
+        // (línea 3165) que usa normalizeTeam — sino "OKC Thunder" vs
+        // "Oklahoma City Thunder" se cuentan como partidos DISTINTOS y
+        // se duplica la leg del mismo partido (bug reportado por user).
+        // También dedupe por pick (event + market + outcome + line) para
+        // que ni siquiera entre con MISMO partido y MISMO mercado.
+        const seenEventIds = new Set(enrichedLegs.map(l => l.eventId));
+        const seenMatchKeys = new Set();
+        const seenPickKeys = new Set();
+        for (const l of enrichedLegs) {
+          seenMatchKeys.add(matchKey(l));
+          seenPickKeys.add(`${matchKey(l)}|${l.market}|${l.outcome}|${l.line || ''}`);
+        }
+        // Iterar pool buscando candidatos disponibles en combinationBook
+        for (const p of pool) {
+          if (enrichedLegs.length >= filters.legs) break;
+          const ev = p.event;
+          if (seenEventIds.has(ev.id)) continue;
+          const mk = matchKey(ev);
+          if (seenMatchKeys.has(mk)) continue;
+          const pk = `${mk}|${p.sel.market}|${p.sel.outcome}|${p.sel.line || ''}`;
+          if (seenPickKeys.has(pk)) continue;
+          // Verificar que esta sel esté en combinationBook
+          const sel = p.sel;
+          const fullEv = orchestrator.findEvent(ev.id);
+          const alts = fullEv ? getBookAlternatives(fullEv, sel) : [];
+          const alt = alts.find(a => a.book === combinationBook);
+          if (!alt) continue;
+          // Verificar excludeSports también acá
+          if (filters.excludeSports.length) {
+            const sportRaw = ev.sport || 'other';
+            const evSport = orchestrator.effectiveSport ? orchestrator.effectiveSport(ev) : sportRaw;
+            if (filters.excludeSports.includes(sportRaw) || filters.excludeSports.includes(evSport)) continue;
+          }
+          // Verificar excludeLeagues también acá (CRÍTICO: sin esto el
+          // multi-book retry colaba ligas excluidas al completar legs)
+          if (filters.excludeLeagues.length) {
+            const lg = (ev.league || '').toLowerCase();
+            const lgName = ev.leagueName || '';
+            const lgNameNorm = stripAccents(lgName).toLowerCase();
+            const leaked = filters.excludeLeagues.some(slug => {
+              const s = slug.toLowerCase().trim();
+              const re = LEAGUE_EXCLUDE_PATTERNS[s];
+              if (lg === s) return true;
+              if (re && (re.test(lgName) || re.test(lgNameNorm))) return true;
+              if (lgNameNorm.includes(s.replace(/-/g, ' '))) return true;
+              if (lgNameNorm.includes(s)) return true;
+              return false;
+            });
+            if (leaked) continue;
+          }
+          enrichedLegs.push({
+            eventId: ev.id,
+            home: { id: ev.home?.id, name: ev.home?.name },
+            away: { id: ev.away?.id, name: ev.away?.name },
+            start: ev.start,
+            sport: ev.sport,
+            league: ev.league,
+            leagueName: ev.leagueName,
+            market: sel.market,
+            outcome: sel.outcome,
+            line: sel.line || null,
+            label: sel.label,
+            odd: alt.odd,
+            book: combinationBook,
+            bookAlternatives: alts,
+            analytical: !!sel.analytical,
+            confidence: sel.confidence,
+            ev: sel.consensusEv,
+            rationale: sel.rationale,
+            llmKeyFactor: p.llmKey
+          });
+          seenEventIds.add(ev.id);
+          seenMatchKeys.add(mk);
+          seenPickKeys.add(pk);
+        }
+        if (enrichedLegs.length === filters.legs) {
+          log(`[betsafe-ai] multi-book retry: completed ${filters.legs} legs en ${combinationBook}`);
+        } else {
+          log(`[betsafe-ai] multi-book retry: ${enrichedLegs.length}/${filters.legs} legs en ${combinationBook} (pool insuficiente)`);
+        }
+      }
+    }
+  }
+
+  // ── DEFENSIVE DEDUP FINAL (post-multi-book retry) ──
+  // Por si CUALQUIER path metió legs duplicadas (mismo partido con
+  // variantes de nombre cross-source), hacemos una pasada final
+  // que dropea cualquier evento o partido ya visto.
+  {
+    const seenE = new Set();
+    const seenM = new Set();
+    const seenP = new Set();
+    const deduped = [];
+    let dropped = 0;
+    for (const l of enrichedLegs) {
+      const mk = matchKey(l);
+      const pk = `${mk}|${l.market}|${l.outcome}|${l.line || ''}`;
+      if (l.eventId && seenE.has(l.eventId)) { dropped++; continue; }
+      if (seenM.has(mk)) { dropped++; continue; }
+      if (seenP.has(pk)) { dropped++; continue; }
+      deduped.push(l);
+      if (l.eventId) seenE.add(l.eventId);
+      seenM.add(mk);
+      seenP.add(pk);
+    }
+    if (dropped > 0) {
+      log(`[betsafe-ai] DEFENSIVE DEDUP: dropeé ${dropped} legs duplicadas (mismo partido + market)`);
+      enrichedLegs.length = 0;
+      enrichedLegs.push(...deduped);
+    }
+  }
+
+  // ── DEFENSIVE DATE FILTER (post-enrichment) ──
+  // Si alguna leg quedó con start fuera del rango pedido, dropeala.
+  // Esto pesca casos donde el orchestrator devolvió events con start mal
+  // calculado (timezone bug del scraper) o el LLM eligió eventos del pool
+  // ANTES de mi candidates filter por algún path raro.
+  if (filters.exactDate || filters.exactDateRange) {
+    const dateRange = filters.exactDateRange || filters.exactDate;
+    const beforeCount = enrichedLegs.length;
+    const filteredByDate = enrichedLegs.filter(l =>
+      Number.isFinite(l.start) && l.start >= dateRange.start && l.start <= dateRange.end
+    );
+    if (filteredByDate.length !== beforeCount) {
+      log(`[betsafe-ai] defensive date filter: ${beforeCount} → ${filteredByDate.length} (range: ${dateRange.label})`);
+      enrichedLegs.length = 0;
+      enrichedLegs.push(...filteredByDate);
     }
   }
 
@@ -3568,25 +3623,156 @@ Explicá brevemente POR QUÉ esta combinada cumple lo pedido + qué tiene de int
     });
   }
 
-  // ── Marcar las legs forzadas en la respuesta (UX: badge "Tu pedido") ──
-  const forcedSelRefs = new Set(preselected.map(p => p.sel));
-  for (const leg of enrichedLegs) {
-    const matchingChosen = chosen.find(c =>
-      c.event?.id === leg.eventId && c.sel?.market === leg.market && c.sel?.outcome === leg.outcome
-    );
-    if (matchingChosen && forcedSelRefs.has(matchingChosen.sel)) {
-      leg.userRequested = true;
+  // ── RE-VALIDACIÓN POST-CONSOLIDATION ─────────────────────────────────
+  // El single-book consolidation pudo cambiar el count de legs y totalOdd.
+  // Re-validamos contra el estado FINAL para que validationIssues refleje
+  // la realidad (no estado previo). Limpiamos issues de tipos ahora obsoletos
+  // y los re-evaluamos con finalTotalOdd / enrichedLegs.length finales.
+  const obsoleteTypes = new Set(['target-odd-miss', 'total-odd-below-min', 'total-odd-above-max', 'legs-short', 'legs-excess']);
+  for (let i = validationIssues.length - 1; i >= 0; i--) {
+    if (obsoleteTypes.has(validationIssues[i].type)) validationIssues.splice(i, 1);
+  }
+
+  // targetOdd FINAL
+  if (filters.targetOdd) {
+    const diff = (finalTotalOdd - filters.targetOdd) / filters.targetOdd;
+    if (Math.abs(diff) > 0.15) {
+      validationIssues.push({
+        type: 'target-odd-miss', critical: true,
+        message: diff < 0
+          ? `Pediste cuota ${filters.targetOdd.toFixed(2)} pero la combinada quedó en ${finalTotalOdd.toFixed(2)} (${Math.abs(diff*100).toFixed(0)}% por debajo).`
+          : `Pediste cuota ${filters.targetOdd.toFixed(2)} pero la combinada quedó en ${finalTotalOdd.toFixed(2)} (${Math.abs(diff*100).toFixed(0)}% por encima).`
+      });
     }
   }
-  // Los partidos pedidos pero NO encontrados los reportamos como issues también
-  // (no son rechazos, son "no existen"). Distinguimos con type='match-not-found'.
-  const notFoundReports = requestedMatchReport.filter(r => r.status === 'not-found');
-  for (const nf of notFoundReports) {
+  // RANGO FINAL
+  if (filters.minTotalOdd && finalTotalOdd < filters.minTotalOdd) {
     validationIssues.push({
-      type: 'match-not-found',
-      message: nf.message
+      type: 'total-odd-below-min', critical: true,
+      message: `Pediste cuota total mínimo ${filters.minTotalOdd.toFixed(2)} pero la combinada quedó en ${finalTotalOdd.toFixed(2)}.`
     });
   }
+  if (filters.maxTotalOdd && finalTotalOdd > filters.maxTotalOdd) {
+    validationIssues.push({
+      type: 'total-odd-above-max', critical: true,
+      message: `Pediste cuota total máximo ${filters.maxTotalOdd.toFixed(2)} pero la combinada quedó en ${finalTotalOdd.toFixed(2)}.`
+    });
+  }
+  // LEGS COUNT FINAL
+  if (filters.legs && enrichedLegs.length !== filters.legs) {
+    validationIssues.push({
+      type: enrichedLegs.length < filters.legs ? 'legs-short' : 'legs-excess',
+      critical: true,
+      message: `Pediste ${filters.legs} legs pero solo armé ${enrichedLegs.length}. ${enrichedLegs.length < filters.legs ? 'El pool no tenía suficientes picks que cumplan tus filtros tras consolidar en una sola casa.' : 'El sistema añadió legs extra por error.'}`
+    });
+  }
+
+  // ── STRICT MODE: si hay issues críticas Y el user FUE EXPLÍCITO con filtros,
+  // rechazamos la combinada en vez de mentir con "✓ respetando todos los filtros".
+  const userWasExplicit = !!(filters.legs >= 3 || filters.targetOdd || filters.minTotalOdd
+    || filters.maxTotalOdd || filters.excludeSports.length || filters.excludeLeagues.length
+    || filters.specificMatches.length || filters.exactDate || filters.exactDateRange);
+  const criticalIssues = validationIssues.filter(v => v.critical);
+  if (userWasExplicit && criticalIssues.length >= 2) {
+    return res.status(200).json({
+      ok: false,
+      reason: 'filters-not-met',
+      message: 'No pude armar una combinada que respete TODOS los filtros que pediste. Te muestro lo que armé pero no es exactamente lo pedido — preferimos ser honestos.',
+      filters,
+      // Devolvemos también la combinada armada como degraded para que el user vea
+      // qué se intentó hacer (con los issues claros)
+      degradedAttempt: {
+        legs: enrichedLegs,
+        totalOdd: Number(finalTotalOdd.toFixed(2)),
+        combinationBook,
+        validationIssues: criticalIssues
+      }
+    });
+  }
+
+  // ── NARRATIVE GENERATION (POST-CONSOLIDATION) ─────────────────────────
+  // Generamos la narrative ACÁ con el estado FINAL (finalTotalOdd, legs reales).
+  // El LLM NO debe validar compliance — el backend ya lo hizo. Le pasamos
+  // explícitamente los constraints + criticalIssues para que NO mienta.
+  // Además le pasamos FACTORES profundos por leg (lesiones, alineaciones,
+  // momentum, clima, head-to-head) para que la narrative sea analítica real.
+  const constraintsBlock = [
+    filters.legs ? `- legs solicitadas: ${filters.legs} (armadas: ${enrichedLegs.length})` : '',
+    filters.targetOdd ? `- cuota total target: ${filters.targetOdd} (resultado: ${finalTotalOdd.toFixed(2)})` : '',
+    filters.minTotalOdd != null ? `- cuota total mínima: ${filters.minTotalOdd} (resultado: ${finalTotalOdd.toFixed(2)})` : '',
+    filters.maxTotalOdd != null ? `- cuota total máxima: ${filters.maxTotalOdd} (resultado: ${finalTotalOdd.toFixed(2)})` : '',
+    filters.exactDate ? `- fecha pedida: ${filters.exactDate.label}` : '',
+    filters.exactDateRange ? `- rango de fechas: ${filters.exactDateRange.label}` : '',
+    filters.excludeSports.length ? `- deportes EXCLUIDOS: ${filters.excludeSports.join(', ')}` : '',
+    filters.excludeLeagues.length ? `- ligas EXCLUIDAS: ${filters.excludeLeagues.join(', ')}` : '',
+    filters.specificMatches.length ? `- partidos pedidos: ${filters.specificMatches.join(', ')}` : ''
+  ].filter(Boolean).join('\n');
+  const issuesBlock = criticalIssues.length
+    ? `\n\nADVERTENCIAS (NO MENTIR sobre cumplimiento — son problemas REALES):\n${criticalIssues.map(i => `- ${i.message}`).join('\n')}`
+    : '';
+
+  // ── Factores profundos por leg (lesiones, alineaciones, momentum, etc.) ──
+  // Buscamos el resultado de analyzeMatch correspondiente a cada leg para
+  // incluir el contexto analítico real. Si no hay datos, omitimos esa leg
+  // del bloque pero la incluimos en la lista básica.
+  function formatFactorsForLeg(leg) {
+    const analyzed_r = analyzed.find(r => r.status === 'fulfilled' && r.value?.event?.id === leg.eventId);
+    const f = analyzed_r?.value?.factors || {};
+    const parts = [];
+    if (f.injuries?.severityScore != null) {
+      const inj = f.injuries;
+      if (inj.home > 0.3 || inj.away > 0.3) {
+        parts.push(`lesiones: ${leg.home.name} ${(inj.home*100).toFixed(0)}% / ${leg.away.name} ${(inj.away*100).toFixed(0)}%${inj.keyPlayers ? ` (claves: ${inj.keyPlayers.slice(0,3).join(', ')})` : ''}`);
+      }
+    }
+    if (f.lineups?.home?.length || f.lineups?.away?.length) {
+      const hl = f.lineups.home?.length || 0;
+      const al = f.lineups.away?.length || 0;
+      if (hl >= 8 && al >= 8) parts.push(`alineaciones confirmadas`);
+    }
+    if (f.form) {
+      if (f.form.home) parts.push(`forma ${leg.home.name}: ${f.form.home}`);
+      if (f.form.away) parts.push(`forma ${leg.away.name}: ${f.form.away}`);
+    }
+    if (f.h2h?.summary) parts.push(`H2H: ${f.h2h.summary}`);
+    if (f.weather?.summary) parts.push(`clima: ${f.weather.summary}`);
+    if (f.xg) {
+      if (f.xg.home && f.xg.away) parts.push(`xG: ${f.xg.home.toFixed(2)}-${f.xg.away.toFixed(2)}`);
+    }
+    if (leg.llmKeyFactor) parts.push(`factor clave: ${leg.llmKeyFactor}`);
+    return parts.join('; ');
+  }
+
+  const narrativeSystem = `Sos un analista cuantitativo de apuestas. Justificás una combinada al usuario en castellano argentino, 100-150 palabras, sin jerga técnica innecesaria.
+
+REGLAS ABSOLUTAS (incumplir = FAIL):
+1. NUNCA mientas sobre compliance. Si te paso ADVERTENCIAS, mencionalas honestamente al PRINCIPIO (ej: "no llegué a tu cuota mínima de 10x, quedó en 6.5").
+2. NUNCA inventes números. Si te paso totalOdd=25.46, NO digas "cuota 40".
+3. NUNCA digas que cumple un filtro si te paso una advertencia sobre ese filtro.
+4. Si TODOS los filtros se cumplen sin advertencias, podés decirlo (sé natural).
+5. USÁ los FACTORES que te paso por leg (lesiones, alineaciones, forma, xG, H2H, clima) — son data REAL del partido. Mencioná los más relevantes.
+6. NO inventes lesiones ni datos. Si te paso "lesiones: 60%", podés decir "Liverpool tiene bajas importantes". Si NO te paso lesiones, NO digas "no hay lesiones".
+
+JSON estricto: { "narrative": "<párrafo 100-150 palabras>", "headline": "<frase corta atractiva sin números falsos>" }`;
+  const narrativePrompt = `El usuario pidió: "${filters.userIntent}"
+
+CONSTRAINTS DEL USER + RESULTADO REAL:
+${constraintsBlock || '(sin constraints específicos)'}
+
+COMBINADA FINAL (cuota total ${finalTotalOdd.toFixed(2)}, ${enrichedLegs.length} legs en ${combinationBook || 'mejor casa por leg'}):
+${enrichedLegs.map((l, i) => {
+  const d = l.start ? new Date(l.start) : null;
+  const dateStr = d ? `${d.toLocaleDateString('es-AR',{day:'numeric',month:'short'})} ${d.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})}` : '';
+  const factors = formatFactorsForLeg(l);
+  return `${i+1}. ${l.home.name} vs ${l.away.name} | ${l.leagueName || l.league} | ${dateStr} | ${l.label} @ ${l.odd}${factors ? `\n   FACTORES: ${factors}` : ''}`;
+}).join('\n')}${issuesBlock}
+
+Explicá honestamente: si NO cumple algo del pedido (advertencias), decilo claro al principio. Después justificá CADA leg con los FACTORES reales — lesiones, forma, xG, alineaciones, H2H. Mostrá rigor analítico real.`;
+
+  try {
+    const r = await llmJsonAny(narrativeSystem, narrativePrompt, { maxTokens: 500, temperature: 0.4 });
+    if (r.result) { narrative = r.result; aiProvider = r.provider; }
+  } catch (e) { log(`[betsafe-ai narrative] ${e?.message?.slice(0, 80)}`); }
 
   res.json({
     ok: true,
@@ -3601,16 +3787,10 @@ Explicá brevemente POR QUÉ esta combinada cumple lo pedido + qué tiene de int
     aiProvider,                              // 'openai-gpt-5-mini' | 'groq-70b' | ... — solo info interna, no se muestra al user
     aiHealth: aiProvider ? 'ok' : (HAS_GEMINI || HAS_GROQ || HAS_OPENAI ? 'degraded' : 'no-keys'),
     avgConfidence: Number((enrichedLegs.reduce((a, l) => a + (l.confidence || 0), 0) / enrichedLegs.length).toFixed(3)),
-    validationIssues,                        // discrepancias entre filtros y resultado
-    filtersFullyRespected: validationIssues.length === 0,
-    // ── NUEVO (2026-05-18): reporting transparente de partidos pedidos ──
-    // requestedMatchReport: status de cada partido/equipo pedido explícitamente
-    //   (found = entró al análisis, not-found = no existe en universo).
-    // rejectedRequestedEvents: partidos pedidos QUE EXISTEN pero el motor no
-    //   pudo/quiso incluir (con motivo + flag canForceAdd para que el front
-    //   ofrezca el botón "Agregar partido").
-    requestedMatchReport,
-    rejectedRequestedEvents
+    validationIssues,                        // array de discrepancias entre filtros y resultado
+    // SOLO true si NINGUNA issue critical (banner verde "✓ respetando todos los filtros"
+    // solo aparece cuando es VERDAD). Issues no-critical (warnings) sí permiten OK.
+    filtersFullyRespected: criticalIssues.length === 0
   });
 });
 

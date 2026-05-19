@@ -207,7 +207,7 @@
     function updatePct() {
       const stake = Number(stakeEl.value || 0);
       const pct = state.bankroll ? (stake / state.bankroll) * 100 : 0;
-      panel.querySelector('#simStakePct').textContent = pct.toFixed(1) + '%';
+      panel.querySelector('#simStakePct').textContent = BSUI.pctRaw(pct, 1);
     }
     panel.querySelectorAll('.sim-pct').forEach(b => b.addEventListener('click', () => {
       const pct = Number(b.dataset.pct);

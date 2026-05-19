@@ -365,7 +365,7 @@
         const minGuaranteed = Number.isFinite(worstOfTop)
           ? Math.round(f.bankroll * worstOfTop / 10) * 10
           : 0;
-        panel.querySelector('#arbBestRoi').textContent = (best * 100).toFixed(2) + '%';
+        panel.querySelector('#arbBestRoi').textContent = BSUI.pctInt(best, 2);
         panel.querySelector('#arbMinGuaranteed').textContent = '+' + BSUI.money(minGuaranteed);
       } else {
         panel.querySelector('#arbBestRoi').textContent = '—';
@@ -537,7 +537,7 @@
             <div class="bs-prem__hero-cell">
               <span class="bs-prem__hero-label" title="Cuánto ganás sí o sí — sin importar el resultado del partido. Ya descontamos el margen de seguridad por si la cuota cambia mientras apostás.">Ganancia segura</span>
               <span class="bs-prem__edge" style="font-size:1.6rem">+${netRoiPct.toFixed(2)}%</span>
-              <span class="bs-prem__edge-explain">antes de descuentos: +${(sb.grossRoi*100).toFixed(2)}%</span>
+              <span class="bs-prem__edge-explain">antes de descuentos: +${BSUI.pctInt(sb.grossRoi, 2)}</span>
             </div>
             <div class="bs-prem__hero-cell">
               <span class="bs-prem__hero-label">Ganancia asegurada con ${BSUI.money(f.bankroll)}</span>
@@ -595,7 +595,7 @@
         : (sb.books || []).map((b, i) => ({ book: b, outcome: sb.outcomes?.[i], odd: sb.odds?.[i], stake: sb.stakes?.[i] || 0 }));
       const lines = [
         `SUREBET — ${sb.event} (${marketLabel(sb.market)})`,
-        `Rentabilidad neta: ${((computed.netRoi ?? sb.netRoi)*100).toFixed(2)}% · Confianza: ${(sb.confidence*100).toFixed(0)}%`,
+        `Rentabilidad neta: ${((computed.netRoi ?? sb.netRoi)*100).toFixed(2)}% · Confianza: ${BSUI.pctInt(sb.confidence, 0)}`,
         `Banco invertido: ${BSUI.money(f.bankroll)} → Ganancia asegurada: ${BSUI.money(profit)}`,
         `Orden de ejecución (por riesgo de cierre, primero la más rápida):`,
         ...baseLegs.map((leg, i) => {

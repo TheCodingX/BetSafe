@@ -3,13 +3,14 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>Dashboard — BetSafe</title>
+<title>BetSafe</title>
 <meta name="description" content="Tu análisis profesional: comparador, builder, IA, banca, arbitraje, Mundial 2026." />
 <meta name="theme-color" content="#ffffff" />
 <meta name="robots" content="noindex" />
 <link rel="manifest" href="manifest.webmanifest" />
-<link rel="icon" href="assets/img/icon-192.svg" type="image/svg+xml" />
-<link rel="stylesheet" href="assets/css/main.css?v=5.7.0" />
+<link rel="icon" href="assets/img/betsafe-isotipo.png" type="image/png" />
+<link rel="apple-touch-icon" href="assets/img/betsafe-isotipo.png" />
+<link rel="stylesheet" href="assets/css/main.css?v=5.9.7" />
 <!-- Premium initial loader inline para que aparezca antes de cualquier JS.
      Se oculta automáticamente cuando BSLive snapshot está listo + logos cargaron. -->
 <style id="bs-preloader-styles">
@@ -26,14 +27,16 @@
   }
   #bs-preloader.is-hidden { opacity: 0; pointer-events: none; }
   .bs-preloader__mark {
-    width: 84px; height: 84px;
+    width: 96px; height: 96px;
     position: relative;
     animation: bs-mark-pulse 2.4s ease-in-out infinite;
   }
-  .bs-preloader__mark svg { width: 100%; height: 100%; display: block; }
+  .bs-preloader__mark svg, .bs-preloader__mark img {
+    width: 100%; height: 100%; display: block; border-radius: 18px;
+  }
   @keyframes bs-mark-pulse {
-    0%, 100% { transform: scale(1); filter: drop-shadow(0 4px 22px rgba(196,154,26,.32)); }
-    50% { transform: scale(1.05); filter: drop-shadow(0 6px 32px rgba(196,154,26,.52)); }
+    0%, 100% { transform: scale(1); filter: drop-shadow(0 4px 22px rgba(232,162,36,.32)); }
+    50% { transform: scale(1.05); filter: drop-shadow(0 6px 32px rgba(232,162,36,.52)); }
   }
   .bs-preloader__brand {
     font-size: 1.35rem; font-weight: 800; letter-spacing: -.02em;
@@ -122,24 +125,12 @@
 </head>
 <body class="has-bottom-nav">
 
-<!-- Premium initial loader -->
+<!-- Premium initial loader — usa el ISOTIPO oficial de BetSafe -->
 <div id="bs-preloader" aria-hidden="true" aria-busy="true">
   <div class="bs-preloader__mark">
-    <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <radialGradient id="bs-pre-glow" cx="50%" cy="18%" r="75%">
-          <stop offset="0%" stop-color="rgba(255,215,107,.40)"/>
-          <stop offset="100%" stop-color="rgba(255,215,107,0)"/>
-        </radialGradient>
-      </defs>
-      <ellipse cx="32" cy="36" rx="26" ry="30" fill="url(#bs-pre-glow)"/>
-      <path d="M32 4 L57 13 L57 36 C57 50 44 59 32 63 C20 59 7 50 7 36 L7 13 Z"
-            fill="rgba(255,215,107,.08)" stroke="#ffd76b" stroke-width="3.5" stroke-linejoin="round"/>
-      <path d="M17 37 L27 50" fill="none" stroke="#ffffff" stroke-width="5.8"
-            stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="M27 50 L47 24" fill="none" stroke="#ffd76b" stroke-width="5.8"
-            stroke-linecap="round" stroke-linejoin="round"/>
-    </svg>
+    <img src="assets/img/betsafe-isotipo.png" alt="" width="96" height="96"
+         style="width:96px;height:96px;border-radius:18px;display:block"
+         decoding="async" fetchpriority="high" />
   </div>
   <div class="bs-preloader__brand"><span class="bet">Bet</span><span class="safe">Safe</span></div>
   <div class="bs-preloader__bar"></div>
@@ -201,36 +192,36 @@
 
 <div data-shell-footer></div>
 
-<script src="assets/js/env.js?v=5.7.0"></script>
-<script src="assets/js/live.js?v=5.7.0"></script>
-<script src="assets/js/data.js?v=5.7.0"></script>
-<script src="assets/js/logos.js?v=5.7.0"></script>
-<script src="assets/js/icons.js?v=5.7.0"></script>
-<script src="assets/js/engine.js?v=5.7.0"></script>
-<script src="assets/js/store.js?v=5.7.0"></script>
-<script src="assets/js/supabase-client.js?v=5.7.0"></script>
-<script src="assets/js/auth.js?v=5.7.0"></script>
-<script src="assets/js/api.js?v=5.7.0"></script>
-<script src="assets/js/math.js?v=5.7.0"></script>
-<script src="assets/js/ui.js?v=5.7.0"></script>
-<script src="assets/js/shell.js?v=5.7.0"></script>
-<script src="assets/js/app.js?v=5.7.0"></script>
-<script src="assets/js/onboarding.js?v=5.7.0"></script>
-<script src="assets/js/dashboard.js?v=5.7.0"></script>
-<script src="assets/js/tabs-overview.js?v=5.7.0"></script>
-<script src="assets/js/tabs-builder.js?v=5.7.0"></script>
-<script src="assets/js/tabs-ai.js?v=5.7.0"></script>
-<script src="assets/js/tabs-aigenerator.js?v=5.7.0"></script>
-<script src="assets/js/tabs-betsafeai.js?v=5.7.0"></script>
-<script src="assets/js/tabs-simulator.js?v=5.7.0"></script>
-<script src="assets/js/tabs-comparator.js?v=5.7.0"></script>
-<script src="assets/js/tabs-calc.js?v=5.7.0"></script>
-<script src="assets/js/tabs-calcpro.js?v=5.7.0"></script>
-<script src="assets/js/tabs-arbitrage.js?v=5.7.0"></script>
-<script src="assets/js/tabs-smartmoney.js?v=5.7.0"></script>
-<script src="assets/js/tabs-whatif.js?v=5.7.0"></script>
-<script src="assets/js/tabs-worldcup.js?v=5.7.0"></script>
-<script src="assets/js/tabs-tracker.js?v=5.7.0"></script>
-<script src="assets/js/tabs-settings.js?v=5.7.0"></script>
+<script src="assets/js/env.js?v=5.9.7"></script>
+<script src="assets/js/live.js?v=5.9.7"></script>
+<script src="assets/js/data.js?v=5.9.7"></script>
+<script src="assets/js/logos.js?v=5.9.7"></script>
+<script src="assets/js/icons.js?v=5.9.7"></script>
+<script src="assets/js/engine.js?v=5.9.7"></script>
+<script src="assets/js/store.js?v=5.9.7"></script>
+<script src="assets/js/supabase-client.js?v=5.9.7"></script>
+<script src="assets/js/auth.js?v=5.9.7"></script>
+<script src="assets/js/api.js?v=5.9.7"></script>
+<script src="assets/js/math.js?v=5.9.7"></script>
+<script src="assets/js/ui.js?v=5.9.7"></script>
+<script src="assets/js/shell.js?v=5.9.7"></script>
+<script src="assets/js/app.js?v=5.9.7"></script>
+<script src="assets/js/onboarding.js?v=5.9.7"></script>
+<script src="assets/js/dashboard.js?v=5.9.7"></script>
+<script src="assets/js/tabs-overview.js?v=5.9.7"></script>
+<script src="assets/js/tabs-builder.js?v=5.9.7"></script>
+<script src="assets/js/tabs-ai.js?v=5.9.7"></script>
+<script src="assets/js/tabs-aigenerator.js?v=5.9.7"></script>
+<script src="assets/js/tabs-betsafeai.js?v=5.9.7"></script>
+<script src="assets/js/tabs-simulator.js?v=5.9.7"></script>
+<script src="assets/js/tabs-comparator.js?v=5.9.7"></script>
+<script src="assets/js/tabs-calc.js?v=5.9.7"></script>
+<script src="assets/js/tabs-calcpro.js?v=5.9.7"></script>
+<script src="assets/js/tabs-arbitrage.js?v=5.9.7"></script>
+<script src="assets/js/tabs-smartmoney.js?v=5.9.7"></script>
+<script src="assets/js/tabs-whatif.js?v=5.9.7"></script>
+<script src="assets/js/tabs-worldcup.js?v=5.9.7"></script>
+<script src="assets/js/tabs-tracker.js?v=5.9.7"></script>
+<script src="assets/js/tabs-settings.js?v=5.9.7"></script>
 </body>
 </html>
