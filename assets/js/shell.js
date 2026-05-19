@@ -169,6 +169,14 @@
       s.defer = true;
       document.head.appendChild(s);
     }
+    // Inject support widget (FAB + chat IA) — global en todas las páginas
+    if (!document.getElementById('bs-support-script')) {
+      const s = document.createElement('script');
+      s.id = 'bs-support-script';
+      s.src = 'assets/js/support.js?v=5.9.8';
+      s.defer = true;
+      document.body.appendChild(s);
+    }
     // Inject cyber background layers (perspective grid + scan + nodes + streaks + core)
     if (!document.querySelector('.bs-cyber')) {
       const cyber = document.createElement('div');

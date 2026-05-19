@@ -126,7 +126,7 @@ app.use((req, res, next) => {
 const rateLimitBuckets = new Map();
 function rateLimit(req, res, next) {
   // Solo aplicar a endpoints AI
-  if (!/\/api\/(betsafe-ai|combo\/analyze|surebet\/.+\/explain|daily-report)/.test(req.path)) {
+  if (!/\/api\/(betsafe-ai|combo\/analyze|surebet\/.+\/explain|daily-report|support\/ask)/.test(req.path)) {
     return next();
   }
   const ip = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress || 'unknown';
@@ -1528,6 +1528,129 @@ Devolvé 2-3 insights cortos (max 80 chars cada uno) sobre lo más interesante d
       }
     }
   });
+});
+
+// ── /api/support/ask ──────────────────────────────────────────────────────
+// Soporte IA del FAB flotante. Responde dudas sobre la plataforma usando la
+// cascada universal (free-first). Knowledge base en el system prompt.
+// Rate-limited (30 req/min/IP vía rateLimit() arriba).
+const SUPPORT_KB = `
+BetSafe es una plataforma argentina LEGAL de análisis inteligente de apuestas
+deportivas. NO somos casa de apuestas — comparamos cuotas de las 6 casas LOTBA
+habilitadas y damos herramientas de análisis. +18.
+
+CASAS COMPARADAS (6 LOTBA legales): Bplay, Betano, BetWarrior, Bet365 AR, Codere, Betsson.
+
+PRODUCTOS PRINCIPALES:
+- Comparador: compara cuotas de las 6 casas en tiempo real. Te muestra qué
+  casino paga más por la cuota que querés. Página: dashboard.html#comparator.
+- Quant IA: análisis cuantitativo de partidos con cuotas reales por casino —
+  sin fallbacks sintéticos. Devuelve probabilidades modeladas + EV por mercado.
+  Página: dashboard.html#ai.
+- Coach IA: conversacional. Pedile combinadas naturalmente
+  ("haceme una combinada segura de Boca esta noche") y arma la combinada con
+  partidos reales, respetando filtros, riesgo, ligas, mercados, cuota mínima/máxima.
+  Página: dashboard.html#aigenerator.
+- Builder: armado manual de combinadas con análisis de correlación.
+- Arbitraje (VIP): detecta surebets (ROI > 0) entre casas. Dashboard.html#arbitrage.
+- Calculadora Pro: Kelly, banca, ROI, stake óptimo.
+- Tracker: registro de apuestas con stats de Brier score, hit rate.
+- Mundial 2026: cuotas y proyecciones específicas del WC26.
+- Bonos: comparador de bonos de bienvenida y promos vigentes de las 6 casas.
+
+CONCEPTOS CLAVE:
+- EV (valor esperado): (probabilidad × cuota) − 1. Si EV > 0, la apuesta es
+  matemáticamente rentable a largo plazo. BetSafe calcula EV usando la
+  probabilidad modelada por la IA, no la implícita en la cuota.
+- Kelly: fórmula para tamaño óptimo de apuesta dado tu edge y banca.
+- Cuota justa (fair): la cuota que reflejaría la probabilidad real sin margen
+  del casino. Si la cuota del casino > fair, hay valor.
+- Brier score: métrica de calibración de probabilidades. Más bajo = mejor.
+- Riesgo: cons (conservador, cuotas bajas), eq (equilibrado), agg (agresivo).
+
+SUSCRIPCIONES (pricing.html):
+- Free: comparador básico, Coach IA limitado.
+- Pro: Quant IA, generador, calculadora pro.
+- VIP: arbitraje, alertas live, todas las funciones.
+
+JUEGO RESPONSABLE:
+- Respondé siempre con responsabilidad. Recordá +18 y la línea de ayuda 0800 444 4000.
+- Página: responsable.html. NUNCA recomendes una apuesta puntual ni des
+  garantías de ganancia.
+
+PROBLEMAS TÉCNICOS:
+- Si una cuota no aparece: el scraper de esa casa puede estar caído
+  temporalmente (ver dashboard.html#settings → "Estado de fuentes").
+- Si la imagen vieja persiste tras cambios: hard refresh (Ctrl+F5).
+- Contacto: contacto.html.
+
+ESTILO DE RESPUESTA:
+- Tono profesional, breve, claro, conversacional argentino.
+- Sin emojis salvo que el user los use primero.
+- Si la pregunta es ambigua, pedí una sola aclaración.
+- Si no sabés algo concreto del producto (precios exactos, tickets de soporte),
+  derivá a contacto.html en vez de inventar.
+- Links a páginas internas como references claras (ej: "Mirá pricing.html").
+- Máximo ~120 palabras por respuesta salvo que el user pida detalle.
+`;
+
+app.post('/api/support/ask', express.json({ limit: '32kb' }), async (req, res) => {
+  try {
+    const { question, history } = req.body || {};
+    const q = String(question || '').trim();
+    if (!q) return res.status(400).json({ error: 'question requerido' });
+    if (q.length > 600) return res.status(400).json({ error: 'pregunta demasiado larga (max 600)' });
+
+    if (!HAS_ANY_LLM) {
+      return res.json({
+        answer: 'El servicio de IA no está disponible en este momento. Escribinos desde contacto.html y te respondemos.',
+        suggestions: []
+      });
+    }
+
+    const hist = Array.isArray(history) ? history.slice(-8) : [];
+    const histText = hist
+      .filter(m => m && typeof m.text === 'string' && (m.role === 'user' || m.role === 'assistant'))
+      .map(m => `${m.role === 'user' ? 'Usuario' : 'Asistente'}: ${String(m.text).slice(0, 500)}`)
+      .join('\n');
+
+    const systemPrompt = `Sos BetSafe Assistant, el soporte IA 24/7 de BetSafe.
+Respondé SIEMPRE en español rioplatense (Argentina), tono profesional y cercano.
+Usá el knowledge base para responder. Si el user pregunta algo fuera del scope
+(temas no relacionados a BetSafe / apuestas legales en Argentina), redirigilo
+amablemente al alcance del soporte.
+
+KNOWLEDGE BASE:
+${SUPPORT_KB}
+
+FORMATO DE SALIDA: JSON estricto con esta forma:
+{
+  "answer": "texto de respuesta (máx ~120 palabras, en es-AR, podés usar **negrita** y links a páginas internas como dashboard.html)",
+  "suggestions": ["pregunta sugerida 1", "pregunta sugerida 2", "pregunta sugerida 3"]
+}
+Las "suggestions" son 2-3 follow-ups cortos y útiles relacionados con la respuesta.
+NO incluyas markdown fuera de **bold** y links plain text estilo "dashboard.html".`;
+
+    const userPrompt = `${histText ? `Conversación previa:\n${histText}\n\n` : ''}Nueva pregunta del usuario: ${q}`;
+
+    const result = await preferredJson(systemPrompt, userPrompt, {
+      maxTokens: 600,
+      temperature: 0.4
+    });
+
+    const answer = String(result?.answer || '').trim() || 'No pude generar una respuesta. Probá reformular la pregunta.';
+    const suggestions = Array.isArray(result?.suggestions)
+      ? result.suggestions.filter(s => typeof s === 'string' && s.trim()).slice(0, 4)
+      : [];
+
+    res.json({ answer, suggestions });
+  } catch (e) {
+    log(`[support] error: ${e?.message || e}`);
+    res.status(500).json({
+      answer: 'Tuve un problema procesando tu consulta. Intentá de nuevo en unos segundos.',
+      suggestions: []
+    });
+  }
 });
 
 // Generador IA: misma pipeline pero con knobs (riesgo, ligas, mercados, n combinadas)
