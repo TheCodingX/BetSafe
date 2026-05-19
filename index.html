@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>BetSafe — Análisis inteligente de apuestas deportivas | Argentina legal</title>
+<title>BetSafe</title>
 <meta name="description" content="BetSafe es la plataforma argentina legal para apostadores serios: comparador de cuotas en las 6 casas LOTBA, IA para picks, banca, arbitraje y Mundial 2026. No somos casa de apuestas. +18." />
 <meta name="theme-color" content="#ffffff" />
 <meta name="color-scheme" content="light dark" />
@@ -15,9 +15,9 @@
 <meta name="twitter:card" content="summary_large_image" />
 <link rel="canonical" href="/" />
 <link rel="manifest" href="manifest.webmanifest" />
-<link rel="icon" href="assets/img/icon-192.svg" type="image/svg+xml" />
+<link rel="icon" href="assets/img/betsafe-isotipo.png" type="image/png" />
 <link rel="apple-touch-icon" href="assets/img/icon-192.svg" />
-<link rel="stylesheet" href="assets/css/main.css?v=5.7.0" />
+<link rel="stylesheet" href="assets/css/main.css?v=5.9.7" />
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -106,85 +106,107 @@
     </div>
   </section>
 
-  <!-- ── QUICK ACCESS CARDS — fila premium estilo Stripe/Linear/Vercel ── -->
+  <!-- ── QUICK ACCESS CARDS RICH — diseño nuevo (2026-05-18) con
+       ilustraciones hero grandes + título + desc. Inspirado en Stripe/Linear. -->
   <section class="container quick-access reveal" aria-label="Accesos rápidos">
     <div class="qa-grid">
-      <a href="dashboard.html#aigenerator" class="qa-card">
-        <span class="qa-card__icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/></svg>
-        </span>
+
+      <!-- ① QUANT IA — Imagen oficial -->
+      <a href="dashboard.html#aigenerator" class="qa-card qa-card--rich">
+        <div class="qa-card__visual qa-card__visual--img">
+          <img src="assets/img/card-quant.png" alt="" loading="lazy" decoding="async" />
+        </div>
         <span class="qa-card__body">
           <strong class="qa-card__title">Quant IA</strong>
-          <span class="qa-card__desc">Combinadas inteligentes según tu perfil.</span>
+          <span class="qa-card__desc">Combinadas inteligentes según tu riesgo, armadas por modelos cuantitativos.</span>
+          <span class="qa-card__arrow" aria-hidden="true">Explorar <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg></span>
         </span>
-        <span class="qa-card__arrow" aria-hidden="true">→</span>
       </a>
 
-      <a href="dashboard.html#comparator" class="qa-card">
-        <span class="qa-card__icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><path d="M3 3v18h18M7 14l4-4 4 4 5-7"/></svg>
-        </span>
+      <!-- ② COMPARADOR — Imagen oficial -->
+      <a href="dashboard.html#comparator" class="qa-card qa-card--rich">
+        <div class="qa-card__visual qa-card__visual--img">
+          <img src="assets/img/card-comparator.png" alt="" loading="lazy" decoding="async" />
+        </div>
         <span class="qa-card__body">
           <strong class="qa-card__title">Comparador</strong>
-          <span class="qa-card__desc">Encontrá dónde paga más cada cuota.</span>
+          <span class="qa-card__desc">Encontrá la casa que más paga cada cuota en tiempo real.</span>
+          <span class="qa-card__arrow" aria-hidden="true">Comparar <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg></span>
         </span>
-        <span class="qa-card__arrow" aria-hidden="true">→</span>
       </a>
 
-      <a href="dashboard.html#worldcup" class="qa-card">
-        <span class="qa-card__icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><path d="M6 4h12v3a4 4 0 0 1-4 4h-1v3h2a3 3 0 0 1 3 3v3H6v-3a3 3 0 0 1 3-3h2v-3h-1a4 4 0 0 1-4-4V4z"/></svg>
-        </span>
+      <!-- ③ MUNDIAL 2026 — Imagen oficial -->
+      <a href="dashboard.html#worldcup" class="qa-card qa-card--rich">
+        <div class="qa-card__visual qa-card__visual--img">
+          <img src="assets/img/card-worldcup.png" alt="" loading="lazy" decoding="async" />
+        </div>
         <span class="qa-card__body">
           <strong class="qa-card__title">Mundial 2026</strong>
-          <span class="qa-card__desc">Seguimiento completo del Mundial.</span>
+          <span class="qa-card__desc">Seguimiento completo del Mundial: cuotas, brackets, picks por partido.</span>
+          <span class="qa-card__arrow" aria-hidden="true">Ver hub <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg></span>
         </span>
-        <span class="qa-card__arrow" aria-hidden="true">→</span>
       </a>
 
-      <a href="bonos.html" class="qa-card">
-        <span class="qa-card__icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-        </span>
+      <!-- ④ BONOS — Imagen oficial -->
+      <a href="bonos.html" class="qa-card qa-card--rich">
+        <div class="qa-card__visual qa-card__visual--img">
+          <img src="assets/img/card-bonos.png" alt="" loading="lazy" decoding="async" />
+        </div>
         <span class="qa-card__body">
           <strong class="qa-card__title">Bonos</strong>
-          <span class="qa-card__desc">Las mejores promos para empezar.</span>
+          <span class="qa-card__desc">Las mejores promos activas de las 6 casas argentinas, actualizadas a diario.</span>
+          <span class="qa-card__arrow" aria-hidden="true">Ver bonos <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg></span>
         </span>
-        <span class="qa-card__arrow" aria-hidden="true">→</span>
       </a>
 
-      <a href="dashboard.html#builder" class="qa-card">
-        <span class="qa-card__icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
-        </span>
+      <!-- ⑤ CONSTRUCTOR — Imagen oficial -->
+      <a href="dashboard.html#builder" class="qa-card qa-card--rich">
+        <div class="qa-card__visual qa-card__visual--img">
+          <img src="assets/img/card-builder.png" alt="" loading="lazy" decoding="async" />
+        </div>
         <span class="qa-card__body">
-          <strong class="qa-card__title">Builder</strong>
-          <span class="qa-card__desc">Armá apuestas más seguras.</span>
+          <strong class="qa-card__title">Constructor</strong>
+          <span class="qa-card__desc">Armá tus combinadas con validación matemática de correlación y EV.</span>
+          <span class="qa-card__arrow" aria-hidden="true">Construir <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg></span>
         </span>
-        <span class="qa-card__arrow" aria-hidden="true">→</span>
       </a>
 
-      <a href="dashboard.html#arbitrage" class="qa-card">
-        <span class="qa-card__icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><path d="M7 7h10l-3-3M17 17H7l3 3M3 12h18"/></svg>
-        </span>
+      <!-- ⑥ ARBITRAJE — Imagen oficial -->
+      <a href="dashboard.html#arbitrage" class="qa-card qa-card--rich">
+        <div class="qa-card__visual qa-card__visual--img">
+          <img src="assets/img/card-arbitrage.png" alt="" loading="lazy" decoding="async" />
+        </div>
         <span class="qa-card__body">
           <strong class="qa-card__title">Arbitraje</strong>
-          <span class="qa-card__desc">Detectá diferencias de cuotas.</span>
+          <span class="qa-card__desc">Detectá surebets entre casas — ganancia matemática garantizada.</span>
+          <span class="qa-card__arrow" aria-hidden="true">Ver surebets <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg></span>
         </span>
-        <span class="qa-card__arrow" aria-hidden="true">→</span>
       </a>
 
-      <a href="dashboard.html#calcpro" class="qa-card">
-        <span class="qa-card__icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 7h8M8 11h8M8 15h4"/></svg>
-        </span>
+      <!-- ⑦ CALC PRO — Imagen oficial -->
+      <a href="dashboard.html#calcpro" class="qa-card qa-card--rich">
+        <div class="qa-card__visual qa-card__visual--img">
+          <img src="assets/img/card-calcpro.png" alt="" loading="lazy" decoding="async" />
+        </div>
         <span class="qa-card__body">
           <strong class="qa-card__title">Calc Pro</strong>
-          <span class="qa-card__desc">Calculadoras para apostar mejor.</span>
+          <span class="qa-card__desc">Kelly, EV, CLV, dutch, hedge: las calculadoras profesionales del apostador.</span>
+          <span class="qa-card__arrow" aria-hidden="true">Abrir calc <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg></span>
         </span>
-        <span class="qa-card__arrow" aria-hidden="true">→</span>
       </a>
+
+      <!-- ⑧ COACH IA — Imagen oficial (NUEVO 2026-05-18) -->
+      <a href="dashboard.html#betsafeai" class="qa-card qa-card--rich">
+        <div class="qa-card__visual qa-card__visual--img">
+          <img src="assets/img/card-coachia.png" alt="" loading="lazy" decoding="async" />
+        </div>
+        <span class="qa-card__body">
+          <strong class="qa-card__title">Coach IA</strong>
+          <span class="qa-card__desc">Pedile combinadas en lenguaje natural — la IA arma todo cumpliendo tus condiciones.</span>
+          <span class="qa-card__arrow" aria-hidden="true">Probar Coach <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg></span>
+        </span>
+      </a>
+
     </div>
   </section>
 
@@ -724,20 +746,20 @@
 
 <div data-shell-footer></div>
 
-<script src="assets/js/env.js?v=5.7.0"></script>
-<script src="assets/js/live.js?v=5.7.0"></script>
-<script src="assets/js/data.js?v=5.7.0"></script>
-<script src="assets/js/logos.js?v=5.7.0"></script>
-<script src="assets/js/icons.js?v=5.7.0"></script>
-<script src="assets/js/engine.js?v=5.7.0"></script>
-<script src="assets/js/store.js?v=5.7.0"></script>
-<script src="assets/js/supabase-client.js?v=5.7.0"></script>
-<script src="assets/js/auth.js?v=5.7.0"></script>
-<script src="assets/js/api.js?v=5.7.0"></script>
-<script src="assets/js/math.js?v=5.7.0"></script>
-<script src="assets/js/ui.js?v=5.7.0"></script>
-<script src="assets/js/shell.js?v=5.7.0"></script>
-<script src="assets/js/app.js?v=5.7.0"></script>
+<script src="assets/js/env.js?v=5.9.7"></script>
+<script src="assets/js/live.js?v=5.9.7"></script>
+<script src="assets/js/data.js?v=5.9.7"></script>
+<script src="assets/js/logos.js?v=5.9.7"></script>
+<script src="assets/js/icons.js?v=5.9.7"></script>
+<script src="assets/js/engine.js?v=5.9.7"></script>
+<script src="assets/js/store.js?v=5.9.7"></script>
+<script src="assets/js/supabase-client.js?v=5.9.7"></script>
+<script src="assets/js/auth.js?v=5.9.7"></script>
+<script src="assets/js/api.js?v=5.9.7"></script>
+<script src="assets/js/math.js?v=5.9.7"></script>
+<script src="assets/js/ui.js?v=5.9.7"></script>
+<script src="assets/js/shell.js?v=5.9.7"></script>
+<script src="assets/js/app.js?v=5.9.7"></script>
 <script>
 /* Landing page — local interactions */
 document.addEventListener('DOMContentLoaded', () => {
@@ -815,55 +837,43 @@ document.addEventListener('DOMContentLoaded', () => {
       sbCard.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); sbCard.click(); } });
     }
     if (!card || !window.BSData) return;
-    // ── SELECCIÓN INTELIGENTE DEL PARTIDO MÁS RELEVANTE ────────────────────
-    // El banner rota automáticamente: filtra partidos ya empezados / sin cuotas
-    // y rankea por relevancia (liga + presencia de top teams + frescura).
-    // Antes solo tomaba `.slice(0, 1)` → quedaba pegado al primer partido
-    // aunque ya hubiera arrancado o no fuera el más relevante.
+    // ── SELECCIÓN INTELIGENTE DEL PARTIDO MÁS RELEVANTE ──────────────────────
+    // El banner rota automáticamente: filtra partidos ya terminados / sin cuotas
+    // y rankea por relevancia (liga top + presencia de top teams + en vivo +
+    // cantidad de casas). Antes solo tomaba slice(0,1) → quedaba pegado al
+    // primer partido aunque ya hubiera finalizado o no fuera el más relevante.
     const HERO_LEAGUE_PRIORITY = {
-      // ─ TIER S — competiciones top mundial ─
       'champions league': 100, 'uefa champions league': 100, 'ucl': 100,
       'copa libertadores': 95, 'libertadores': 95,
       'copa mundial': 95, 'world cup': 95, 'mundial': 95,
       'premier league': 90,
-      // ─ TIER A — ligas top europeas ─
       'la liga': 85, 'laliga': 85, 'primera división': 85,
       'serie a': 82, 'bundesliga': 80, 'ligue 1': 78,
       'europa league': 78, 'uefa europa league': 78,
-      // ─ TIER B — fútbol AR + selecciones ─
       'liga profesional': 75, 'liga argentina': 75, 'lpf': 75,
       'copa argentina': 65,
       'eliminatorias': 80, 'amistoso internacional': 60,
       'copa sudamericana': 70, 'sudamericana': 70,
-      // ─ TIER C — otras competiciones relevantes ─
       'brasileirão': 60, 'brasileirao': 60, 'serie a brasil': 60,
       'mls': 55, 'liga mx': 55,
       'nba': 70, 'nfl': 65, 'mlb': 50, 'nhl': 50
     };
     const HERO_TOP_TEAMS = /\b(real madrid|barcelona|atletico madrid|liverpool|arsenal|manchester united|manchester city|chelsea|tottenham|bayern|dortmund|psg|juventus|inter|ac milan|napoli|roma|boca|river|racing|independiente|flamengo|palmeiras|santos|peñarol|nacional|lakers|warriors|celtics|heat|argentina|brasil|francia|alemania|inglaterra|espa[ñn]a)\b/i;
-    function leagueScore(name) {
+    const leagueScore = (name) => {
       const k = String(name || '').toLowerCase();
       for (const [key, score] of Object.entries(HERO_LEAGUE_PRIORITY)) {
         if (k.includes(key)) return score;
       }
       return 20;
-    }
+    };
     const NOW = Date.now();
-    const FIVE_MIN = 5 * 60 * 1000;
     const TWELVE_HRS = 12 * 3600 * 1000;
-    // Ventana "en vivo" de 2.5h — cubre fútbol (90' + medio tiempo + descuento
-    // + extra) sin arrastrar partidos finalizados. Antes era 4h → mostraba
-    // partidos terminados como "En vivo" hasta 4h después del kickoff.
+    // Ventana "en vivo" de 2.5h — cubre fútbol (90' + medio tiempo + descuentos)
+    // sin arrastrar partidos finalizados como activos.
     const LIVE_WINDOW = 2.5 * 3600 * 1000;
-    const all = BSData.liveEvents({})
+    const ranked = BSData.liveEvents({})
       .filter(m => m && m.markets?.h2h && Object.keys(m.markets.h2h).length >= 2)
-      // Excluir partidos cuyo kickoff fue hace más de LIVE_WINDOW → ya terminaron.
-      .filter(m => {
-        if (!Number.isFinite(m.start)) return true;
-        return m.start > NOW - LIVE_WINDOW;
-      })
-      // Evitar partidos súper lejanos en el tiempo (>12h al futuro) salvo que
-      // sea lo único disponible — manejado en el ordenamiento abajo.
+      .filter(m => !Number.isFinite(m.start) || m.start > NOW - LIVE_WINDOW)
       .map(m => {
         const teamsTxt = `${m.home?.name || ''} ${m.away?.name || ''}`;
         const lgScore = leagueScore(m.leagueName);
@@ -872,19 +882,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const isFar = Number.isFinite(m.start) && m.start - NOW > TWELVE_HRS;
         const hasTopTeam = HERO_TOP_TEAMS.test(teamsTxt);
         const bookCount = Object.keys(m.markets.h2h || {}).length;
-        // Score compuesto: liga × 1.0 + top-team × 25 + live × 30 + upcoming × 12
-        //                  + books × 1.2 + (penalización si muy lejano)
-        let score = lgScore
-          + (hasTopTeam ? 25 : 0)
-          + (isLive ? 30 : 0)
-          + (isUpcomingSoon ? 12 : 0)
-          + (isFar ? -20 : 0)
-          + bookCount * 1.2;
+        const score = lgScore + (hasTopTeam ? 25 : 0) + (isLive ? 30 : 0)
+          + (isUpcomingSoon ? 12 : 0) + (isFar ? -20 : 0) + bookCount * 1.2;
         return { m, score, isLive, isUpcomingSoon };
       })
       .sort((a, b) => b.score - a.score);
-    const matches = all.slice(0, 1).map(x => x.m);
-    const heroPick = all[0];
+    const matches = ranked.slice(0, 1).map(x => x.m);
+    const heroPick = ranked[0];
     if (lastUpd) lastUpd.textContent = BSData.liveFreshness();
     if (badge) {
       if (!matches.length) badge.textContent = 'Conectando…';
@@ -919,25 +923,25 @@ document.addEventListener('DOMContentLoaded', () => {
     const hHome = top3('home'), hDraw = top3('draw'), hAway = top3('away');
     const homeName = m.home.name, awayName = m.away.name;
     card.innerHTML = `
-      <div class="row between" style="margin-bottom:10px">
-        <div class="cluster">
-          <span class="team-crest-wrap" data-team-name="${BSUI.esc(homeName)}">${window.BSLogos?.teamCrest(m.home.id, { size: 22, name: m.home.name, sport: m.sport }) || BSIcons.teamLogo(m.home, { size: 22, sport: m.sport })}</span>
+      <div class="cmp-hero-title">
+        <span class="cmp-hero-league">${BSUI.esc(m.leagueName || 'Live')}</span>
+        <div class="cmp-hero-match">
+          ${window.BSLogos?.teamCrest(m.home.id, { size: 32, name: m.home.name, sport: m.sport }) || BSIcons.teamLogo(m.home, { size: 32, sport: m.sport })}
           <strong>${BSUI.esc(homeName)}</strong>
-          <span class="dim">vs</span>
+          <span class="cmp-hero-vs">vs</span>
           <strong>${BSUI.esc(awayName)}</strong>
-          <span class="team-crest-wrap" data-team-name="${BSUI.esc(awayName)}">${window.BSLogos?.teamCrest(m.away.id, { size: 22, name: m.away.name, sport: m.sport }) || BSIcons.teamLogo(m.away, { size: 22, sport: m.sport })}</span>
+          ${window.BSLogos?.teamCrest(m.away.id, { size: 32, name: m.away.name, sport: m.sport }) || BSIcons.teamLogo(m.away, { size: 32, sport: m.sport })}
         </div>
-        <span class="badge badge-brand">${BSUI.esc(m.leagueName || 'Live')}</span>
       </div>
       <div class="cmp3 mt-2" style="${hDraw.length ? '' : 'grid-template-columns:repeat(2,minmax(0,1fr))'}">
-        ${renderCol('Local', '1', hHome)}
+        ${renderCol(homeName, '1', hHome)}
         ${hDraw.length ? renderCol('Empate', 'X', hDraw) : ''}
-        ${renderCol('Visitante', '2', hAway)}
+        ${renderCol(awayName, '2', hAway)}
       </div>
       <div class="cmp-meta-row">
-        <span class="cmp-meta-item"><span class="dim">Casas comparadas:</span><strong>${Object.keys(m.markets.h2h).length}</strong></span>
-        <span class="cmp-meta-item"><span class="dim">Margen libro:</span><strong>${m.overround ? ((m.overround - 1) * 100).toFixed(2) + '%' : '—'}</strong></span>
-        <span class="cmp-meta-item"><span class="dim">Última actualización:</span><strong>${BSData.liveFreshness()}</strong></span>
+        <span class="cmp-meta-item"><span class="dim">Casas:</span><strong>${Object.keys(m.markets.h2h).length}</strong></span>
+        <span class="cmp-meta-item"><span class="dim">Margen:</span><strong>${m.overround ? ((m.overround - 1) * 100).toFixed(2) + '%' : '—'}</strong></span>
+        <span class="cmp-meta-item"><span class="dim">Actualizado:</span><strong>${BSData.liveFreshness()}</strong></span>
       </div>`;
     // Rellenar logos
     card.querySelectorAll('.rank-book[data-book]').forEach(el => {

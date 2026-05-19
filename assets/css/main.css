@@ -812,25 +812,35 @@ body {
 }
 .tilt-glow:hover::before { opacity: 1; }
 
-/* -------- Gradient mesh (hero, feature sections) */
+/* -------- Gradient mesh (hero, feature sections)
+   OPTIMIZADO 2026-05-18: causaba lag SEVERO de scroll en landing.
+   - Size: 60vmax → 45vmax (blur en area chica = mucho más rápido)
+   - Blur: 70px → 40px (blur cost ~ O(radius²))
+   - mix-blend-mode: screen → none (BLEND MODES son cancer para scroll)
+   - contain: layout style paint (browser puede skipear repaints fuera del bound)
+   - will-change: transform (GPU layer separada, no re-paint en main thread)
+   - Animación más larga (40s → menos frames recomputados/segundo) */
 .mesh-bg {
   position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: -1; border-radius: inherit;
+  contain: layout style paint;
 }
 .mesh-bg::before, .mesh-bg::after {
-  content: ''; position: absolute; width: 60vmax; height: 60vmax; border-radius: 50%; filter: blur(70px); opacity: .55; mix-blend-mode: screen;
+  content: ''; position: absolute; width: 45vmax; height: 45vmax; border-radius: 50%;
+  filter: blur(40px); opacity: .45;
   background: radial-gradient(closest-side, color-mix(in srgb, var(--brand) 70%, transparent), transparent 70%);
-  animation: mesh-drift 22s ease-in-out infinite alternate;
+  animation: mesh-drift 40s ease-in-out infinite alternate;
+  will-change: transform;
+  transform: translateZ(0);
 }
 .mesh-bg::after {
   background: radial-gradient(closest-side, color-mix(in srgb, var(--accent, #34d399) 60%, transparent), transparent 70%);
-  animation-duration: 28s; animation-direction: alternate-reverse;
+  animation-duration: 50s; animation-direction: alternate-reverse;
   left: auto; right: -10vmax; top: -10vmax;
 }
-[data-theme=dark] .mesh-bg::before, [data-theme=dark] .mesh-bg::after { opacity: .35; }
+[data-theme=dark] .mesh-bg::before, [data-theme=dark] .mesh-bg::after { opacity: .28; }
 @keyframes mesh-drift {
-  0%   { transform: translate(-15vmax, -10vmax) scale(1) rotate(0deg); }
-  50%  { transform: translate(0, 5vmax) scale(1.15) rotate(20deg); }
-  100% { transform: translate(15vmax, -15vmax) scale(1) rotate(-10deg); }
+  0%   { transform: translate3d(-10vmax, -8vmax, 0) scale(1); }
+  100% { transform: translate3d(10vmax, -12vmax, 0) scale(1.08); }
 }
 
 /* -------- VIP gold particles + hover gradient sweep + animated border */
@@ -953,19 +963,29 @@ body.vip-cursor *, body.vip-cursor *::before, body.vip-cursor *::after { cursor:
 .vip-cursor-ring { width: 32px; height: 32px; border: 1.5px solid #FFE07A; transition: transform .25s ease, width .25s, height .25s; opacity: .85; }
 .vip-cursor-ring.is-active { width: 56px; height: 56px; border-color: #fff; }
 
-/* -------- Hero canvas / orbs */
-.hero-orbs { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 0; }
+/* -------- Hero canvas / orbs
+   OPTIMIZADO 2026-05-18: causaba lag SEVERO de scroll.
+   - Size: 360px → 280px (blur en area chica = rápido)
+   - Blur: 80px → 45px (blur cost ~ O(radius²); 45² es 1.6× más rápido que 80²)
+   - GPU layer separada (translateZ(0) + will-change)
+   - Pausa cuando hero-orbs no está visible (JS: bs-paused class)
+   - contain: layout style paint */
+.hero-orbs { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 0; contain: layout style paint; }
 .hero-orbs span {
-  position: absolute; width: 360px; height: 360px; border-radius: 50%; filter: blur(80px); opacity: .5;
+  position: absolute; width: 280px; height: 280px; border-radius: 50%;
+  filter: blur(45px); opacity: .5;
   background: radial-gradient(closest-side, var(--brand), transparent 70%);
-  animation: orb-drift 14s ease-in-out infinite;
+  animation: orb-drift 24s ease-in-out infinite;
+  will-change: transform;
+  transform: translateZ(0);
 }
-.hero-orbs span:nth-child(2) { background: radial-gradient(closest-side, #3b6cb8, transparent 70%); animation-duration: 19s; opacity: .25; }
-.hero-orbs span:nth-child(3) { background: radial-gradient(closest-side, #f5b637, transparent 70%); animation-duration: 23s; animation-direction: reverse; opacity: .25; }
+.hero-orbs.bs-paused span { animation-play-state: paused !important; }
+.hero-orbs span:nth-child(2) { background: radial-gradient(closest-side, #3b6cb8, transparent 70%); animation-duration: 32s; opacity: .25; }
+.hero-orbs span:nth-child(3) { background: radial-gradient(closest-side, #f5b637, transparent 70%); animation-duration: 38s; animation-direction: reverse; opacity: .25; }
 @keyframes orb-drift {
-  0%   { transform: translate(-15%, -10%) scale(1); }
-  50%  { transform: translate(20%, 5%) scale(1.15); }
-  100% { transform: translate(-5%, 18%) scale(.95); }
+  0%   { transform: translate3d(-15%, -10%, 0) scale(1); }
+  50%  { transform: translate3d(20%, 5%, 0) scale(1.10); }
+  100% { transform: translate3d(-5%, 18%, 0) scale(.95); }
 }
 
 /* -------- Spotlight cursor effect on hero */
@@ -2332,13 +2352,61 @@ body > .aurora-waves,
 }
 
 .cmp-meta-row {
-  display: flex; flex-wrap: wrap; gap: 12px;
-  padding-top: 10px; margin-top: 10px;
+  display: flex; flex-wrap: wrap; gap: 14px;
+  justify-content: center;
+  padding-top: 10px; margin-top: 12px;
   border-top: 1px dashed var(--border);
 }
 .cmp-meta-item {
   display: inline-flex; align-items: center; gap: 4px;
-  font-size: .76rem;
+  font-size: .72rem;
+}
+
+/* Hero comparator title — centered, minimal */
+.cmp-hero-title {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 12px;
+  text-align: center;
+}
+.cmp-hero-league {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  line-height: 1.3;
+}
+.cmp-hero-match {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 13.5px;
+  min-width: 0;
+  max-width: 100%;
+}
+.cmp-hero-match strong {
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 110px;
+}
+.cmp-hero-vs {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: lowercase;
+  letter-spacing: .04em;
 }
 
 /* --- Particle canvas background --- */
@@ -6014,13 +6082,13 @@ body {
 .cmp3 {
   display: grid;
   grid-template-columns: repeat(3, minmax(0,1fr));
-  gap: 14px;
+  gap: 10px;
 }
 .cmp3-col {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
-  padding: 12px;
+  padding: 14px 12px 12px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -6032,52 +6100,56 @@ body {
 .cmp3-col:hover { border-color: var(--brand-300); box-shadow: var(--shadow-md); }
 .cmp3-col-head {
   display: flex;
-  align-items: center;                /* centrado vertical en el bloque fijo */
-  justify-content: space-between;
-  padding-bottom: 8px;
+  align-items: center;
+  justify-content: center;            /* CENTRADO — label + outcome juntos al centro */
+  padding-bottom: 10px;
   border-bottom: 1px dashed var(--border);
-  height: 38px;                       /* FIJO — uniforme entre columnas */
+  height: 36px;
   flex-shrink: 0;
-  gap: 6px;
+  gap: 8px;
   overflow: hidden;
 }
 .cmp3-col-head .label {
-  font-size: 10.5px;
+  font-size: 10px;
   font-weight: 700;
-  letter-spacing: .04em;
+  letter-spacing: .08em;
   text-transform: uppercase;
   color: var(--text-tertiary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   line-height: 1.2;
-  flex: 1 1 auto;
+  flex: 0 1 auto;                     /* shrink only — no fill to edges */
   min-width: 0;
+  text-align: center;
 }
 .cmp3-col-head .outcome {
   font-weight: 800;
-  font-size: 14px;
-  color: var(--text-primary);
-  letter-spacing: -.005em;
+  font-size: 10.5px;
+  color: var(--text-secondary);
+  letter-spacing: .04em;
   flex-shrink: 0;
   line-height: 1;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
 }
 .cmp3-row {
   display: grid;
-  /* logo (28px) | nombre flexible (overflow ellipsis) | cuota (auto — toma exactamente lo que necesita) */
-  grid-template-columns: 28px minmax(0, 1fr) auto;
-  gap: 8px;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  gap: 10px;
   align-items: center;
-  padding: 0 12px;
+  padding: 0 18px 0 14px;             /* asimétrico: 18px right para despegar cuota del borde */
   border-radius: 10px;
   background: var(--surface-2);
   border: 1px solid transparent;
   transition: background var(--d-fast), border-color var(--d-fast), transform var(--d-fast);
   position: relative;
   min-width: 0;
-  height: 44px;                       /* FIJO — uniforme entre cells de todas las columnas */
+  height: 42px;
   flex-shrink: 0;
-  overflow: visible;                  /* pill "MEJOR" usa top:-8px y debe ser visible fuera */
+  overflow: visible;                  /* pill "MEJOR" usa top:-7px y debe ser visible fuera */
 }
 .cmp3-row .price {
   text-align: right;
@@ -6106,8 +6178,8 @@ body {
 .cmp3-col > * { min-width: 0; }
 /* Rank ahora es una caja con el LOGO de la casa (sin números 1/2/3) */
 .cmp3-row .rank.rank-book {
-  width: 28px; height: 28px;
-  border-radius: 7px;
+  width: 24px; height: 24px;
+  border-radius: 6px;
   background: var(--surface);
   border: 1px solid var(--border);
   display: inline-flex;
@@ -6139,28 +6211,32 @@ body {
 }
 .cmp3-row .book {
   font-weight: 600;
-  font-size: 13px;
+  font-size: 12.5px;
   color: var(--text-primary);
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  letter-spacing: -.005em;
 }
 .cmp3-row .price {
   font-family: var(--font-mono);
   font-weight: 800;
-  font-size: 15px;
+  font-size: 14px;
   color: var(--text-primary);
   letter-spacing: -.02em;
   font-feature-settings: 'tnum';
   white-space: nowrap;
   flex-shrink: 0;
-  padding-left: 4px;
+  padding-left: 10px;
+  padding-right: 4px;                 /* la cuota queda visualmente centrada en su slot */
+  min-width: 48px;                    /* slot fijo más amplio: la cuota respira */
+  text-align: center;                 /* CENTRADA en su slot (no pegada al borde) */
 }
 .cmp3-row.is-best {
-  background: linear-gradient(180deg, rgba(212,160,23,0.08), rgba(212,160,23,0.04));
-  border: 1px solid rgba(212,160,23,0.45);
-  box-shadow: 0 4px 14px rgba(212,160,23,.10);
+  background: linear-gradient(180deg, rgba(212,160,23,0.07), rgba(212,160,23,0.03));
+  border: 1px solid rgba(212,160,23,0.38);
+  box-shadow: 0 2px 10px rgba(212,160,23,.08);
 }
 .cmp3-row.is-best .rank {
   background: linear-gradient(180deg, var(--gold-300), var(--gold-500));
@@ -6174,479 +6250,21 @@ body {
 .cmp3-row.is-best::after {
   content: 'Mejor';
   position: absolute;
-  top: -8px;
+  top: -6px;
   right: 8px;
-  font-size: 9px;
-  letter-spacing: .12em;
+  font-size: 7.5px;
+  letter-spacing: .14em;
   font-weight: 800;
   text-transform: uppercase;
   background: linear-gradient(180deg, var(--gold-300), var(--gold-500));
   color: #1a1208;
-  padding: 2px 8px;
+  padding: 1.5px 6px;
   border-radius: 999px;
-  box-shadow: 0 2px 6px rgba(212,160,23,.30);
+  box-shadow: 0 2px 5px rgba(212,160,23,.25);
+  line-height: 1;
 }
 @media (max-width: 720px) {
   .cmp3 { grid-template-columns: 1fr; }
-}
-
-/* ════════════════════════════════════════════════════════════════════════
-   HERO COMPARADOR — rediseño premium v2 (2026-05-19)
-   Spec del user: "fintech deportiva" tipo Stripe/Linear/Vercel/Apple widgets.
-   - El banner permanece DARK NAVY en ambos modos (light y dark) — siempre.
-   - Glassmorphism MUY leve, bordes refinados, spacing premium.
-   - Cuotas como "datos financieros premium": columna de precio FIJA y
-     right-aligned con buffer para que ningún número toque el borde.
-   - Logos de equipos con tile adaptativo + glow + outline → cualquier escudo
-     (navy, negro, dorado oscuro) queda perfectamente legible.
-   - Columnas con descriptores uniformes (Local / Empate / Visitante) en vez
-     de nombres de equipo truncados → simetría perfecta entre columnas.
-   ════════════════════════════════════════════════════════════════════════ */
-
-/* DARK NAVY LOCK — el banner SIEMPRE es navy, sin importar el theme.
-   Selectores apilados (incluyendo :root y body) para vencer cualquier
-   override de tema que pretenda pintarlo de blanco en dark mode.
-   Si el usuario activa dark mode, el resto de la UI se oscurece, pero
-   ESTE banner se mantiene navy premium para preservar la estética hero. */
-.hero-visual .ticker-card,
-[data-theme=dark] .hero-visual .ticker-card,
-[data-theme=light] .hero-visual .ticker-card,
-html[data-theme=dark] .hero-visual .ticker-card,
-html[data-theme=light] .hero-visual .ticker-card,
-:root[data-theme=dark] body .hero-visual .ticker-card,
-:root[data-theme=light] body .hero-visual .ticker-card {
-  background:
-    radial-gradient(140% 100% at 50% -10%, rgba(56,108,210,0.20), transparent 55%),
-    radial-gradient(80% 60% at 50% 100%, rgba(212,160,23,0.05), transparent 70%),
-    linear-gradient(180deg, #0c142d 0%, #070b1d 100%) !important;
-  border: 1px solid rgba(255,255,255,0.07) !important;
-  border-radius: 20px !important;
-  padding: 24px 26px 20px !important;
-  box-shadow:
-    0 28px 70px -32px rgba(0,0,0,.65),
-    0 2px 0 rgba(255,255,255,.06) inset,
-    0 0 0 1px rgba(255,255,255,.02) inset !important;
-  color: #e9edfa !important;
-  position: relative;
-  overflow: hidden;
-}
-/* Glassmorphism muy sutil: highlight superior + grid pattern fintech */
-.hero-visual .ticker-card::before {
-  content: '';
-  position: absolute; inset: 0;
-  background:
-    radial-gradient(55% 40% at 50% 0%, rgba(212,160,23,.07), transparent 70%),
-    linear-gradient(180deg, rgba(255,255,255,.04), transparent 30%);
-  pointer-events: none;
-}
-.hero-visual .ticker-card::after {
-  content: '';
-  position: absolute; inset: 0;
-  background-image:
-    linear-gradient(rgba(255,255,255,.02) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255,255,255,.02) 1px, transparent 1px);
-  background-size: 28px 28px;
-  background-position: -1px -1px;
-  opacity: .35;
-  mask-image: radial-gradient(60% 50% at 50% 0%, #000, transparent 75%);
-  -webkit-mask-image: radial-gradient(60% 50% at 50% 0%, #000, transparent 75%);
-  pointer-events: none;
-}
-
-/* Textos dentro del hero card — paleta clara forzada en AMBOS themes */
-.hero-visual .ticker-card,
-[data-theme=dark] .hero-visual .ticker-card,
-[data-theme=light] .hero-visual .ticker-card,
-html[data-theme=dark] .hero-visual .ticker-card,
-html[data-theme=light] .hero-visual .ticker-card {
-  --hero-fg:        #f3f6ff;
-  --hero-fg-dim:    rgba(231,236,250,.62);
-  --hero-fg-muted:  rgba(231,236,250,.42);
-  --hero-line:      rgba(255,255,255,.07);
-  --hero-line-2:    rgba(255,255,255,.12);
-}
-.hero-visual .ticker-card strong { color: var(--hero-fg); }
-.hero-visual .ticker-card .dim,
-.hero-visual .ticker-card .muted { color: var(--hero-fg-dim); }
-
-/* Header superior (dot live + título + badge live) */
-.hero-visual .ticker-card .between > .cluster > strong {
-  font-size: .98rem;
-  letter-spacing: -.012em;
-  font-weight: 700;
-}
-.hero-visual .ticker-card .badge-brand {
-  background: linear-gradient(180deg, var(--gold-300, #f0d27a), var(--gold-500, #d4a017));
-  color: #14100a;
-  border: none;
-  font-weight: 800;
-  letter-spacing: .06em;
-  padding: 4px 11px;
-  font-size: .66rem;
-  text-transform: uppercase;
-  border-radius: 999px;
-  box-shadow:
-    0 4px 14px -6px rgba(212,160,23,.55),
-    0 0 0 1px rgba(212,160,23,.20) inset;
-}
-
-/* Liga (pill arriba del partido) */
-.hero-visual .ticker-card .cmp-demo > .row .badge {
-  background: rgba(212,160,23,.10);
-  color: var(--gold-300, #f0d27a);
-  border: 1px solid rgba(212,160,23,.24);
-  font-weight: 700;
-  letter-spacing: .10em;
-  font-size: .62rem;
-  padding: 3px 10px;
-  text-transform: uppercase;
-  border-radius: 999px;
-}
-
-/* Card interna (.cmp-demo) — transparente para heredar el fondo del ticker-card.
-   FUERZA en ambos themes para que ningún override de dark mode la pinte de
-   blanco/gris. Bloquea el override de [data-theme=dark] .cmp-demo. */
-.hero-visual .ticker-card .cmp-demo,
-.hero-visual .ticker-card .card.card-tinted,
-[data-theme=dark] .hero-visual .ticker-card .cmp-demo,
-[data-theme=dark] .hero-visual .ticker-card .card.card-tinted,
-[data-theme=light] .hero-visual .ticker-card .cmp-demo,
-[data-theme=light] .hero-visual .ticker-card .card.card-tinted,
-html[data-theme=dark] .hero-visual .ticker-card .cmp-demo,
-html[data-theme=dark] .hero-visual .ticker-card .card.card-tinted,
-html[data-theme=light] .hero-visual .ticker-card .cmp-demo,
-html[data-theme=light] .hero-visual .ticker-card .card.card-tinted,
-:root[data-theme=dark] .hero-visual .ticker-card .cmp-demo,
-:root[data-theme=light] .hero-visual .ticker-card .cmp-demo {
-  background: transparent !important;
-  border: none !important;
-  box-shadow: none !important;
-  padding: 0 !important;
-  color: inherit !important;
-}
-
-/* ── Bloque header del partido (escudos + nombres centrados) ──────────── */
-.hero-visual .ticker-card .cmp-demo .row.between {
-  margin-bottom: 18px !important;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-}
-.hero-visual .ticker-card .cmp-demo .row.between > .cluster {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 14px;
-  flex-wrap: nowrap;
-  font-size: 1.06rem;
-  letter-spacing: -.018em;
-}
-.hero-visual .ticker-card .cmp-demo .row.between > .cluster > strong {
-  color: var(--hero-fg);
-  font-weight: 700;
-  font-family: var(--font-display, system-ui), 'SF Pro Display', -apple-system, sans-serif;
-}
-.hero-visual .ticker-card .cmp-demo .row.between > .cluster > .dim {
-  color: var(--hero-fg-muted);
-  font-size: .72rem;
-  font-weight: 500;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  opacity: .7;
-}
-
-/* ── ESCUDOS de equipos: tile adaptativo universal ────────────────────────
-   Wrapper `<span class="team-crest-wrap">` envuelve cualquier escudo del
-   banner. Sirve para CUALQUIER paleta:
-   ─ escudos OSCUROS (Tottenham crest blanco, Newcastle blanco/negro,
-     Juventus B/N) → el tile claro garantiza contraste contra el fondo navy.
-   ─ escudos CLAROS (logos blancos en SVG) → el doble ring (gold + dark)
-     define el borde del logo aunque su fondo coincida con el tile.
-   ─ escudos COLORIDOS (Real Madrid, Boca) → quedan nítidos sin distorsión.
-   Tile más grande (34px) + doble anillo de contraste + glow dorado hover. */
-.hero-visual .ticker-card .team-crest-wrap {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  background:
-    radial-gradient(closest-side, #ffffff 0%, #eef1f8 100%);
-  /* Doble anillo: gold sutil + sombra externa oscura → escudos blancos
-     (Tottenham) ahora tienen un borde definido y "pop" visible. */
-  box-shadow:
-    0 0 0 1px rgba(212,160,23,.32),
-    0 0 0 2px rgba(8,12,28,.55),
-    0 6px 14px rgba(0,0,0,.42);
-  padding: 3px;
-  flex-shrink: 0;
-  transition: transform .25s ease, box-shadow .25s ease;
-  position: relative;
-}
-.hero-visual .ticker-card .team-crest-wrap::after {
-  /* glow dorado SUTIL — sólo se acentúa en hover */
-  content: '';
-  position: absolute; inset: -5px;
-  border-radius: 50%;
-  background: radial-gradient(closest-side, rgba(212,160,23,.22), transparent 70%);
-  opacity: 0;
-  transition: opacity .25s ease;
-  pointer-events: none;
-  z-index: -1;
-}
-.hero-visual .ticker-card .team-crest-wrap:hover {
-  transform: scale(1.08);
-  box-shadow:
-    0 0 0 1px rgba(212,160,23,.55),
-    0 0 0 2px rgba(8,12,28,.62),
-    0 8px 18px rgba(0,0,0,.5);
-}
-.hero-visual .ticker-card .team-crest-wrap:hover::after { opacity: 1; }
-.hero-visual .ticker-card .team-crest-wrap img,
-.hero-visual .ticker-card .team-crest-wrap svg,
-.hero-visual .ticker-card .team-crest-wrap .logo-img,
-.hero-visual .ticker-card .team-crest-wrap span[data-team-resolve] {
-  width: 100% !important;
-  height: 100% !important;
-  object-fit: contain !important;
-  background: transparent !important;
-  box-shadow: none !important;
-  padding: 0 !important;
-  border-radius: 50%;
-  display: block;
-}
-/* Compat: si el crest se renderiza fuera del wrapper (placeholder antes
-   de hidratarse), aplicamos el mismo tile directo al img/svg. */
-.hero-visual .ticker-card .cmp-demo .row.between > .cluster > img[alt],
-.hero-visual .ticker-card .cmp-demo .row.between > .cluster > svg.team-crest,
-.hero-visual .ticker-card .cmp-demo .row.between > .cluster > .logo-img {
-  background: #ffffff !important;
-  border-radius: 50% !important;
-  padding: 3px;
-  width: 34px !important;
-  height: 34px !important;
-  box-shadow:
-    0 0 0 1px rgba(212,160,23,.32),
-    0 0 0 2px rgba(8,12,28,.55),
-    0 6px 14px rgba(0,0,0,.42);
-}
-
-/* ── COLUMNAS de cuotas (cmp3-col) — glassmorphism premium ──────────── */
-.hero-visual .ticker-card .cmp3 {
-  gap: 12px;
-}
-.hero-visual .ticker-card .cmp3-col {
-  background:
-    linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.012)) !important;
-  border: 1px solid rgba(255,255,255,.065) !important;
-  border-radius: 14px !important;
-  padding: 12px 12px 10px !important;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  box-shadow:
-    0 4px 18px -10px rgba(0,0,0,.45),
-    0 0 0 1px rgba(255,255,255,.02) inset;
-  transition: border-color .25s ease, transform .25s ease, box-shadow .25s ease;
-  gap: 6px;
-}
-.hero-visual .ticker-card .cmp3-col:hover {
-  border-color: rgba(212,160,23,.32) !important;
-  box-shadow:
-    0 8px 26px -10px rgba(0,0,0,.55),
-    0 0 0 1px rgba(212,160,23,.10) inset;
-}
-.hero-visual .ticker-card .cmp3-col-head {
-  border-bottom: 1px solid var(--hero-line) !important;
-  height: 32px !important;
-  padding-bottom: 8px !important;
-  margin-bottom: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.hero-visual .ticker-card .cmp3-col-head .label {
-  color: var(--hero-fg-dim) !important;
-  font-size: 10px !important;
-  letter-spacing: .16em !important;
-  font-weight: 700 !important;
-  text-transform: uppercase;
-}
-.hero-visual .ticker-card .cmp3-col-head .outcome {
-  background: rgba(212,160,23,.12);
-  color: var(--gold-300, #f0d27a) !important;
-  border: 1px solid rgba(212,160,23,.30);
-  border-radius: 6px;
-  padding: 1px 8px;
-  font-size: 11px !important;
-  font-weight: 800;
-  line-height: 1.5;
-  min-width: 22px;
-  text-align: center;
-  letter-spacing: 0;
-}
-
-/* ── ROWS de cada casa ──────────────────────────────────────────────────
-   GRID FIJO: logo (26px) | spacer (1fr) | cuota (50px right-aligned).
-   La cuota se separa del borde derecho con padding-right doble (row + price)
-   → 16px + 6px = 22px de aire visual. Ningún número toca el borde y todas
-   quedan alineadas verticalmente (mismo ancho de columna). */
-.hero-visual .ticker-card .cmp3-row {
-  background: rgba(255,255,255,.025) !important;
-  border: 1px solid rgba(255,255,255,.05) !important;
-  border-radius: 10px !important;
-  padding: 0 16px 0 8px !important;       /* más aire derecho — cuotas no tocan el borde */
-  height: 44px !important;
-  transition: background .2s ease, border-color .2s ease, transform .2s ease;
-  grid-template-columns: 26px minmax(0,1fr) 50px !important;
-  column-gap: 10px !important;
-}
-.hero-visual .ticker-card .cmp3-row:hover {
-  background: rgba(255,255,255,.05) !important;
-  border-color: var(--hero-line-2) !important;
-}
-.hero-visual .ticker-card .cmp3-row .book { display: none; }   /* hero solo logo + cuota */
-
-.hero-visual .ticker-card .cmp3-row .price {
-  color: var(--hero-fg) !important;
-  font-variant-numeric: tabular-nums;
-  font-feature-settings: 'tnum';
-  font-weight: 700 !important;
-  font-size: .96rem !important;
-  letter-spacing: -.012em;
-  padding-right: 6px !important;          /* sumado al row padding = 22px del borde */
-  padding-left: 0 !important;
-  text-align: right;
-  line-height: 1;
-  font-family: var(--font-sans, system-ui), 'SF Pro Display', -apple-system, sans-serif;
-}
-/* Mejor cuota — fila destacada con paleta dorada elegante y sombra contenida */
-.hero-visual .ticker-card .cmp3-row.is-best {
-  background: linear-gradient(180deg, rgba(212,160,23,.13), rgba(212,160,23,.03)) !important;
-  border: 1px solid rgba(212,160,23,.42) !important;
-  box-shadow:
-    0 4px 14px -8px rgba(212,160,23,.38),
-    0 0 0 1px rgba(212,160,23,.08) inset;
-}
-.hero-visual .ticker-card .cmp3-row.is-best .price {
-  color: var(--gold-300, #f0d27a) !important;
-  font-weight: 800 !important;
-}
-/* Badge "MEJOR" — minimalista, sin glow excesivo, tipografía fintech */
-.hero-visual .ticker-card .cmp3-row.is-best::after {
-  content: 'MEJOR';
-  background: linear-gradient(180deg, var(--gold-300, #f0d27a), var(--gold-500, #d4a017));
-  color: #14100a;
-  font-size: 8px;
-  padding: 2px 6px;
-  letter-spacing: .18em;
-  font-weight: 800;
-  top: -6px;
-  right: 10px;
-  border-radius: 4px;
-  text-transform: uppercase;
-  position: absolute;
-  box-shadow: 0 2px 6px -1px rgba(0,0,0,.4);
-}
-
-/* Logo tile de las casas (rank-book) sobre fondo oscuro */
-.hero-visual .ticker-card .cmp3-row .rank.rank-book {
-  background: rgba(255,255,255,.94) !important;
-  border: 1px solid rgba(255,255,255,.20) !important;
-  width: 26px !important;
-  height: 26px !important;
-  border-radius: 7px !important;
-  padding: 3px !important;
-  box-shadow: 0 2px 6px rgba(0,0,0,.28);
-}
-.hero-visual .ticker-card .cmp3-row.is-best .rank.rank-book {
-  border-color: rgba(212,160,23,.55) !important;
-  box-shadow:
-    0 3px 10px -2px rgba(212,160,23,.45),
-    0 0 0 1px rgba(212,160,23,.25) inset;
-}
-
-/* ── META row (Casas / Margen / Actualizado) ──────────────────────────────
-   Estilo "ticker financiero" minimalista — divisores verticales sutiles
-   en lugar de simples gaps. Look fintech tipo Bloomberg/Stripe metrics. */
-.hero-visual .ticker-card .cmp-meta-row {
-  border-top: 1px solid var(--hero-line) !important;
-  margin-top: 18px;
-  padding-top: 14px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 0;
-  flex-wrap: wrap;
-  font-size: .70rem;
-}
-.hero-visual .ticker-card .cmp-meta-row .cmp-meta-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 14px;
-  border-right: 1px solid var(--hero-line);
-  line-height: 1.15;
-}
-.hero-visual .ticker-card .cmp-meta-row .cmp-meta-item:last-child {
-  border-right: none;
-}
-.hero-visual .ticker-card .cmp-meta-row .cmp-meta-item .dim {
-  color: var(--hero-fg-muted);
-  letter-spacing: .04em;
-  text-transform: uppercase;
-  font-size: .60rem;
-  font-weight: 500;
-}
-.hero-visual .ticker-card .cmp-meta-row .cmp-meta-item strong {
-  color: var(--hero-fg);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -.005em;
-  font-weight: 700;
-  font-size: .76rem;
-}
-@media (max-width: 640px) {
-  .hero-visual .ticker-card .cmp-meta-row .cmp-meta-item {
-    padding: 4px 10px;
-    border-right: none;
-  }
-}
-
-/* Dot live (verde pulsante) */
-.hero-visual .ticker-card .dot.dot-live.dot-success {
-  background: #22c55e;
-  box-shadow: 0 0 0 0 rgba(34,197,94,.6);
-  animation: bs-hero-pulse 1.8s ease-out infinite;
-}
-@keyframes bs-hero-pulse {
-  0%   { box-shadow: 0 0 0 0   rgba(34,197,94,.55); }
-  70%  { box-shadow: 0 0 0 8px rgba(34,197,94,0);   }
-  100% { box-shadow: 0 0 0 0   rgba(34,197,94,0);   }
-}
-
-/* Animación de entrada — slide-up sutil cuando aparece el primer partido */
-.hero-visual .ticker-card .cmp-demo {
-  animation: bs-hero-fade-in .5s ease-out;
-}
-@keyframes bs-hero-fade-in {
-  from { opacity: 0; transform: translateY(4px); }
-  to   { opacity: 1; transform: translateY(0);   }
-}
-
-/* Mobile: ajustes de tamaño */
-@media (max-width: 640px) {
-  .hero-visual .ticker-card { padding: 18px 16px 14px !important; border-radius: 16px !important; }
-  .hero-visual .ticker-card .cmp3 { gap: 8px; }
-  .hero-visual .ticker-card .cmp3-col { padding: 10px 8px 8px !important; }
-  .hero-visual .ticker-card .cmp3-row {
-    height: 40px !important;
-    grid-template-columns: 24px minmax(0,1fr) 44px !important;
-    padding: 0 12px 0 6px !important;       /* mobile: 12px + 5px = 17px del borde */
-    column-gap: 8px !important;
-  }
-  .hero-visual .ticker-card .cmp3-row .rank.rank-book { width: 24px !important; height: 24px !important; }
-  .hero-visual .ticker-card .cmp3-row .price { font-size: .90rem !important; padding-right: 5px !important; }
 }
 
 /* ============================================================================
@@ -11700,9 +11318,131 @@ html.reduce-motion *::after {
 }
 .qa-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
 }
+/* ═══════════════════════════════════════════════════════════════════════════
+   RICH CARDS v2 (2026-05-18) — diseño premium estilo Linear/Vercel/Stripe
+   Mockups REALES de UI dentro de cada card, no ilustraciones cartoon.
+   Backgrounds dark sutiles con grid overlay + glow ambient.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.qa-card.qa-card--rich {
+  flex-direction: column;
+  align-items: stretch;
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+  min-height: 280px;
+  background: #ffffff;
+  border: 1px solid #e8eaf0;
+  border-radius: 16px;
+  box-shadow: 0 1px 3px rgba(15,23,42,0.04), 0 1px 2px rgba(15,23,42,0.03);
+  transition: transform .3s cubic-bezier(.2,.7,.2,1),
+              box-shadow .3s cubic-bezier(.2,.7,.2,1),
+              border-color .3s;
+  /* PERF: aislar layout/paint de la card — no afecta vecinas durante hover */
+  contain: layout paint;
+}
+.qa-card.qa-card--rich:hover {
+  transform: translateY(-4px);
+  border-color: #d4a017;
+  box-shadow: 0 14px 32px -10px rgba(212,160,23,0.18),
+              0 4px 8px -2px rgba(15,23,42,0.06);
+}
+[data-theme="dark"] .qa-card.qa-card--rich {
+  background: #0e1322;
+  border-color: #1f2738;
+}
+[data-theme="dark"] .qa-card.qa-card--rich:hover {
+  border-color: #d4a017;
+  box-shadow: 0 14px 32px -10px rgba(212,160,23,0.28);
+}
+
+.qa-card__visual {
+  height: 160px;
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(212,160,23,0.06), transparent 60%),
+    linear-gradient(180deg, #f9fafc 0%, #f3f5f8 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-bottom: 1px solid #eef0f5;
+  position: relative;
+  overflow: hidden;
+}
+.qa-card__visual::before {
+  /* Sutil grid pattern de fondo */
+  content: '';
+  position: absolute; inset: 0;
+  background-image:
+    linear-gradient(rgba(15,23,42,0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(15,23,42,0.025) 1px, transparent 1px);
+  background-size: 24px 24px;
+  pointer-events: none;
+  mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
+}
+.qa-card__visual svg { max-width: 90%; max-height: 130px; position: relative; z-index: 1; }
+/* qa-card__visual--img: cuando el visual es una imagen real (PNG/JPG) que
+   llena toda el área. Removemos el grid pattern y el padding. */
+.qa-card__visual.qa-card__visual--img { background: #f3f5f8; }
+.qa-card__visual.qa-card__visual--img::before { display: none; }
+.qa-card__visual.qa-card__visual--img img {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  object-position: center;
+  display: block;
+  position: relative;
+  z-index: 1;
+}
+[data-theme="dark"] .qa-card__visual.qa-card__visual--img { background: #0d1220; }
+[data-theme="dark"] .qa-card__visual {
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(212,160,23,0.10), transparent 60%),
+    linear-gradient(180deg, #131929 0%, #0d1220 100%);
+  border-bottom-color: #1a2236;
+}
+[data-theme="dark"] .qa-card__visual::before {
+  background-image:
+    linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+}
+
+.qa-card--rich .qa-card__body {
+  padding: 20px 22px 22px;
+  gap: 8px;
+  flex-direction: column;
+  flex: 1;
+}
+.qa-card--rich .qa-card__title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: #0f172a;
+  margin: 0;
+}
+[data-theme="dark"] .qa-card--rich .qa-card__title { color: #f1f5f9; }
+.qa-card--rich .qa-card__desc {
+  font-size: 0.86rem;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  line-height: 1.5;
+  color: #64748b;
+  margin: 0;
+}
+[data-theme="dark"] .qa-card--rich .qa-card__desc { color: #94a3b8; }
+.qa-card--rich .qa-card__arrow {
+  align-self: flex-start;
+  margin-top: auto;
+  padding-top: 12px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #d4a017;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: gap .25s;
+}
+.qa-card--rich:hover .qa-card__arrow { gap: 10px; }
 .qa-card {
   display: flex;
   align-items: center;
@@ -13054,4 +12794,382 @@ html.reduce-motion *::after {
 @media (max-width: 560px) {
   .ai-age-banner { flex-direction: column; align-items: stretch; }
   .ai-age-banner button { width: 100%; }
+}
+
+/* ============================================================================
+   HERO COMPARATOR BANNER — DARK NAVY LOCK + GOLD ACCENTS (2026-05-19)
+   - Light mode → banner fondo NAVY OSCURO + acentos dorados
+   - Dark  mode → banner fondo NAVY OSCURO (NO se invierte a blanco)
+   El banner se mantiene SIEMPRE navy premium en ambos modos. Estética
+   "fintech deportiva" — Stripe / Linear / Vercel / Apple widgets.
+   ============================================================================ */
+
+/* ─── BANNER NAVY (light & dark) — fondo + bordes dorados ─── */
+.hero-visual .ticker-card,
+[data-theme=dark] .hero-visual .ticker-card,
+[data-theme=light] .hero-visual .ticker-card,
+html[data-theme=dark] .hero-visual .ticker-card,
+html[data-theme=light] .hero-visual .ticker-card,
+:root[data-theme=dark] body .hero-visual .ticker-card,
+:root[data-theme=light] body .hero-visual .ticker-card {
+  background:
+    radial-gradient(ellipse 240px 180px at 90% 0%, rgba(212,160,23,.18), transparent 70%),
+    radial-gradient(ellipse 200px 200px at 0% 100%, rgba(56,122,230,.10), transparent 70%),
+    linear-gradient(135deg, #0d1b3a 0%, #08122a 100%) !important;
+  border: 1px solid color-mix(in srgb, var(--gold-500) 42%, transparent) !important;
+  box-shadow:
+    0 0 0 1px rgba(212,160,23,.08),
+    0 22px 56px -16px rgba(8,18,42,.65),
+    0 6px 16px -6px rgba(212,160,23,.18) !important;
+  position: relative;
+  overflow: hidden;
+  border-radius: 20px !important;
+  padding: 24px 26px 20px !important;
+}
+.hero-visual .ticker-card > * { position: relative; z-index: 1; }
+
+/* Glassmorphism MUY sutil: highlight superior + grid pattern fintech */
+.hero-visual .ticker-card::before {
+  content: '';
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(55% 40% at 50% 0%, rgba(212,160,23,.06), transparent 70%),
+    linear-gradient(180deg, rgba(255,255,255,.035), transparent 30%);
+  pointer-events: none;
+  z-index: 0;
+}
+.hero-visual .ticker-card::after {
+  content: '';
+  position: absolute; inset: 0;
+  background-image:
+    linear-gradient(rgba(255,255,255,.018) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.018) 1px, transparent 1px);
+  background-size: 28px 28px;
+  background-position: -1px -1px;
+  opacity: .55;
+  mask-image: radial-gradient(60% 50% at 50% 0%, #000, transparent 75%);
+  -webkit-mask-image: radial-gradient(60% 50% at 50% 0%, #000, transparent 75%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Header "Comparador en vivo" — texto blanco + badge dorado, fuerza en ambos themes */
+.hero-visual .ticker-card .between strong,
+[data-theme=dark] .hero-visual .ticker-card .between strong,
+html[data-theme=dark] .hero-visual .ticker-card .between strong {
+  color: #fff !important;
+}
+.hero-visual .ticker-card #heroLiveBadge,
+[data-theme=dark] .hero-visual .ticker-card #heroLiveBadge {
+  background: linear-gradient(135deg, var(--gold-500), var(--gold-600)) !important;
+  border-color: color-mix(in srgb, var(--gold-500) 70%, transparent) !important;
+  color: #1a1208 !important;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  font-size: .66rem;
+  padding: 4px 11px;
+  border-radius: 999px;
+  box-shadow: 0 4px 14px -6px rgba(212,160,23,.55);
+}
+
+/* CMP-DEMO inner card → transparente en AMBOS themes */
+.hero-visual .cmp-demo,
+[data-theme=dark] .hero-visual .cmp-demo,
+[data-theme=light] .hero-visual .cmp-demo,
+html[data-theme=dark] .hero-visual .cmp-demo,
+html[data-theme=light] .hero-visual .cmp-demo,
+:root[data-theme=dark] body .hero-visual .cmp-demo {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+/* ── Título del partido: league pill dorado + nombres blancos (ambos themes) ── */
+.hero-visual .cmp-hero-title {
+  text-align: center;
+  margin-bottom: 18px;
+}
+.hero-visual .cmp-hero-league,
+[data-theme=dark] .hero-visual .cmp-hero-league {
+  display: inline-block;
+  background: color-mix(in srgb, var(--gold-500) 12%, transparent) !important;
+  border: 1px solid color-mix(in srgb, var(--gold-500) 38%, transparent) !important;
+  color: var(--gold-300, #f0d27a) !important;
+  font-weight: 700;
+  letter-spacing: .14em;
+  font-size: .62rem;
+  padding: 3px 11px;
+  text-transform: uppercase;
+  border-radius: 999px;
+  margin-bottom: 10px;
+}
+.hero-visual .cmp-hero-match {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  flex-wrap: nowrap;
+  font-size: 1.06rem;
+  letter-spacing: -.018em;
+}
+.hero-visual .cmp-hero-match strong,
+[data-theme=dark] .hero-visual .cmp-hero-match strong {
+  color: #fff !important;
+  font-weight: 700;
+  font-family: var(--font-display, system-ui), 'SF Pro Display', -apple-system, sans-serif;
+}
+.hero-visual .cmp-hero-vs,
+[data-theme=dark] .hero-visual .cmp-hero-vs {
+  color: rgba(255,255,255,.45) !important;
+  font-size: .72rem;
+  font-weight: 500;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+/* ── ESCUDOS: tile blanco con DOBLE ANILLO (gold + outline navy) ─────────
+   Funciona para CUALQUIER paleta:
+   ─ escudos OSCUROS (logos navy/negros) → contrastan contra el tile claro.
+   ─ escudos CLAROS (Tottenham, Newcastle blanco) → el doble anillo define
+     el borde aunque el logo se mezcle con el fondo del tile.
+   ─ escudos COLORIDOS (Real Madrid, Boca) → quedan nítidos sin distorsión. */
+.hero-visual .cmp-hero-match img,
+.hero-visual .cmp-hero-match svg.team-crest,
+.hero-visual .cmp-hero-match .logo-img,
+.hero-visual .cmp-hero-match span[data-team-resolve],
+[data-theme=dark] .hero-visual .cmp-hero-match img,
+[data-theme=dark] .hero-visual .cmp-hero-match svg.team-crest {
+  background: radial-gradient(closest-side, #fff 0%, #eef1f8 100%) !important;
+  border-radius: 50% !important;
+  padding: 3px;
+  width: 34px !important;
+  height: 34px !important;
+  object-fit: contain;
+  box-shadow:
+    0 0 0 1px rgba(212,160,23,.32),
+    0 0 0 2px rgba(8,12,28,.55),
+    0 6px 14px rgba(0,0,0,.42) !important;
+  transition: transform .25s ease, box-shadow .25s ease;
+}
+.hero-visual .cmp-hero-match img:hover,
+.hero-visual .cmp-hero-match svg.team-crest:hover {
+  transform: scale(1.08);
+  box-shadow:
+    0 0 0 1px rgba(212,160,23,.55),
+    0 0 0 2px rgba(8,12,28,.62),
+    0 8px 18px rgba(0,0,0,.5) !important;
+}
+
+/* ── Columnas: glassmorphism premium sobre navy (ambos themes) ──────────── */
+.hero-visual .cmp3 {
+  gap: 12px;
+}
+.hero-visual .cmp3-col,
+[data-theme=dark] .hero-visual .cmp3-col {
+  background: linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.012)) !important;
+  border: 1px solid rgba(255,255,255,.065) !important;
+  border-radius: 14px !important;
+  padding: 12px 12px 10px !important;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow:
+    0 4px 18px -10px rgba(0,0,0,.45),
+    0 0 0 1px rgba(255,255,255,.02) inset !important;
+  transition: border-color .25s ease, transform .25s ease, box-shadow .25s ease;
+}
+.hero-visual .cmp3-col:hover,
+[data-theme=dark] .hero-visual .cmp3-col:hover {
+  border-color: color-mix(in srgb, var(--gold-500) 38%, transparent) !important;
+  box-shadow:
+    0 8px 26px -10px rgba(0,0,0,.55),
+    0 0 0 1px rgba(212,160,23,.10) inset !important;
+}
+.hero-visual .cmp3-col-head,
+[data-theme=dark] .hero-visual .cmp3-col-head {
+  border-bottom: 1px solid rgba(255,255,255,.07) !important;
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+}
+.hero-visual .cmp3-col-head .label,
+[data-theme=dark] .hero-visual .cmp3-col-head .label {
+  color: rgba(255,255,255,.55) !important;
+  font-size: 10px !important;
+  letter-spacing: .16em !important;
+  font-weight: 700 !important;
+  text-transform: uppercase;
+}
+.hero-visual .cmp3-col-head .outcome,
+[data-theme=dark] .hero-visual .cmp3-col-head .outcome {
+  background: color-mix(in srgb, var(--gold-500) 14%, transparent) !important;
+  border: 1px solid color-mix(in srgb, var(--gold-500) 35%, transparent) !important;
+  color: var(--gold-300, #f0d27a) !important;
+  border-radius: 6px;
+  padding: 1px 8px;
+  font-size: 11px !important;
+  font-weight: 800;
+}
+
+/* ── FILAS de cada casa ──────────────────────────────────────────────────
+   GRID FIJO: logo (26px) | spacer (1fr) | cuota (50px right-aligned).
+   Padding-right del row (16px) + padding-right del price (6px) = 22px
+   de aire entre la cuota y el borde derecho. Ningún número toca el box. */
+.hero-visual .cmp3-row,
+[data-theme=dark] .hero-visual .cmp3-row {
+  background: rgba(255,255,255,.025) !important;
+  border: 1px solid rgba(255,255,255,.05) !important;
+  border-radius: 10px !important;
+  padding: 0 16px 0 8px !important;
+  height: 44px !important;
+  grid-template-columns: 26px minmax(0,1fr) 50px !important;
+  column-gap: 10px !important;
+  transition: background .2s ease, border-color .2s ease;
+}
+.hero-visual .cmp3-row:hover,
+[data-theme=dark] .hero-visual .cmp3-row:hover {
+  background: rgba(255,255,255,.05) !important;
+  border-color: rgba(255,255,255,.12) !important;
+}
+.hero-visual .cmp3-row .book,
+[data-theme=dark] .hero-visual .cmp3-row .book {
+  display: none !important;   /* hero solo logo + cuota */
+}
+.hero-visual .cmp3-row .price,
+[data-theme=dark] .hero-visual .cmp3-row .price {
+  color: #f3f6ff !important;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+  font-weight: 700 !important;
+  font-size: .96rem !important;
+  letter-spacing: -.012em;
+  padding-right: 6px !important;
+  padding-left: 0 !important;
+  text-align: right;
+  line-height: 1;
+}
+.hero-visual .cmp3-row .rank.rank-book,
+[data-theme=dark] .hero-visual .cmp3-row .rank.rank-book {
+  background: rgba(255,255,255,.94) !important;
+  border: 1px solid rgba(255,255,255,.20) !important;
+  width: 26px !important;
+  height: 26px !important;
+  border-radius: 7px !important;
+  padding: 3px !important;
+  box-shadow: 0 2px 6px rgba(0,0,0,.28);
+}
+
+/* ── MEJOR cuota — fila destacada elegante + badge minimalista ─────────── */
+.hero-visual .cmp3-row.is-best,
+[data-theme=dark] .hero-visual .cmp3-row.is-best {
+  background: linear-gradient(180deg, rgba(212,160,23,.13), rgba(212,160,23,.03)) !important;
+  border: 1px solid color-mix(in srgb, var(--gold-500) 42%, transparent) !important;
+  box-shadow:
+    0 4px 14px -8px rgba(212,160,23,.38),
+    0 0 0 1px rgba(212,160,23,.08) inset !important;
+}
+.hero-visual .cmp3-row.is-best .price,
+[data-theme=dark] .hero-visual .cmp3-row.is-best .price {
+  color: var(--gold-300, #f0d27a) !important;
+  font-weight: 800 !important;
+}
+.hero-visual .cmp3-row.is-best .rank.rank-book,
+[data-theme=dark] .hero-visual .cmp3-row.is-best .rank.rank-book {
+  border-color: color-mix(in srgb, var(--gold-500) 50%, transparent) !important;
+  box-shadow:
+    0 3px 10px -2px rgba(212,160,23,.45),
+    0 0 0 1px rgba(212,160,23,.25) inset !important;
+}
+.hero-visual .cmp3-row.is-best::after {
+  content: 'MEJOR';
+  background: linear-gradient(180deg, var(--gold-300, #f0d27a), var(--gold-500, #d4a017));
+  color: #14100a;
+  font-size: 8px;
+  padding: 2px 6px;
+  letter-spacing: .18em;
+  font-weight: 800;
+  top: -6px;
+  right: 10px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  position: absolute;
+  box-shadow: 0 2px 6px -1px rgba(0,0,0,.4);
+}
+
+/* ── META row tipo ticker financiero (Bloomberg/Stripe metrics) ──────── */
+.hero-visual .cmp-meta-row,
+[data-theme=dark] .hero-visual .cmp-meta-row {
+  border-top: 1px solid rgba(255,255,255,.07) !important;
+  margin-top: 18px;
+  padding-top: 14px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0;
+  flex-wrap: wrap;
+  font-size: .70rem;
+}
+.hero-visual .cmp-meta-row .cmp-meta-item,
+[data-theme=dark] .hero-visual .cmp-meta-row .cmp-meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px;
+  border-right: 1px solid rgba(255,255,255,.07);
+  line-height: 1.15;
+}
+.hero-visual .cmp-meta-row .cmp-meta-item:last-child {
+  border-right: none;
+}
+.hero-visual .cmp-meta-row .cmp-meta-item .dim,
+[data-theme=dark] .hero-visual .cmp-meta-row .cmp-meta-item .dim {
+  color: rgba(255,255,255,.42) !important;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  font-size: .60rem;
+  font-weight: 500;
+}
+.hero-visual .cmp-meta-row .cmp-meta-item strong,
+[data-theme=dark] .hero-visual .cmp-meta-row .cmp-meta-item strong {
+  color: #f3f6ff !important;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.005em;
+  font-weight: 700;
+  font-size: .76rem;
+}
+
+/* Dot live → glow verde brillante sobre navy */
+.hero-visual .ticker-card #heroLiveDot {
+  box-shadow: 0 0 0 3px rgba(34,197,94,.18), 0 0 12px rgba(34,197,94,.5);
+}
+
+/* Animación de entrada — slide-up sutil */
+.hero-visual .ticker-card .cmp-demo {
+  animation: bs-hero-fade-in .5s ease-out;
+}
+@keyframes bs-hero-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0);   }
+}
+
+/* Mobile: ajustes */
+@media (max-width: 640px) {
+  .hero-visual .ticker-card { padding: 18px 16px 14px !important; border-radius: 16px !important; }
+  .hero-visual .cmp3 { gap: 8px; }
+  .hero-visual .cmp3-col { padding: 10px 8px 8px !important; }
+  .hero-visual .cmp3-row {
+    height: 40px !important;
+    grid-template-columns: 24px minmax(0,1fr) 44px !important;
+    padding: 0 12px 0 6px !important;
+    column-gap: 8px !important;
+  }
+  .hero-visual .cmp3-row .rank.rank-book { width: 24px !important; height: 24px !important; }
+  .hero-visual .cmp3-row .price { font-size: .90rem !important; padding-right: 5px !important; }
+  .hero-visual .cmp-meta-row .cmp-meta-item {
+    padding: 4px 10px;
+    border-right: none;
+  }
+  .hero-visual .cmp-hero-match img,
+  .hero-visual .cmp-hero-match svg.team-crest { width: 30px !important; height: 30px !important; }
+  .hero-visual .cmp-hero-match { font-size: .98rem; gap: 10px; }
 }
