@@ -6203,13 +6203,18 @@ body {
      de nombres de equipo truncados → simetría perfecta entre columnas.
    ════════════════════════════════════════════════════════════════════════ */
 
-/* DARK NAVY LOCK — el banner SIEMPRE es oscuro, sin importar el theme.
-   Triple selector + html[data-theme=dark] para ganar especificidad sobre
-   cualquier override de tema. */
+/* DARK NAVY LOCK — el banner SIEMPRE es navy, sin importar el theme.
+   Selectores apilados (incluyendo :root y body) para vencer cualquier
+   override de tema que pretenda pintarlo de blanco en dark mode.
+   Si el usuario activa dark mode, el resto de la UI se oscurece, pero
+   ESTE banner se mantiene navy premium para preservar la estética hero. */
 .hero-visual .ticker-card,
 [data-theme=dark] .hero-visual .ticker-card,
+[data-theme=light] .hero-visual .ticker-card,
 html[data-theme=dark] .hero-visual .ticker-card,
-html[data-theme=light] .hero-visual .ticker-card {
+html[data-theme=light] .hero-visual .ticker-card,
+:root[data-theme=dark] body .hero-visual .ticker-card,
+:root[data-theme=light] body .hero-visual .ticker-card {
   background:
     radial-gradient(140% 100% at 50% -10%, rgba(56,108,210,0.20), transparent 55%),
     radial-gradient(80% 60% at 50% 100%, rgba(212,160,23,0.05), transparent 70%),
@@ -6248,9 +6253,11 @@ html[data-theme=light] .hero-visual .ticker-card {
   pointer-events: none;
 }
 
-/* Textos dentro del hero card — forzados a la paleta clara, ignorando theme */
+/* Textos dentro del hero card — paleta clara forzada en AMBOS themes */
 .hero-visual .ticker-card,
 [data-theme=dark] .hero-visual .ticker-card,
+[data-theme=light] .hero-visual .ticker-card,
+html[data-theme=dark] .hero-visual .ticker-card,
 html[data-theme=light] .hero-visual .ticker-card {
   --hero-fg:        #f3f6ff;
   --hero-fg-dim:    rgba(231,236,250,.62);
@@ -6298,13 +6305,19 @@ html[data-theme=light] .hero-visual .ticker-card {
 
 /* Card interna (.cmp-demo) — transparente para heredar el fondo del ticker-card.
    FUERZA en ambos themes para que ningún override de dark mode la pinte de
-   blanco/gris. */
+   blanco/gris. Bloquea el override de [data-theme=dark] .cmp-demo. */
 .hero-visual .ticker-card .cmp-demo,
 .hero-visual .ticker-card .card.card-tinted,
 [data-theme=dark] .hero-visual .ticker-card .cmp-demo,
 [data-theme=dark] .hero-visual .ticker-card .card.card-tinted,
+[data-theme=light] .hero-visual .ticker-card .cmp-demo,
+[data-theme=light] .hero-visual .ticker-card .card.card-tinted,
 html[data-theme=dark] .hero-visual .ticker-card .cmp-demo,
-html[data-theme=light] .hero-visual .ticker-card .cmp-demo {
+html[data-theme=dark] .hero-visual .ticker-card .card.card-tinted,
+html[data-theme=light] .hero-visual .ticker-card .cmp-demo,
+html[data-theme=light] .hero-visual .ticker-card .card.card-tinted,
+:root[data-theme=dark] .hero-visual .ticker-card .cmp-demo,
+:root[data-theme=light] .hero-visual .ticker-card .cmp-demo {
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
@@ -6314,53 +6327,59 @@ html[data-theme=light] .hero-visual .ticker-card .cmp-demo {
 
 /* ── Bloque header del partido (escudos + nombres centrados) ──────────── */
 .hero-visual .ticker-card .cmp-demo .row.between {
-  margin-bottom: 16px !important;
+  margin-bottom: 18px !important;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
 }
 .hero-visual .ticker-card .cmp-demo .row.between > .cluster {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: 14px;
   flex-wrap: nowrap;
-  font-size: 1.02rem;
-  letter-spacing: -.012em;
+  font-size: 1.06rem;
+  letter-spacing: -.018em;
 }
 .hero-visual .ticker-card .cmp-demo .row.between > .cluster > strong {
   color: var(--hero-fg);
   font-weight: 700;
+  font-family: var(--font-display, system-ui), 'SF Pro Display', -apple-system, sans-serif;
 }
 .hero-visual .ticker-card .cmp-demo .row.between > .cluster > .dim {
   color: var(--hero-fg-muted);
-  font-size: .80rem;
+  font-size: .72rem;
   font-weight: 500;
-  letter-spacing: .06em;
-  text-transform: lowercase;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  opacity: .7;
 }
 
 /* ── ESCUDOS de equipos: tile adaptativo universal ────────────────────────
    Wrapper `<span class="team-crest-wrap">` envuelve cualquier escudo del
-   banner (img, svg.team-crest, .logo-img, span con `data-team-resolve`).
-   Le da: fondo claro de gradiente, outline sutil, glow dorado al hover.
-   Funciona para CUALQUIER escudo: claros, oscuros, dorados, negros, etc.
-   Lógica auto: el tile blanco/93% asegura visibilidad de logos navy,
-   negros, marrón oscuro, etc. sin perder el detalle del color original. */
+   banner. Sirve para CUALQUIER paleta:
+   ─ escudos OSCUROS (Tottenham crest blanco, Newcastle blanco/negro,
+     Juventus B/N) → el tile claro garantiza contraste contra el fondo navy.
+   ─ escudos CLAROS (logos blancos en SVG) → el doble ring (gold + dark)
+     define el borde del logo aunque su fondo coincida con el tile.
+   ─ escudos COLORIDOS (Real Madrid, Boca) → quedan nítidos sin distorsión.
+   Tile más grande (34px) + doble anillo de contraste + glow dorado hover. */
 .hero-visual .ticker-card .team-crest-wrap {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
   background:
-    radial-gradient(closest-side, #ffffff 0%, #f6f8fc 100%);
+    radial-gradient(closest-side, #ffffff 0%, #eef1f8 100%);
+  /* Doble anillo: gold sutil + sombra externa oscura → escudos blancos
+     (Tottenham) ahora tienen un borde definido y "pop" visible. */
   box-shadow:
-    0 0 0 1px rgba(255,255,255,.22),
-    0 0 0 3px rgba(212,160,23,.0),
-    0 4px 10px rgba(0,0,0,.32);
+    0 0 0 1px rgba(212,160,23,.32),
+    0 0 0 2px rgba(8,12,28,.55),
+    0 6px 14px rgba(0,0,0,.42);
   padding: 3px;
   flex-shrink: 0;
   transition: transform .25s ease, box-shadow .25s ease;
@@ -6369,15 +6388,21 @@ html[data-theme=light] .hero-visual .ticker-card .cmp-demo {
 .hero-visual .ticker-card .team-crest-wrap::after {
   /* glow dorado SUTIL — sólo se acentúa en hover */
   content: '';
-  position: absolute; inset: -4px;
+  position: absolute; inset: -5px;
   border-radius: 50%;
-  background: radial-gradient(closest-side, rgba(212,160,23,.16), transparent 70%);
+  background: radial-gradient(closest-side, rgba(212,160,23,.22), transparent 70%);
   opacity: 0;
   transition: opacity .25s ease;
   pointer-events: none;
   z-index: -1;
 }
-.hero-visual .ticker-card .team-crest-wrap:hover { transform: scale(1.06); }
+.hero-visual .ticker-card .team-crest-wrap:hover {
+  transform: scale(1.08);
+  box-shadow:
+    0 0 0 1px rgba(212,160,23,.55),
+    0 0 0 2px rgba(8,12,28,.62),
+    0 8px 18px rgba(0,0,0,.5);
+}
 .hero-visual .ticker-card .team-crest-wrap:hover::after { opacity: 1; }
 .hero-visual .ticker-card .team-crest-wrap img,
 .hero-visual .ticker-card .team-crest-wrap svg,
@@ -6400,11 +6425,12 @@ html[data-theme=light] .hero-visual .ticker-card .cmp-demo {
   background: #ffffff !important;
   border-radius: 50% !important;
   padding: 3px;
-  width: 30px !important;
-  height: 30px !important;
+  width: 34px !important;
+  height: 34px !important;
   box-shadow:
-    0 0 0 1px rgba(255,255,255,.22),
-    0 4px 10px rgba(0,0,0,.32);
+    0 0 0 1px rgba(212,160,23,.32),
+    0 0 0 2px rgba(8,12,28,.55),
+    0 6px 14px rgba(0,0,0,.42);
 }
 
 /* ── COLUMNAS de cuotas (cmp3-col) — glassmorphism premium ──────────── */
@@ -6462,18 +6488,19 @@ html[data-theme=light] .hero-visual .ticker-card .cmp-demo {
 }
 
 /* ── ROWS de cada casa ──────────────────────────────────────────────────
-   GRID FIJO: logo (26px) | spacer (1fr) | cuota (54px right-aligned).
-   La columna de cuota tiene ancho FIJO con padding-right de 8px → todas
-   las cuotas se alinean verticalmente y ninguna toca el borde derecho. */
+   GRID FIJO: logo (26px) | spacer (1fr) | cuota (50px right-aligned).
+   La cuota se separa del borde derecho con padding-right doble (row + price)
+   → 16px + 6px = 22px de aire visual. Ningún número toca el borde y todas
+   quedan alineadas verticalmente (mismo ancho de columna). */
 .hero-visual .ticker-card .cmp3-row {
   background: rgba(255,255,255,.025) !important;
   border: 1px solid rgba(255,255,255,.05) !important;
   border-radius: 10px !important;
-  padding: 0 10px 0 8px !important;       /* MÁS aire a la derecha que antes */
-  height: 42px !important;
+  padding: 0 16px 0 8px !important;       /* más aire derecho — cuotas no tocan el borde */
+  height: 44px !important;
   transition: background .2s ease, border-color .2s ease, transform .2s ease;
-  grid-template-columns: 26px minmax(0,1fr) 56px !important;
-  column-gap: 8px !important;
+  grid-template-columns: 26px minmax(0,1fr) 50px !important;
+  column-gap: 10px !important;
 }
 .hero-visual .ticker-card .cmp3-row:hover {
   background: rgba(255,255,255,.05) !important;
@@ -6486,39 +6513,41 @@ html[data-theme=light] .hero-visual .ticker-card .cmp-demo {
   font-variant-numeric: tabular-nums;
   font-feature-settings: 'tnum';
   font-weight: 700 !important;
-  font-size: .94rem !important;
-  letter-spacing: -.008em;
-  padding-right: 8px !important;          /* aire al borde derecho */
+  font-size: .96rem !important;
+  letter-spacing: -.012em;
+  padding-right: 6px !important;          /* sumado al row padding = 22px del borde */
   padding-left: 0 !important;
   text-align: right;
   line-height: 1;
+  font-family: var(--font-sans, system-ui), 'SF Pro Display', -apple-system, sans-serif;
 }
-/* Mejor cuota — pill dorado destacado */
+/* Mejor cuota — fila destacada con paleta dorada elegante y sombra contenida */
 .hero-visual .ticker-card .cmp3-row.is-best {
-  background: linear-gradient(180deg, rgba(212,160,23,.16), rgba(212,160,23,.04)) !important;
-  border: 1px solid rgba(212,160,23,.50) !important;
+  background: linear-gradient(180deg, rgba(212,160,23,.13), rgba(212,160,23,.03)) !important;
+  border: 1px solid rgba(212,160,23,.42) !important;
   box-shadow:
-    0 6px 18px -8px rgba(212,160,23,.45),
-    0 0 0 1px rgba(212,160,23,.10) inset;
+    0 4px 14px -8px rgba(212,160,23,.38),
+    0 0 0 1px rgba(212,160,23,.08) inset;
 }
 .hero-visual .ticker-card .cmp3-row.is-best .price {
   color: var(--gold-300, #f0d27a) !important;
   font-weight: 800 !important;
 }
+/* Badge "MEJOR" — minimalista, sin glow excesivo, tipografía fintech */
 .hero-visual .ticker-card .cmp3-row.is-best::after {
-  content: 'Mejor';
+  content: 'MEJOR';
   background: linear-gradient(180deg, var(--gold-300, #f0d27a), var(--gold-500, #d4a017));
   color: #14100a;
-  font-size: 8.5px;
-  padding: 2px 7px;
-  letter-spacing: .14em;
+  font-size: 8px;
+  padding: 2px 6px;
+  letter-spacing: .18em;
   font-weight: 800;
-  top: -7px;
-  right: 8px;
-  border-radius: 999px;
+  top: -6px;
+  right: 10px;
+  border-radius: 4px;
   text-transform: uppercase;
   position: absolute;
-  box-shadow: 0 3px 10px -2px rgba(212,160,23,.55);
+  box-shadow: 0 2px 6px -1px rgba(0,0,0,.4);
 }
 
 /* Logo tile de las casas (rank-book) sobre fondo oscuro */
@@ -6538,31 +6567,50 @@ html[data-theme=light] .hero-visual .ticker-card .cmp-demo {
     0 0 0 1px rgba(212,160,23,.25) inset;
 }
 
-/* ── META row (Casas / Margen / Actualizado) ──────────────────────────── */
+/* ── META row (Casas / Margen / Actualizado) ──────────────────────────────
+   Estilo "ticker financiero" minimalista — divisores verticales sutiles
+   en lugar de simples gaps. Look fintech tipo Bloomberg/Stripe metrics. */
 .hero-visual .ticker-card .cmp-meta-row {
   border-top: 1px solid var(--hero-line) !important;
-  margin-top: 16px;
+  margin-top: 18px;
   padding-top: 14px;
   display: flex;
   justify-content: center;
-  gap: 20px;
+  align-items: center;
+  gap: 0;
   flex-wrap: wrap;
-  font-size: .72rem;
+  font-size: .70rem;
 }
 .hero-visual .ticker-card .cmp-meta-row .cmp-meta-item {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  padding: 0 14px;
+  border-right: 1px solid var(--hero-line);
+  line-height: 1.15;
+}
+.hero-visual .ticker-card .cmp-meta-row .cmp-meta-item:last-child {
+  border-right: none;
 }
 .hero-visual .ticker-card .cmp-meta-row .cmp-meta-item .dim {
   color: var(--hero-fg-muted);
-  letter-spacing: .02em;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  font-size: .60rem;
+  font-weight: 500;
 }
 .hero-visual .ticker-card .cmp-meta-row .cmp-meta-item strong {
   color: var(--hero-fg);
   font-variant-numeric: tabular-nums;
   letter-spacing: -.005em;
   font-weight: 700;
+  font-size: .76rem;
+}
+@media (max-width: 640px) {
+  .hero-visual .ticker-card .cmp-meta-row .cmp-meta-item {
+    padding: 4px 10px;
+    border-right: none;
+  }
 }
 
 /* Dot live (verde pulsante) */
@@ -6592,12 +6640,13 @@ html[data-theme=light] .hero-visual .ticker-card .cmp-demo {
   .hero-visual .ticker-card .cmp3 { gap: 8px; }
   .hero-visual .ticker-card .cmp3-col { padding: 10px 8px 8px !important; }
   .hero-visual .ticker-card .cmp3-row {
-    height: 38px !important;
-    grid-template-columns: 24px minmax(0,1fr) 48px !important;
-    padding: 0 8px 0 6px !important;
+    height: 40px !important;
+    grid-template-columns: 24px minmax(0,1fr) 44px !important;
+    padding: 0 12px 0 6px !important;       /* mobile: 12px + 5px = 17px del borde */
+    column-gap: 8px !important;
   }
   .hero-visual .ticker-card .cmp3-row .rank.rank-book { width: 24px !important; height: 24px !important; }
-  .hero-visual .ticker-card .cmp3-row .price { font-size: .88rem !important; padding-right: 6px !important; }
+  .hero-visual .ticker-card .cmp3-row .price { font-size: .90rem !important; padding-right: 5px !important; }
 }
 
 /* ============================================================================

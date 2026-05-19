@@ -851,19 +851,23 @@ document.addEventListener('DOMContentLoaded', () => {
     const NOW = Date.now();
     const FIVE_MIN = 5 * 60 * 1000;
     const TWELVE_HRS = 12 * 3600 * 1000;
+    // Ventana "en vivo" de 2.5h — cubre fútbol (90' + medio tiempo + descuento
+    // + extra) sin arrastrar partidos finalizados. Antes era 4h → mostraba
+    // partidos terminados como "En vivo" hasta 4h después del kickoff.
+    const LIVE_WINDOW = 2.5 * 3600 * 1000;
     const all = BSData.liveEvents({})
       .filter(m => m && m.markets?.h2h && Object.keys(m.markets.h2h).length >= 2)
-      // No mostrar partidos que ya terminaron hace rato (kickoff > 4h atrás)
+      // Excluir partidos cuyo kickoff fue hace más de LIVE_WINDOW → ya terminaron.
       .filter(m => {
         if (!Number.isFinite(m.start)) return true;
-        return m.start > NOW - 4 * 3600 * 1000;
+        return m.start > NOW - LIVE_WINDOW;
       })
       // Evitar partidos súper lejanos en el tiempo (>12h al futuro) salvo que
       // sea lo único disponible — manejado en el ordenamiento abajo.
       .map(m => {
         const teamsTxt = `${m.home?.name || ''} ${m.away?.name || ''}`;
         const lgScore = leagueScore(m.leagueName);
-        const isLive = Number.isFinite(m.start) && m.start <= NOW && m.start >= NOW - 4 * 3600 * 1000;
+        const isLive = Number.isFinite(m.start) && m.start <= NOW && m.start >= NOW - LIVE_WINDOW;
         const isUpcomingSoon = Number.isFinite(m.start) && m.start > NOW && m.start - NOW <= TWELVE_HRS;
         const isFar = Number.isFinite(m.start) && m.start - NOW > TWELVE_HRS;
         const hasTopTeam = HERO_TOP_TEAMS.test(teamsTxt);
