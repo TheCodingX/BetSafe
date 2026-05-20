@@ -2225,14 +2225,15 @@ app.post('/api/generator', express.json(), async (req, res) => {
   for (const a of passing) {
     const evSelections = (a.selections || [])
       .filter(s => markets.includes(s.market))
-      // FIX 2026-05: BOOK LOCK DURO — si el usuario seleccionó casas, las
-      // analytical picks (sin book real) también se descartan. Política
-      // nueva: cuando el user elige casinos específicos, TODA pick debe
-      // existir realmente en alguno de esos casinos. No se inventan picks.
+      // BOOK LOCK: si user marcó casinos, las picks REALES (con book asignado)
+      // deben estar en wantedBooks. Las picks ANALYTICAL (sin book — mercados
+      // extendidos calculados por el motor: corners-total, cards-total,
+      // totals-ht, etc.) SE PERMITEN igual porque son cálculos del modelo
+      // cuantitativo, no de una casa específica. El frontend las muestra
+      // con disclaimer "cuota estimada".
       .filter(s => {
         if (!wantedBooks.length) return true;
-        // Si el user pidió casas específicas, sin libro real → descartar
-        if (!s.book) { trace.poolRejectedByBookLock++; return false; }
+        if (s.analytical === true || !s.book) return true;   // analytical pasa
         if (!wantedBooks.includes(s.book)) { trace.poolRejectedByBookLock++; return false; }
         return true;
       });
@@ -2583,13 +2584,11 @@ app.post('/api/generator', express.json(), async (req, res) => {
       trace.combosRejectedByLegRange = (trace.combosRejectedByLegRange || 0) + 1;
       return null;  // reintentar con otras legs
     }
-    // Si el user pidió casinos específicos, cada leg DEBE existir en uno
-    // de esos casinos. El frontend (bestBookForCombo) ya valida cobertura
-    // total en UNA casa y muestra warning si no hay — no duplicamos esa
-    // lógica acá para evitar rechazar combos que el user podría tomar
-    // en multi-casa.
+    // Si el user pidió casinos específicos, las legs REALES (con book) deben
+    // estar en wantedBooks. Las analytical (sin book) son válidas — son
+    // cálculos del motor cuantitativo, no de una casa.
     if (wantedBooks.length > 0) {
-      const violatingBook = comboLegs.filter(l => !l.book || !wantedBooks.includes(l.book));
+      const violatingBook = comboLegs.filter(l => l.book && !wantedBooks.includes(l.book));
       if (violatingBook.length > 0) {
         trace.combosRejectedByBookLock = (trace.combosRejectedByBookLock || 0) + 1;
         return null;
