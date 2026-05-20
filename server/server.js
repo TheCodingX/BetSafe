@@ -2082,11 +2082,11 @@ app.post('/api/generator', express.json(), async (req, res) => {
   events = events.filter(e => {
     const age = _now - (e.lastUpdate || 0);
     if (age > MAX_STALE_MS) { trace.afterStalenessFilter_skipped++; return false; }
-    // FIX 2026-05: rechazar eventos ya empezados (start time pasó).
-    // Los casinos suspenden mercados pre-match cuando arranca el partido;
-    // si entra al combo, cuando el user vaya al casino la cuota ya cerró.
-    // 60s de tolerancia para diferencia de relojes/timezone.
-    if (Number.isFinite(e.start) && e.start < _now - 60_000) {
+    // Rechazar SOLO eventos que ya terminaron (3h después del start estimado).
+    // Antes rechazábamos start < now - 60s pero eso filtraba partidos que
+    // tardaron en empezar o cuyos relojes tienen drift → falsos rechazos.
+    // 3h es el límite razonable para fútbol (2h partido + 30min retraso).
+    if (Number.isFinite(e.start) && e.start < _now - 3 * 60 * 60 * 1000) {
       trace.afterStartedFilter_skipped++;
       return false;
     }
@@ -2237,15 +2237,10 @@ app.post('/api/generator', express.json(), async (req, res) => {
         return true;
       });
     for (const sel of evSelections) {
-      // FIX 2026-05: VALIDACIÓN DE MERCADO ACTIVO — cuota razonable.
-      // Una cuota null, 0, <1.01 o >1000 indica mercado cerrado o data
-      // corrupta. Una pick con `closed:true` (defensivo) también se
-      // descarta. Esto cubre el caso "mercado cerrado en casa" sin
-      // necesidad de re-query al casino.
-      if (sel.closed === true || sel.suspended === true) {
-        trace.poolRejectedByMarketClosed = (trace.poolRejectedByMarketClosed || 0) + 1;
-        continue;
-      }
+      // Validación de cuota razonable (defensiva contra data corrupta).
+      // Si la cuota está fuera del rango lógico (<1.01 o >1000), la pick
+      // está rota. NO chequeamos `closed/suspended` porque algunos parsers
+      // los settean a undefined incluso para mercados activos.
       if (!Number.isFinite(sel.odd) || sel.odd < 1.01 || sel.odd > 1000) {
         trace.poolRejectedByInvalidOdd = (trace.poolRejectedByInvalidOdd || 0) + 1;
         continue;
@@ -2588,7 +2583,11 @@ app.post('/api/generator', express.json(), async (req, res) => {
       trace.combosRejectedByLegRange = (trace.combosRejectedByLegRange || 0) + 1;
       return null;  // reintentar con otras legs
     }
-    // Si el user pidió casinos específicos, cada leg DEBE ser de esos casinos.
+    // Si el user pidió casinos específicos, cada leg DEBE existir en uno
+    // de esos casinos. El frontend (bestBookForCombo) ya valida cobertura
+    // total en UNA casa y muestra warning si no hay — no duplicamos esa
+    // lógica acá para evitar rechazar combos que el user podría tomar
+    // en multi-casa.
     if (wantedBooks.length > 0) {
       const violatingBook = comboLegs.filter(l => !l.book || !wantedBooks.includes(l.book));
       if (violatingBook.length > 0) {
