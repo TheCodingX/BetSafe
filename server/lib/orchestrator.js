@@ -730,6 +730,22 @@ async function cycle() {
       } else if (status.ok) {
         status.lastOk = status.lastFetch;
       }
+      // FIX 2026-05: tracking de fallos consecutivos por source. Permite
+      // alertar cuando una casa cae N ciclos seguidos (signal de problema
+      // estructural: scraper roto, IP banneada, casa cambió formato, etc.)
+      const prevFails = previousStatus?.consecutiveFails || 0;
+      status.consecutiveFails = status.ok ? 0 : prevFails + 1;
+      // Escalado de alertas: log warning a partir de 3 ciclos, error a partir de 10.
+      if (status.consecutiveFails === 3) {
+        log(`[alert:source-down] ${src.name} ha fallado 3 ciclos consecutivos · last error: ${status.lastError?.slice(0, 100) || 'unknown'}`);
+        bus.emit('source-down', { source: src.name, fails: 3, lastError: status.lastError });
+      } else if (status.consecutiveFails === 10) {
+        log(`[alert:source-critical] ${src.name} fallando hace 10 ciclos (~${Math.round(10 * 30 / 60)} min) — posible problema estructural`);
+        bus.emit('source-critical', { source: src.name, fails: status.consecutiveFails, lastError: status.lastError });
+      } else if (status.ok && prevFails >= 3) {
+        log(`[recovery:source-up] ${src.name} recuperado tras ${prevFails} ciclos de fallo`);
+        bus.emit('source-recovered', { source: src.name, downCycles: prevFails });
+      }
       state.sourceStatus[src.name] = status;
       bus.emit('source-status', { source: src.name, ...status });
       log(`[source:${src.name}] ${status.ok ? 'OK' : 'ERR'} · ${status.count} eventos · ${status.durMs}ms${status.lastError ? ' · ' + status.lastError.slice(0,80) : ''}`);

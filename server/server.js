@@ -134,14 +134,25 @@ app.use((req, res, next) => {
   next();
 });
 
-// ── Rate limiting básico (in-memory) — protege /api/betsafe-ai/build y
-// /api/combo/analyze que disparan calls LLM costosos. Por IP, 30 req/min.
+// ── Rate limiting in-memory + security event logging ──────────────────
+// FIX 2026-05 SEGURIDAD: agregamos tracking de IPs sospechosas + logging
+// estructurado de eventos para detectar abuso/brute force.
 const rateLimitBuckets = new Map();
+const suspiciousIps = new Map();   // ip → { hits, firstSeen, lastBlocked }
+
+/* Logger de eventos de seguridad. Centraliza para que el deploy pueda
+ * forwardear a Datadog/Sentry/etc sin tocar el resto del código. */
+function logSecurityEvent(type, details = {}) {
+  const ev = { ts: Date.now(), type, ...details };
+  // Stdout estructurado: en producción Render lo captura y puede forwardearse
+  console.log(`[security] ${JSON.stringify(ev)}`);
+}
+
 function rateLimit(req, res, next) {
-  // Solo aplicar a endpoints AI
-  if (!/\/api\/(betsafe-ai|combo\/analyze|surebet\/.+\/explain|daily-report|support\/ask)/.test(req.path)) {
-    return next();
-  }
+  // Endpoints VIP + LLM caros tienen rate limit por IP, 30 req/min
+  const isAiEndpoint = /\/api\/(betsafe-ai|combo\/analyze|surebet\/.+\/explain|daily-report|support\/ask|generator)/.test(req.path);
+  if (!isAiEndpoint) return next();
+
   const ip = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress || 'unknown';
   const now = Date.now();
   const bucket = rateLimitBuckets.get(ip) || { count: 0, resetAt: now + 60000 };
@@ -152,18 +163,49 @@ function rateLimit(req, res, next) {
   bucket.count++;
   rateLimitBuckets.set(ip, bucket);
   if (bucket.count > 30) {
+    // Tracking de IPs que repetidamente exceden el límite (signal de abuse/bot)
+    const susp = suspiciousIps.get(ip) || { hits: 0, firstSeen: now };
+    susp.hits++;
+    susp.lastBlocked = now;
+    suspiciousIps.set(ip, susp);
+    if (susp.hits === 5 || susp.hits === 50 || susp.hits === 500) {
+      logSecurityEvent('rate-limit-abuse', { ip, hits: susp.hits, path: req.path, ua: req.headers['user-agent']?.slice(0, 100) });
+    }
     res.setHeader('Retry-After', String(Math.ceil((bucket.resetAt - now) / 1000)));
     return res.status(429).json({ error: 'Demasiadas solicitudes — esperá un momento.' });
   }
-  // Cleanup: si el map supera 1000 IPs, purgar los expirados
+  // Cleanup periódico: si el map supera 1000 IPs, purgar los expirados
   if (rateLimitBuckets.size > 1000) {
     for (const [k, v] of rateLimitBuckets.entries()) {
       if (now > v.resetAt + 60000) rateLimitBuckets.delete(k);
     }
   }
+  if (suspiciousIps.size > 500) {
+    // Purgar suspiciousIps que no aparecieron en 24h
+    const cutoff = now - 24 * 60 * 60 * 1000;
+    for (const [k, v] of suspiciousIps.entries()) {
+      if (v.lastBlocked < cutoff) suspiciousIps.delete(k);
+    }
+  }
   next();
 }
 app.use(rateLimit);
+
+/* GET /api/security/status — solo en producción con DEBUG_KEY válida.
+ * Útil para monitoreo. Muestra IPs sospechosas + scrapers caídos. */
+app.get('/api/security/status', (req, res) => {
+  if (!requireDebugAuth(req, res)) return;
+  const topIps = Array.from(suspiciousIps.entries())
+    .sort((a, b) => b[1].hits - a[1].hits)
+    .slice(0, 20)
+    .map(([ip, data]) => ({ ip, ...data }));
+  res.json({
+    rateLimitedIps: rateLimitBuckets.size,
+    suspiciousIps: suspiciousIps.size,
+    topAbusers: topIps,
+    serverNow: Date.now()
+  });
+});
 
 // Servir el frontend estático en raíz (single deploy).
 app.use(express.static(PUBLIC_DIR, {
