@@ -32,6 +32,7 @@ const { buildFactors } = require('../factors');
 const { shinNoVig } = require('../factors');
 const { predictExtendedMarkets } = require('../factors/extendedMarkets');
 const brierTracker = require('./brier-tracker');
+const { analyzeCombo: _analyzeCombo } = require('./correlation');
 
 // Cache LRU para análisis completos. TTL 30min: balance entre freshness (las
 // cuotas se mueven) y costo (no martillar al LLM). El cache se descarta si
@@ -1439,7 +1440,18 @@ function mergeSelections(event, factors, quant, poisson, elo, llm, extendedMarke
       const totalOdd = legs.reduce((a, l) => a * l.odd, 1);
       // Correlación positiva intra-partido (ganar + over + btts están correlacionados).
       const independentProb = legs.reduce((a, l) => a * l.prob, 1);
-      const correlationAdjustment = 1.25;
+      // FIX 2026-05: usar correlación REAL (correlation.js) en vez del 1.25 fijo.
+      // El 1.25 inflaba la prob de combinadas con correlación baja (ej. h2h + AH del
+      // mismo team — corr ~0.05) y subreflejaba combinadas con correlación alta
+      // (ej. over+btts — corr 0.55). Ahora el multiplier escala con la corr real.
+      const _corrLegs = legs.map(l => ({
+        eventId: factors.match?.id || 'combo',
+        market: l.market, outcome: l.outcome, line: l.line
+      }));
+      const _maxCorr = Math.max(0, (_analyzeCombo(_corrLegs)?.maxPositiveCorrelation) || 0);
+      // factor 0.5: amortiguamos el ajuste porque el modelo Poisson ya capta
+      // parte de la dependencia intra-partido. Empíricamente más realista que 1.25.
+      const correlationAdjustment = 1 + (_maxCorr * 0.5);
       const adjustedProb = Math.min(0.85, independentProb * correlationAdjustment);
       out.push({
         type: 'agg',

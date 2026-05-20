@@ -1705,6 +1705,23 @@ app.post('/api/generator', express.json(), async (req, res) => {
   events = events.filter(e => e.bestOdds?.h2h || (e.markets?.h2h && Object.keys(e.markets.h2h).length));
   trace.afterH2hFilter = events.length;
 
+  // FIX 2026-05: Rechazar eventos con cuotas stale. El orchestrator setea
+  // `lastUpdate` cada vez que un scraper o source actualiza el evento. Si
+  // pasaron >90s desde la última actualización, las cuotas que tenemos NO
+  // representan el mercado actual — los casinos pudieron mover líneas.
+  // Apostar con datos viejos genera "fake edges" que cierran antes de
+  // ejecutar el ticket. 90s es un compromiso entre frescura y cobertura
+  // (algunos sports/ligas tienen ciclos de scraping más lentos).
+  const MAX_STALE_MS = 90_000;
+  const _now = Date.now();
+  trace.afterStalenessFilter_skipped = 0;
+  events = events.filter(e => {
+    const age = _now - (e.lastUpdate || 0);
+    if (age > MAX_STALE_MS) { trace.afterStalenessFilter_skipped++; return false; }
+    return true;
+  });
+  trace.afterStalenessFilter = events.length;
+
   if (leagues.length && !leagues.includes('all')) {
     events = events.filter(e => leagues.includes(e.league));
     trace.afterLeagueFilter = events.length;
@@ -1777,6 +1794,18 @@ app.post('/api/generator', express.json(), async (req, res) => {
 
   // ── Pool universal: TODAS las selections válidas, no solo una por evento ──
   // Permite multi-leg por partido + diversificación entre deportes/ligas.
+  //
+  // FIX 2026-05: Antes el pool aceptaba picks con EV negativo y confidence baja.
+  // Resultado: combinadas formadas por picks que el motor mismo creía perdedoras.
+  // Ahora aplicamos pisos por nivel de riesgo. Una pick que no supera el piso
+  // NO entra al pool — preferimos devolver menos combinadas (o ninguna) a
+  // armar combos con picks que el motor descarta como EV-negativos.
+  const MIN_EV_BY_RISK = { cons: 2.0, eq: 1.5, agg: 0.5 };
+  const MIN_CONF_BY_RISK = { cons: 0.58, eq: 0.52, agg: 0.46 };
+  const minEv = MIN_EV_BY_RISK[risk] ?? 1.5;
+  const minConf = MIN_CONF_BY_RISK[risk] ?? 0.50;
+  trace.poolRejectedLowEv = 0;
+  trace.poolRejectedLowConf = 0;
   const pool = [];
   for (const a of passing) {
     const evSelections = (a.selections || [])
@@ -1784,6 +1813,10 @@ app.post('/api/generator', express.json(), async (req, res) => {
       // Analytical picks NO se filtran por casa (no tienen book asignado)
       .filter(s => s.analytical || !wantedBooks.length || wantedBooks.includes(s.book));
     for (const sel of evSelections) {
+      // Pisos duros: EV y confidence por nivel de riesgo. Una pick que el
+      // propio motor evalúa por debajo del piso NO debe formar combinada.
+      if ((sel.consensusEv || 0) < minEv) { trace.poolRejectedLowEv++; continue; }
+      if ((sel.confidence || 0) < minConf) { trace.poolRejectedLowConf++; continue; }
       // Scoring v5.5 — "máxima precisión dentro del riesgo elegido por el user"
       //
       // El user fija el riesgo (cuota target, legs, count). El motor NO debe
@@ -1961,11 +1994,20 @@ app.post('/api/generator', express.json(), async (req, res) => {
     }));
 
     const corr = analyzeCombo(comboLegs);
-    // Cuando el user pidió multi-leg-per-match, lo aceptamos sabiendo que la
-    // correlación va a saltar — es by design. Solo descartamos correlación
-    // si era 1-leg-per-match (donde sí, dos legs del mismo evento sería bug).
-    const skipCorrCheck = legsPerMatch > 1;
-    if (skipCorrelated && !skipCorrCheck && !corr.ok && corr.warnings?.length) {
+    // FIX 2026-05: Antes había un bypass `skipCorrCheck = legsPerMatch > 1`
+    // que aceptaba combos altamente correlacionados "by design" cuando el
+    // user pedía multi-leg. Eso destruye el EV real del combo porque la casa
+    // INFLA la cuota del segundo leg cuando son correlacionados positivos.
+    //
+    // Política nueva: si skipCorrelated=true (default), HARD reject de
+    // cualquier combo con correlación positiva >0.45 (umbral profesional —
+    // por ej. "Home + 1X" tiene corr 0.95, "Over + BTTS-Yes" tiene 0.55).
+    // El builder reintenta con otras legs.
+    const HARD_CORR_THRESHOLD = 0.45;
+    if (skipCorrelated && (corr.maxPositiveCorrelation || 0) > HARD_CORR_THRESHOLD) {
+      return null;  // reintentar con legs distintas
+    }
+    if (skipCorrelated && !corr.ok && corr.warnings?.length) {
       // Intentar reemplazar leg correlacionada con la siguiente mejor opción
       const corrIdx = corr.warnings[0]?.i ?? 0;
       const replacement = pool.find(p =>
@@ -2044,11 +2086,17 @@ app.post('/api/generator', express.json(), async (req, res) => {
   //   • diversidad de mercados (más mercados distintos = más robusto)
   //   • bonus por tier alto (top leagues = más data, menos varianza)
   function scoreCombo(c) {
-    const probReal = c.legs.reduce((a, l) => a * Math.max(0.05, l.confidence || 0.5), 1);
+    // FIX 2026-05: HARD REJECT de combos con EV total negativo. El scoring
+    // anterior dejaba que probReal*100 dominase y un combo "alta prob pero
+    // EV-10%" puntuaba parecido a uno "menor prob pero EV+10%". Apostar combos
+    // con EV negativo es perder por matemática — el motor no debe rankearlos.
     const edgeAdj = (c.evAdjusted != null ? c.evAdjusted : c.sumEv) || 0;
+    if (edgeAdj < 0) return -1000 + edgeAdj;   // los manda al fondo, no se eligen
+
+    const probReal = c.legs.reduce((a, l) => a * Math.max(0.05, l.confidence || 0.5), 1);
     const diversity = new Set(c.legs.map(l => l.market)).size / c.legs.length;
     let s = probReal * 100              // prob real total en %
-          + edgeAdj * 0.6                // edge adjusted descontado por correlación
+          + edgeAdj * 1.5                // FIX: peso ↑ (era 0.6) — EV debe pesar más
           + diversity * 5                // diversidad de mercados
           + (c.sportsCount || 1) * 1.5;  // mixSports bonus suave
     // Target_odd compliance: si el user lo pidió, penalizar combos lejos del target.
@@ -2056,9 +2104,11 @@ app.post('/api/generator', express.json(), async (req, res) => {
       const distance = Math.abs(c.totalOdd - targetOdd) / targetOdd;
       s -= distance * 25;                // 25% de penalización por cada 100% de desvío
     }
-    // Penalizar correlación positiva fuerte entre legs (book inflando cuota).
+    // Penalizar correlación positiva entre legs (book inflando cuota).
+    // FIX: umbral ↓ (era 0.30) y peso ↑ (era ×20) — ahora cualquier corr >0.20
+    // empieza a penalizar. Por encima de 0.45 ya hay hard reject en buildOneCombo.
     const maxCorr = c.correlation?.maxPositiveCorrelation || 0;
-    if (maxCorr > 0.30) s -= maxCorr * 20;
+    if (maxCorr > 0.20) s -= maxCorr * 35;
     return s;
   }
 
@@ -2164,17 +2214,20 @@ JSON estricto:
     }
   }
 
+  // FIX 2026-05: si TODOS los matches analizados cayeron a offline (sin LLM real),
+  // el aiHealth debe ser 'degraded' aunque después el aiBuilder no se haya
+  // ejecutado. Antes este caso devolvía 'ok'/'no-keys' y el frontend nunca
+  // mostraba el banner de degradación.
+  const _llmAllOffline = llmOk === 0 && llmOffline > 0;
   res.json({
     combos: combos.slice(0, count),
     aiNarrative,
     aiProvider,                                  // 'gemini' | 'groq' | null
-    aiHealth: aiProvider                         // estado para que el frontend
-              ? 'ok'                              // muestre badge correcto en vez
-              : useAiBuilder && HAS_ANY_LLM      // de hardcodear "groq".
-                ? 'degraded'
-                : useAiBuilder
-                  ? 'no-keys'
-                  : 'disabled',
+    aiHealth: _llmAllOffline ? 'degraded'
+              : aiProvider ? 'ok'
+              : useAiBuilder && HAS_ANY_LLM ? 'degraded'
+              : useAiBuilder ? 'no-keys'
+              : 'disabled',
     meta: {
       analyzed: analyzed.length,
       passing: passing.length,
@@ -2968,7 +3021,21 @@ INSTRUCCIONES FINALES:
     candidates.length
   );
   log(`[betsafe-ai] analyzing top=${TOP_N}/${candidates.length} candidates (explicit=${isExplicit})`);
-  const top = candidates.slice(0, TOP_N);
+  // FIX 2026-05: filtro de staleness — descartar eventos con cuotas >90s
+  // sin update. Las cuotas viejas generan "fake edges" porque las casas ya
+  // movieron las líneas. Aplicamos el mismo umbral que /api/generator.
+  const _coachStaleCutoff = Date.now() - 90_000;
+  const _coachBeforeStale = candidates.length;
+  let _coachFreshCandidates = candidates.filter(e => (e.lastUpdate || 0) >= _coachStaleCutoff);
+  // Si el filtro deja menos de filters.legs eventos, relajamos a 180s para no
+  // dejar al user sin combinada por una pausa transitoria del scraper.
+  if (_coachFreshCandidates.length < filters.legs) {
+    const _looseCutoff = Date.now() - 180_000;
+    _coachFreshCandidates = candidates.filter(e => (e.lastUpdate || 0) >= _looseCutoff);
+    log(`[betsafe-ai] staleness relaxed to 180s — fresh count strict=${candidates.filter(e => (e.lastUpdate || 0) >= _coachStaleCutoff).length} loose=${_coachFreshCandidates.length}`);
+  }
+  log(`[betsafe-ai] staleness filter: ${_coachBeforeStale} → ${_coachFreshCandidates.length}`);
+  const top = _coachFreshCandidates.slice(0, TOP_N);
   const analyzeLimit = pLimit(Number(process.env.PICKS_CONCURRENCY || 4));
   const analyzed = await Promise.allSettled(
     top.map(ev => analyzeLimit(() => analyzeMatch(ev, { steamMoves: steam, surebets })))
@@ -3059,6 +3126,11 @@ INSTRUCCIONES FINALES:
     log(`[betsafe-ai] user asked analytical markets [${filters.markets.filter(m => ANALYTICAL_ONLY_MARKETS.has(m)).join(',')}] → enabling analytical pool`);
   }
 
+  // FIX 2026-05: pisos de calidad para Coach IA (consistentes con /api/generator).
+  // Una pick que el motor evalúa por debajo del piso NO debe entrar a la combinada.
+  // Risk-aware: conservador exige más EV+confidence, agresivo permite más laxo.
+  const _COACH_MIN_EV   = { cons: 2.0, eq: 1.5, agg: 0.5 }[filters.risk] ?? 1.5;
+  const _COACH_MIN_CONF = { cons: 0.58, eq: 0.52, agg: 0.46 }[filters.risk] ?? 0.50;
   function buildPool(applyBookLock) {
     const out = [];
     for (const r of analyzed) {
@@ -3076,6 +3148,9 @@ INSTRUCCIONES FINALES:
         if (sel.analytical && !allowAnalytical) continue;
         // SKIP si no tiene book asignado (no es de una casa real) — pero permitir si analytical OK
         if (!sel.book && !allowAnalytical) continue;
+        // PISOS DE CALIDAD: ningún pick con EV o conf por debajo del piso del riesgo
+        if ((sel.consensusEv || 0) < _COACH_MIN_EV) continue;
+        if ((sel.confidence || 0) < _COACH_MIN_CONF) continue;
         if (applyBookLock && filters.books.length) {
           if (sel.analytical) {
             sel = { ...sel, book: filters.books[0] };
