@@ -4,3 +4,7 @@
 /terminos      /terminos.html    200
 /privacidad    /privacidad.html  200
 /cookies       /cookies.html     200
+# Academia removida — usuarios con bookmarks viejos van a 404
+/learn         /404.html         410
+/learn.html    /404.html         410
+/learn/*       /404.html         410

@@ -66,7 +66,7 @@
       sports: ['soccer', 'basketball'],
       // Always use ALL 12 Argentine legal books — user no longer picks
       books: (BSData.BOOKS_AR || []).map(b => b.key),
-      risk: 'mid',
+      risk: 'eq',
       notifications: false
     };
     const stepEls = modal.querySelectorAll('.ob-step');

@@ -64,13 +64,28 @@ function maybeRotate() {
   } catch (_) { /* no existe aún */ }
 }
 
+// FIX 2026-05: Cambio appendFileSync → appendFile (async) para no bloquear el
+// event loop. Con 100+ events/ciclo en producción, los writes sincrónicos
+// agregaban 50-100ms de latencia al broadcast del WebSocket /api/live.
+// Usamos una cola en memoria + flush async para garantizar orden y no perder
+// líneas si dos calls llegan simultáneamente.
+const _writeQueue = [];
+let _flushing = false;
+function _flushQueue() {
+  if (_flushing || _writeQueue.length === 0) return;
+  _flushing = true;
+  const batch = _writeQueue.splice(0, _writeQueue.length);
+  const data = batch.map(o => JSON.stringify(o)).join('\n') + '\n';
+  fs.appendFile(LOG_PATH, data, (err) => {
+    _flushing = false;
+    if (_writeQueue.length > 0) setImmediate(_flushQueue);
+    // err silenciado: disco lleno / read-only no debe abortar el pipeline
+  });
+}
 function appendLine(obj) {
   ensureDir();
-  try {
-    fs.appendFileSync(LOG_PATH, JSON.stringify(obj) + '\n');
-  } catch (e) {
-    // Disco lleno / read-only — no abortar el pipeline por logging
-  }
+  _writeQueue.push(obj);
+  setImmediate(_flushQueue);
 }
 
 /* Registra una predicción (todas las model probs para una selection).

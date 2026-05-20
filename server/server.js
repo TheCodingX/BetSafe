@@ -4809,8 +4809,17 @@ setTimeout(() => { prewarmAllLogos().catch(e => log(`[logo:prewarm] fatal: ${e?.
 // Refresh cada 24h
 setInterval(() => { prewarmAllLogos().catch(() => {}); }, 24 * 60 * 60 * 1000);
 
-/* GET /api/ai/test — diagnóstico: prueba Groq directamente y devuelve raw response. */
+/* GET /api/ai/test — diagnóstico interno (protegido por DEBUG_TOKEN en producción).
+ * En dev: accesible directo. En prod: requiere header `x-debug-token` que coincida
+ * con env DEBUG_TOKEN. Sin esto, el endpoint expone previews de keys API. */
 app.get('/api/ai/test', async (req, res) => {
+  const isDev = process.env.NODE_ENV !== 'production';
+  const debugToken = process.env.DEBUG_TOKEN;
+  if (!isDev) {
+    if (!debugToken) return res.status(404).json({ error: 'Not found' });
+    const provided = req.headers['x-debug-token'] || req.query.token;
+    if (provided !== debugToken) return res.status(404).json({ error: 'Not found' });
+  }
   const groqKey = process.env.BS_GROQ_API_KEY || process.env.GROQ_API_KEY || '';
   const geminiKey = process.env.BS_GEMINI_API_KEY || process.env.GEMINI_API_KEY || '';
   const anthropicKey = process.env.BS_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY || '';

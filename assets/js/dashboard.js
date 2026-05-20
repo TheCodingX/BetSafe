@@ -234,10 +234,11 @@
 
   function pendingPanel(tab) {
     return `
-      <div class="card stack">
-        <span class="badge">Próximamente · Backend</span>
-        <h2 class="h3">${tab.label}</h2>
-        <p class="muted">Esta sección depende de servicios que se conectan en Render/Supabase. La UI ya está lista.</p>
+      <div class="card stack" style="padding:40px;text-align:center">
+        <div style="font-size:40px;opacity:.5">⚙️</div>
+        <h2 class="h3" style="margin-top:8px">${tab.label}</h2>
+        <p class="muted" style="max-width:480px;margin:0 auto">Esta sección está activándose. Probá nuevamente en unos minutos o contactá a soporte si persiste.</p>
+        <a href="contacto.html" class="btn btn-outline btn-sm" style="align-self:center;margin-top:6px">Contactar soporte</a>
       </div>`;
   }
   function errorPanel(e) {

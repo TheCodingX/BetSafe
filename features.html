@@ -5,6 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>BetSafe</title>
 <meta name="description" content="Las 155 funciones de BetSafe agrupadas por categoría. 55 Standard + 100 VIP. Filtrá por tier o por área." />
+<meta property="og:title" content="BetSafe — 155 funciones profesionales" />
+<meta property="og:description" content="Todas las herramientas agrupadas por categoría. Filtrá por tier o por área." />
+<meta property="og:type" content="website" />
+<meta property="og:image" content="assets/img/og.svg" />
+<meta property="og:locale" content="es_AR" />
+<meta name="twitter:card" content="summary_large_image" />
 <link rel="manifest" href="manifest.webmanifest" />
 <link rel="icon" href="assets/img/betsafe-isotipo.png" type="image/png" />
 <link rel="apple-touch-icon" href="assets/img/betsafe-isotipo.png" />
@@ -65,14 +71,13 @@ document.addEventListener('DOMContentLoaded', () => {
             <span class="badge">${BSUI.esc(cat.area)}</span>
           </div>
           <div class="grid grid-auto reveal-stagger">
-            ${items.map(i => `
+            ${items.filter(i => !i.pending).map(i => `
               <div class="card card-tinted card-pad-sm card-hover">
                 <div class="row between">
                   <strong>${BSUI.esc(i.name)}</strong>
                   <span class="badge ${i.tier==='vip'?'badge-gold':'badge-brand'}">${i.tier.toUpperCase()}</span>
                 </div>
                 <p class="muted tiny mt-2">${BSUI.esc(i.desc || '')}</p>
-                ${i.pending ? '<span class="badge badge-warning mt-2">En desarrollo</span>' : ''}
               </div>
             `).join('')}
           </div>
