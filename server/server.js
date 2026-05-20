@@ -1867,6 +1867,32 @@ app.post('/api/generator', express.json(), async (req, res) => {
       // Mercados analíticos: boost para diversidad (corners/cards/props) —
       // si no, h2h domina TODO el pool y las combinadas son siempre 3 h2h.
       if (sel.analytical) score += 3;
+
+      // FIX 2026-05 #11: PENALIZACIÓN CONTRA-MERCADO FUERTE.
+      // Cuando una pick va contra la opinión clara del mercado (cuota >2.10
+      // en Totals/BTTS, o >3.00 en h2h = underdog real), exigimos evidencia
+      // fuerte para no ser contrarian a ciegas. El bias documentado de este
+      // motor está en Totals — 10 picks Under 2.5 en una jornada perdieron 9
+      // porque las cuotas (2.33-2.60) eran claramente del lado Over.
+      const _outLow = String(sel.outcome || '').toLowerCase();
+      const _mktLow = String(sel.market || '').toLowerCase();
+      const _isContrarian =
+        (_mktLow === 'totals' && odd >= 2.10) ||
+        (_mktLow === 'btts' && odd >= 2.10) ||
+        (_mktLow === 'h2h' && odd >= 3.00);
+      if (_isContrarian) {
+        const sharpAligned = sharpScore > 0.6;
+        const confEdge = conf - fairProb;
+        if (sharpAligned && confEdge > 0.10) {
+          // Contrarian PERO con sharp money + edge fuerte: aceptamos
+        } else if (confEdge > 0.15) {
+          // Sin sharp pero el modelo dice edge alto: penalización moderada
+          score -= 8;
+        } else {
+          // Sin sharp ni edge fuerte: contrarian débil → penalización dura
+          score -= 18;
+        }
+      }
       pool.push({ event: a.event, factors: a.factors, sel, score });
     }
   }
@@ -1884,6 +1910,30 @@ app.post('/api/generator', express.json(), async (req, res) => {
   const mixSports = req.body?.mixSports !== false;
   // useAiBuilder default TRUE — user pidió "TODO ANALISIS IA". Solo false si explícitamente lo apaga.
   const useAiBuilder = req.body?.useAiBuilder !== false;
+
+  // FIX 2026-05 #9: tracking de picks usadas entre todos los combos del batch.
+  // Antes los N combos compartían picks del top del pool → si una pick fallaba
+  // (ej. "Chelsea-Tottenham Under 2.5"), TODOS los combos morían juntos. Ahora
+  // cada vez que una pick entra a un combo se acumula en `picksUsedAcrossCombos`
+  // y el siguiente combo la skipea (excepto en la última pasada cuando no queda
+  // otra opción).
+  const picksUsedAcrossCombos = new Map();   // pickSig → count
+  function pickSig(p) {
+    return `${p.event.id}|${p.sel.market}|${p.sel.outcome}|${p.sel.line || ''}`;
+  }
+  // FIX 2026-05 #10: contador de outcomes "bajistas" usados en el batch. Cuando
+  // el modelo apuesta múltiples "Under 2.5" en jornadas distintas, está expuesto
+  // a un día de goleadas que mata todo. Limitamos el % de Unders por batch.
+  const outcomeBiasCount = { under: 0, over: 0, btts_no: 0, btts_yes: 0, total: 0 };
+  function classifyBias(p) {
+    const o = String(p.sel.outcome || '').toLowerCase();
+    const m = String(p.sel.market || '').toLowerCase();
+    if (m === 'totals' && o.includes('under')) return 'under';
+    if (m === 'totals' && o.includes('over')) return 'over';
+    if (m === 'btts' && (o === 'no' || o === 'btts_no')) return 'btts_no';
+    if (m === 'btts' && (o === 'yes' || o === 'btts_yes')) return 'btts_yes';
+    return null;
+  }
 
   function buildOneCombo(targetType, excludeSigs, comboIdx = 0) {
     // Filtrar por tipo si lo pidieron (cons/eq/agg). Si no hay del tipo,
@@ -1907,14 +1957,27 @@ app.post('/api/generator', express.json(), async (req, res) => {
     // si hay >=2 legs. Esto fuerza variedad real (h2h + corners + cards + ...).
     const maxLegsPerMarket = legs >= 2 ? 1 : legs;
 
-    // PASADA 1: STRICT — ningún mercado repetido. Si no logramos completar
-    // las N legs, hacemos una pasada 2 relajada.
+    // FIX #10: piso dinámico de "bias bajista" por batch. Para count=3 combos
+    // permitimos hasta ⌈count×legs/4⌉ Unders en total (≈25%). Resto debe ser
+    // diverso (h2h, AH, BTTS-Yes, corners, etc).
+    const batchTotalLegs = count * legs;
+    const MAX_UNDER_IN_BATCH = Math.max(1, Math.ceil(batchTotalLegs * 0.30));
+    const MAX_BTTSNO_IN_BATCH = Math.max(1, Math.ceil(batchTotalLegs * 0.30));
+
+    // PASADA 1: STRICT — ningún mercado repetido + skip de picks ya usadas
+    // en otros combos del batch + tope de bias Under/BTTS-No.
     for (const p of candidates) {
       const evId = p.event.id;
       const cur = usedByEvent.get(evId) || 0;
       if (cur >= legsPerMatch) continue;
       const mktCount = usedMarkets.get(p.sel.market) || 0;
       if (mktCount >= maxLegsPerMarket) continue;  // STRICT: no repetimos mercado
+      // FIX #9 STRICT: si esta pick ya está en otro combo del batch, skip.
+      if ((picksUsedAcrossCombos.get(pickSig(p)) || 0) > 0) continue;
+      // FIX #10: tope de bias por batch.
+      const bias = classifyBias(p);
+      if (bias === 'under' && outcomeBiasCount.under >= MAX_UNDER_IN_BATCH) continue;
+      if (bias === 'btts_no' && outcomeBiasCount.btts_no >= MAX_BTTSNO_IN_BATCH) continue;
       if (mixSports && usedSports.has(p.event.sport) && chosen.length < legs && candidates.some(c => !usedSports.has(c.event.sport) && !chosen.includes(c))) {
         continue;
       }
@@ -1926,8 +1989,8 @@ app.post('/api/generator', express.json(), async (req, res) => {
     }
 
     // PASADA 2: relajar diversidad — si no completamos N legs, permitimos
-    // 2 del mismo mercado (pero nunca 3+). Mejor combinada un poco más
-    // monocromática que devolver menos legs.
+    // 2 del mismo mercado (pero nunca 3+) Y permitimos 1 pick compartida con
+    // otro combo (pero NUNCA 2 picks compartidas con el mismo combo).
     if (chosen.length < legs) {
       const relaxedMax = 2;
       for (const p of candidates) {
@@ -1937,6 +2000,14 @@ app.post('/api/generator', express.json(), async (req, res) => {
         if (cur >= legsPerMatch) continue;
         const mktCount = usedMarkets.get(p.sel.market) || 0;
         if (mktCount >= relaxedMax) continue;
+        // FIX #9 RELAX: permitimos picks que ya están en otro combo, pero
+        // solo si esta combinada no tiene ya OTRA pick compartida. Eso evita
+        // que dos combos compartan 2+ picks (riesgo concentrado).
+        const sharedAlready = chosen.filter(c => (picksUsedAcrossCombos.get(pickSig(c)) || 0) > 0).length;
+        if ((picksUsedAcrossCombos.get(pickSig(p)) || 0) > 0 && sharedAlready >= 1) continue;
+        const bias = classifyBias(p);
+        if (bias === 'under' && outcomeBiasCount.under >= MAX_UNDER_IN_BATCH) continue;
+        if (bias === 'btts_no' && outcomeBiasCount.btts_no >= MAX_BTTSNO_IN_BATCH) continue;
         chosen.push(p);
         usedByEvent.set(evId, cur + 1);
         usedMarkets.set(p.sel.market, mktCount + 1);
@@ -1944,12 +2015,16 @@ app.post('/api/generator', express.json(), async (req, res) => {
       }
     }
     // PASADA 3 (último recurso): si igual no llegamos, llenamos sin restricciones
+    // de mercado/sharing, pero MANTENEMOS el tope de bias Under/BTTS-No por batch.
     if (chosen.length < legs) {
       for (const p of candidates) {
         if (chosen.includes(p)) continue;
         const evId = p.event.id;
         const cur = usedByEvent.get(evId) || 0;
         if (cur >= legsPerMatch) continue;
+        const bias = classifyBias(p);
+        if (bias === 'under' && outcomeBiasCount.under >= MAX_UNDER_IN_BATCH) continue;
+        if (bias === 'btts_no' && outcomeBiasCount.btts_no >= MAX_BTTSNO_IN_BATCH) continue;
         chosen.push(p);
         usedByEvent.set(evId, cur + 1);
         if (chosen.length >= legs) break;
@@ -2032,6 +2107,20 @@ app.post('/api/generator', express.json(), async (req, res) => {
     const sig = comboLegs.map(l => `${l.eventId}:${l.market}:${l.outcome}:${l.line || ''}`).sort().join('|');
     if (excludeSigs.has(sig)) return null;
     excludeSigs.add(sig);
+
+    // FIX #9/#10: registrar las picks usadas + actualizar contadores de bias
+    // para que el SIGUIENTE buildOneCombo del batch sepa qué evitar.
+    for (const l of comboLegs) {
+      const psig = `${l.eventId}|${l.market}|${l.outcome}|${l.line || ''}`;
+      picksUsedAcrossCombos.set(psig, (picksUsedAcrossCombos.get(psig) || 0) + 1);
+      const mkt = String(l.market || '').toLowerCase();
+      const out = String(l.outcome || '').toLowerCase();
+      if (mkt === 'totals' && out.includes('under')) outcomeBiasCount.under++;
+      else if (mkt === 'totals' && out.includes('over')) outcomeBiasCount.over++;
+      else if (mkt === 'btts' && (out === 'no' || out === 'btts_no')) outcomeBiasCount.btts_no++;
+      else if (mkt === 'btts' && (out === 'yes' || out === 'btts_yes')) outcomeBiasCount.btts_yes++;
+      outcomeBiasCount.total++;
+    }
 
     // Re-evaluar correlación final (puede haber cambiado tras swaps) y aplicar
     // el evAdjustment al EV bruto. evAdjustment ∈ [-0.40, 0]: cuando hay legs
@@ -3231,12 +3320,33 @@ INSTRUCCIONES FINALES:
   function legScore(p) {
     const ev = p.sel.consensusEv || 0;
     const conf = p.sel.confidence || 0;
+    const odd = p.sel.odd || 1.5;
     const isTop = orchestrator.eventPriority?.(p.event) >= 2 ? 1 : 0;
     const hasLeague = filters.leagues.length === 0 || filters.leagues.some(lg =>
       (p.event.leagueName || '').toLowerCase().includes(lg.replace(/-/g, ' ')) ||
       p.event.league === lg
     ) ? 1 : 0;
-    return ev + conf * 25 + isTop * 8 + hasLeague * 10;
+    let s = ev + conf * 25 + isTop * 8 + hasLeague * 10;
+    // FIX 2026-05 #11 (Coach IA): misma penalización contra-mercado que /api/generator.
+    // Cuota implícita del lado opuesto <48% en Totals/BTTS o <33% en h2h →
+    // estás siendo contrarian al mercado, exigimos evidencia fuerte.
+    const _mkt = String(p.sel.market || '').toLowerCase();
+    const _isContrarian = (_mkt === 'totals' && odd >= 2.10)
+                       || (_mkt === 'btts' && odd >= 2.10)
+                       || (_mkt === 'h2h' && odd >= 3.00);
+    if (_isContrarian) {
+      const fairProb = odd > 1.01 ? (1 / odd) : 0.5;
+      const sharpAligned = (p.factors?.sharp?.score || 0) > 0.6;
+      const confEdge = conf - fairProb;
+      if (sharpAligned && confEdge > 0.10) {
+        // sharp + edge fuerte → aceptamos
+      } else if (confEdge > 0.15) {
+        s -= 8;
+      } else {
+        s -= 18;
+      }
+    }
+    return s;
   }
   const sortedPool = pool.slice().sort((a, b) => legScore(b) - legScore(a));
 
