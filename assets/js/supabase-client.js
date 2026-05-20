@@ -14,7 +14,6 @@
  *   - bet_history   (id, user_id, sport, event, stake, odd, result 'W|L|P|V', profit, at)
  *   - slips         (user_id, legs jsonb, stake, updated_at)
  *   - saved_picks   (id, user_id, pick jsonb, created_at)
- *   - tracker_notes (id, user_id, note, at)
  * ============================================================================
  */
 (function (global) {
@@ -255,28 +254,6 @@
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // TRACKER NOTES
-  // ─────────────────────────────────────────────────────────────────────────
-  async function addTrackerNote(note) {
-    const c = await ensureClient();
-    if (!c || !getUserId()) return { ok: false };
-    const { data, error } = await c.from('tracker_notes').insert({
-      user_id: getUserId(),
-      note,
-      at: new Date().toISOString()
-    }).select().single();
-    return { ok: !error, data, error };
-  }
-  async function listTrackerNotes({ limit = 50 } = {}) {
-    const c = await ensureClient();
-    if (!c || !getUserId()) return [];
-    const { data } = await c.from('tracker_notes')
-      .select('*').eq('user_id', getUserId())
-      .order('at', { ascending: false }).limit(limit);
-    return data || [];
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────
   // EXPORT
   // ─────────────────────────────────────────────────────────────────────────
   global.BSSupabase = {
@@ -291,9 +268,7 @@
     // Slips
     getSlip, saveSlip, subscribeSlip,
     // Saved picks
-    savePick, listSavedPicks, deleteSavedPick,
-    // Tracker
-    addTrackerNote, listTrackerNotes
+    savePick, listSavedPicks, deleteSavedPick
   };
 
   // Auto-init si está configurado (no bloquea, corre en background)

@@ -58,19 +58,6 @@ window.FEATURES_DATA = [
     ]
   },
   {
-    name: 'Tracker & Banca', area: 'Core',
-    items: [
-      { name: 'Curva de evolución de banca día a día', tier: 'standard' },
-      { name: 'Win rate, ROI y Yield', tier: 'standard' },
-      { name: 'Racha actual y récord histórico', tier: 'standard' },
-      { name: 'Historial filtrable por fecha/deporte/resultado', tier: 'standard' },
-      { name: 'Worst-trade rule (verde si el peor es positivo)', tier: 'standard' },
-      { name: 'Export del histórico a CSV', tier: 'standard' },
-      { name: 'Cuota promedio (te dice tu estilo)', tier: 'standard' },
-      { name: 'Total invertido vs total ganado', tier: 'standard' }
-    ]
-  },
-  {
     name: 'Mundial 2026', area: 'Hub',
     items: [
       { name: 'Hub dedicado con countdown live al kickoff', tier: 'standard' },
@@ -172,7 +159,6 @@ window.FEATURES_DATA = [
     name: 'Herramientas pro adicionales', area: 'VIP',
     items: [
       { name: 'Tax calculator AR (5 jurisdicciones)', tier: 'vip', desc: 'CABA, BSAS, Córdoba, Santa Fe, Mendoza' },
-      { name: 'Promo y Free Bet tracker', tier: 'vip' },
       { name: 'Watchlist persistente entre sesiones', tier: 'vip' },
       { name: 'Weather impact por sede del partido', tier: 'vip' },
       { name: 'Cash-Out optimizer (cuándo cerrar por EV)', tier: 'vip' },

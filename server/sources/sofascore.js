@@ -5,7 +5,7 @@
  * pero sí trae:
  *   - Calendarios oficiales de partidos
  *   - Equipos con nombres canónicos
- *   - Resultados live (para tracker)
+ *   - Resultados live
  *
  * Cloudflare blackholea las IPs cloud (Render) → si está SCRAPINGBEE_KEY
  * usamos ese path PRIMARIO. Fallback a native HTTPS para deploys

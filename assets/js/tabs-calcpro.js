@@ -678,7 +678,7 @@
           <div class="card card-tinted card-pad-sm"><div class="muted tiny">ROI</div><strong class="${roi >= 0 ? 'text-success' : 'text-danger'} num">${roi >= 0 ? '+' : ''}${roi.toFixed(1)}%</strong></div>
           <div class="card card-tinted card-pad-sm"><div class="muted tiny">W / L</div><strong>${wins} / ${losses}</strong></div>
         </div>
-        ${!thisMonth.length ? '<p class="muted tiny mt-3">Sin picks en este mes. Cargá historial desde Tracker.</p>' : ''}`;
+        ${!thisMonth.length ? '<p class="muted tiny mt-3">Sin picks en este mes.</p>' : ''}`;
       return;
     }
 

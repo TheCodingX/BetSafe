@@ -29,7 +29,6 @@
     { id: 'calcpro',     label: 'CalcPro',      icon: 'calc',     vipOnly: true,  desc: 'Calculadoras avanzadas' },
     { id: 'smartmoney',  label: 'Smart Money',  icon: 'flame',    vipOnly: true,  desc: 'Movimientos sharp >5%' },
     { id: 'whatif',      label: 'What-If',      icon: 'shield',   vipOnly: true,  desc: 'Escenarios hipotéticos' },
-    { id: 'tracker',     label: 'Tracker',      icon: 'chart',    vipOnly: false, desc: 'Tu banca y resultados' },
     { id: 'settings',    label: 'Ajustes',      icon: 'settings', vipOnly: false, desc: 'Preferencias y cuenta' }
   ];
   const TABS = [...TABS_PRIMARY, ...TABS_ADVANCED];
@@ -283,14 +282,14 @@
    *  ───────────────────────────────────────────────────────────────────
    *   G O = Inicio          G G = Quant IA      G A = AI Picks
    *   G B = Builder         G S = Coach IA        G R = Arbitraje
-   *   G T = Tracker         G W = Mundial
+   *   G W = Mundial          G C = Comparador
    *   /   = Focus búsqueda  ?   = Mostrar ayuda     ESC = Cerrar modal
    */
   function bindKeyboardShortcuts() {
     let leader = false, leaderTimer = null;
     const SHORTCUTS = {
       'o': 'overview', 'g': 'aigenerator', 'a': 'ai', 'b': 'builder',
-      's': 'betsafeai', 'r': 'arbitrage', 't': 'tracker', 'w': 'worldcup',
+      's': 'betsafeai', 'r': 'arbitrage', 'w': 'worldcup',
       'c': 'comparator', 'h': 'calc'
     };
     document.addEventListener('keydown', (e) => {
@@ -341,7 +340,6 @@
         <div><kbd>G</kbd> <kbd>B</kbd></div><div>Builder</div>
         <div><kbd>G</kbd> <kbd>S</kbd></div><div>Coach IA ✨</div>
         <div><kbd>G</kbd> <kbd>R</kbd></div><div>Arbitraje</div>
-        <div><kbd>G</kbd> <kbd>T</kbd></div><div>Tracker</div>
         <div><kbd>G</kbd> <kbd>C</kbd></div><div>Comparador</div>
         <div><kbd>G</kbd> <kbd>W</kbd></div><div>Mundial 2026</div>
         <div><kbd>/</kbd></div><div>Foco en búsqueda</div>

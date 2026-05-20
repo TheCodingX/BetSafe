@@ -93,7 +93,12 @@ const PORT                  = Number(process.env.PORT || 8787);
 const SCRAPE_INTERVAL_MS    = Number(process.env.SCRAPE_INTERVAL_MS || 30000);
 const ARB_INTERVAL_MS       = Number(process.env.ARB_INTERVAL_MS || 5000);
 const ENABLED_BOOKS         = (process.env.ENABLED_BOOKS || 'bplay,betano,betwarrior,bet365ar,codere,betsson').split(',').map(s=>s.trim()).filter(Boolean);
-const CORS_ORIGIN           = process.env.CORS_ORIGIN || '*';
+// FIX 2026-05 SEGURIDAD: CORS lock. En producción NO abrir a '*' (cualquier
+// dominio podría hacer requests al backend). Default seguro: si NODE_ENV es
+// 'production' Y CORS_ORIGIN no está seteado, usar el dominio de Netlify del
+// frontend. En dev local sigue siendo '*' para que funcione el browser de prueba.
+const CORS_ORIGIN = process.env.CORS_ORIGIN
+  || (process.env.NODE_ENV === 'production' ? 'https://betsafe.netlify.app' : '*');
 const PUBLIC_DIR            = path.resolve(__dirname, '..');
 
 // Motor de arbitraje dedicado: corre cada ARB_INTERVAL_MS (5s) sobre el
@@ -114,10 +119,17 @@ app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', CORS_ORIGIN);
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  // Security headers básicos
+  // Security headers
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  // FIX 2026-05 SEGURIDAD: HSTS — fuerza HTTPS por 1 año, incluye subdomains.
+  // Solo en producción (en dev local rompe http://localhost).
+  if (process.env.NODE_ENV === 'production') {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
+  }
+  // Permissions-Policy: lock features que no usamos (camera, mic, geo, etc.)
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
   if (req.method === 'OPTIONS') return res.status(204).end();
   next();
 });
@@ -380,13 +392,35 @@ app.get('/api/breakers', (req, res) => res.json(orchestrator.breakers ? orchestr
 
 // Reset manual de breakers. Si está seteado DEBUG_KEY hay que pasar ?key=
 // para evitar que cualquiera resetee desde la internet pública.
+/* FIX 2026-05 SEGURIDAD: helper centralizado para endpoints de debug/admin.
+ * Política:
+ *   - En NODE_ENV=production: SIEMPRE requiere DEBUG_KEY válida (param o body).
+ *     Si DEBUG_KEY no está configurada → 404 (endpoint no existe). Esto evita
+ *     que endpoints internos queden accesibles en producción por accidente.
+ *   - En dev local: si DEBUG_KEY está seteada, exigirla. Si no, libre (DX).
+ * Devuelve true si autorizado, false si NO (y ya respondió con error). */
+function requireDebugAuth(req, res) {
+  const isProd = process.env.NODE_ENV === 'production';
+  const cfg = process.env.DEBUG_KEY;
+  if (isProd) {
+    if (!cfg) { res.status(404).json({ error: 'Not found' }); return false; }
+    const provided = req.query?.key || req.body?.key || req.headers?.['x-debug-key'];
+    if (provided !== cfg) { res.status(404).json({ error: 'Not found' }); return false; }
+    return true;
+  }
+  // Dev local: si está seteada, exigirla; sino libre
+  if (cfg) {
+    const provided = req.query?.key || req.body?.key || req.headers?.['x-debug-key'];
+    if (provided !== cfg) { res.status(401).json({ error: 'unauthorized' }); return false; }
+  }
+  return true;
+}
+
 //   POST /api/breakers/reset                       → resetea todos
 //   POST /api/breakers/reset?name=scraper:betano   → solo ese scraper (incluye sub-breakers)
 //   POST /api/breakers/reset?name=scraper:betano:playwright → solo ese sub-breaker
 app.post('/api/breakers/reset', (req, res) => {
-  if (process.env.DEBUG_KEY && req.query.key !== process.env.DEBUG_KEY) {
-    return res.status(401).json({ error: 'unauthorized' });
-  }
+  if (!requireDebugAuth(req, res)) return;
   const name = req.query.name ? String(req.query.name) : null;
   const reset = orchestrator.resetBreakers ? orchestrator.resetBreakers(name) : [];
   res.json({ reset, count: reset.length });
@@ -398,9 +432,7 @@ app.post('/api/breakers/reset', (req, res) => {
 //   POST /api/sources/refresh                     → todos los scrapers
 //   POST /api/sources/refresh?name=scraper:betano → solo betano
 app.post('/api/sources/refresh', (req, res) => {
-  if (process.env.DEBUG_KEY && req.query.key !== process.env.DEBUG_KEY) {
-    return res.status(401).json({ error: 'unauthorized' });
-  }
+  if (!requireDebugAuth(req, res)) return;
   const name = req.query.name ? String(req.query.name) : null;
   const cleared = orchestrator.clearScraperCache ? orchestrator.clearScraperCache(name) : [];
   res.json({ cleared, count: cleared.length });
@@ -572,9 +604,8 @@ app.get('/api/debug/scrape-now/:name', async (req, res) => {
  * Útil después de upgrade de provider (free → paid) para forzar re-análisis
  * con la nueva calidad. */
 app.post('/api/debug/clear-ai-cache', express.json(), async (req, res) => {
-  if (process.env.DEBUG_KEY && req.body?.key !== process.env.DEBUG_KEY) {
-    // Sin DEBUG_KEY configurada, permitir libre. Con DEBUG_KEY, requiere coincidir.
-    if (process.env.DEBUG_KEY) return res.status(401).json({ error: 'unauthorized' });
+  if (!requireDebugAuth(req, res)) return;
+  {
   }
   try {
     const cleared = typeof analyzeMatch.clearAllCache === 'function'
@@ -647,9 +678,7 @@ app.get('/api/debug/llm-trace', async (req, res) => {
 
 app.get('/api/debug/scraper/:bookKey', async (req, res) => {
   // Protección básica: requiere ?key=<DEBUG_KEY> si está configurada
-  if (process.env.DEBUG_KEY && req.query.key !== process.env.DEBUG_KEY) {
-    return res.status(401).json({ error: 'unauthorized' });
-  }
+  if (!requireDebugAuth(req, res)) return;
   try {
     const { deepCapture } = require('./scrapers/_deepCapture');
     const url = req.query.url;
@@ -676,20 +705,76 @@ app.get('/api/debug/scraper/:bookKey', async (req, res) => {
   }
 });
 
+/* FIX 2026-05 CUOTAS REAL-TIME: filtro de staleness aplicado a /api/odds.
+ * Antes /api/odds devolvía TODOS los eventos sin chequeo. Si una casa había
+ * dejado de actualizar cuotas hace >2min, el frontend mostraba cuota vieja
+ * → usuario apostaba sobre fake edge.
+ * Política: rechazar eventos con lastUpdate >120s (más permisivo que el
+ * 90s de picks/generator porque /api/odds se consume continuamente y un
+ * spike puede dejar eventos viejos legítimos por unos segundos).
+ * Bypass: ?stale=1 para debugging interno. */
+const ODDS_MAX_STALE_MS = 120_000;
+function freshOnly(events) {
+  const cutoff = Date.now() - ODDS_MAX_STALE_MS;
+  return (events || []).filter(e => (e.lastUpdate || 0) >= cutoff);
+}
+
 app.get('/api/odds', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, max-age=0, must-revalidate');
   const sport = String(req.query.sport || 'all');
   const league = req.query.league ? String(req.query.league) : null;
-  res.json(orchestrator.events({ sport, league }));
+  const events = orchestrator.events({ sport, league });
+  const out = req.query.stale === '1' ? events : freshOnly(events);
+  res.json(out);
 });
 
 app.get('/api/odds/:sport', (req, res) => {
-  res.json(orchestrator.events({ sport: req.params.sport }));
+  res.setHeader('Cache-Control', 'no-store, max-age=0, must-revalidate');
+  const events = orchestrator.events({ sport: req.params.sport });
+  const out = req.query.stale === '1' ? events : freshOnly(events);
+  res.json(out);
 });
 
 app.get('/api/odds/match/:id', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, max-age=0, must-revalidate');
   const ev = orchestrator.findEvent(req.params.id);
   if (!ev) return res.status(404).json({ error: 'not-found' });
-  res.json(ev);
+  // Para match individual, devolver con flag de staleness en el response
+  const age = Date.now() - (ev.lastUpdate || 0);
+  const stale = age > ODDS_MAX_STALE_MS;
+  res.json({ ...ev, _meta: { lastUpdate: ev.lastUpdate, ageMs: age, stale } });
+});
+
+/* FIX 2026-05: endpoint nuevo /api/odds/freshness — diagnóstico de lag
+ * por evento y por sport. Útil para que el frontend muestre "actualizado
+ * hace Xs" y para monitoring. */
+app.get('/api/odds/freshness', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, max-age=0, must-revalidate');
+  const all = orchestrator.events({ sport: 'all' });
+  const now = Date.now();
+  const bySport = {};
+  let totalFresh = 0, totalStale = 0;
+  for (const ev of all) {
+    const sport = ev.sport || 'unknown';
+    const age = now - (ev.lastUpdate || 0);
+    const isStale = age > ODDS_MAX_STALE_MS;
+    if (!bySport[sport]) bySport[sport] = { total: 0, fresh: 0, stale: 0, maxAgeMs: 0, minAgeMs: Infinity };
+    bySport[sport].total++;
+    if (isStale) { bySport[sport].stale++; totalStale++; }
+    else { bySport[sport].fresh++; totalFresh++; }
+    if (age > bySport[sport].maxAgeMs) bySport[sport].maxAgeMs = age;
+    if (age < bySport[sport].minAgeMs) bySport[sport].minAgeMs = age;
+  }
+  // Cleanup infinity en sports sin eventos
+  Object.values(bySport).forEach(s => { if (s.minAgeMs === Infinity) s.minAgeMs = 0; });
+  res.json({
+    totalEvents: all.length,
+    totalFresh,
+    totalStale,
+    cutoffMs: ODDS_MAX_STALE_MS,
+    serverNow: now,
+    bySport
+  });
 });
 
 // Surebets: combina las del orchestrator (3-way h2h básico) con las del
@@ -1662,7 +1747,6 @@ PRODUCTOS PRINCIPALES:
 - Builder: armado manual de combinadas con análisis de correlación.
 - Arbitraje (VIP): detecta surebets (ROI > 0) entre casas. Dashboard.html#arbitrage.
 - Calculadora Pro: Kelly, banca, ROI, stake óptimo.
-- Tracker: registro de apuestas con stats de Brier score, hit rate.
 - Mundial 2026: cuotas y proyecciones específicas del WC26.
 - Bonos: comparador de bonos de bienvenida y promos vigentes de las 6 casas.
 
@@ -1706,8 +1790,8 @@ nombre amigable de la sección. El frontend los convierte en links automáticame
 
 Mapeo OBLIGATORIO (escribí solo el nombre, NO el .html):
   Inicio · Dashboard · Comparador · Quant IA · Coach IA · Builder · Arbitraje ·
-  Calculadora Pro · Tracker · Mundial 2026 · Configuración · Precios · Contacto ·
-  Funciones · Herramientas · Academia · Bonos · Juego Responsable · Términos ·
+  Calculadora Pro · Simulador · Mundial 2026 · Configuración · Precios · Contacto ·
+  Funciones · Herramientas · Bonos · Juego Responsable · Términos ·
   Privacidad · Cookies · Ingresar · Crear cuenta · Nosotros.
 
 Ejemplos correctos:

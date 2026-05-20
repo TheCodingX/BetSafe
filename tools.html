@@ -83,7 +83,6 @@ const TOOLS = [
   { cat:'critical', name:'Kelly Stake Recommender', tier:'standard' },
   { cat:'critical', name:'EV Calculator', tier:'standard' },
   { cat:'critical', name:'No-Vig Fair Odds', tier:'vip' },
-  { cat:'critical', name:'CLV Tracker', tier:'vip' },
   { cat:'critical', name:'Risk Score 0-100', tier:'vip' },
   // Advanced (26)
   { cat:'advanced', name:'EPA / Success Rate (NFL)', tier:'vip' },
@@ -144,7 +143,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (n.includes('arb') || n.includes('surebet')) return 'arbitrage';
     if (n.includes('kelly') || n.includes('ev ') || n.includes('no-vig') || n.includes('clv') || n.includes('risk score') || n.includes('tax form')) return 'calcpro';
     if (n.includes('calc') || n.includes('stake') || n.includes('probabilid') || n.includes('conversor') || n.includes('asian') || n.includes('bonus bet') || n.includes('quick arb')) return 'calc';
-    if (n.includes('tracker') || n.includes('histór') || n.includes('import') || n.includes('portf') || n.includes('track record')) return 'tracker';
     if (n.includes('builder') || n.includes('slip') || n.includes('parlay') || n.includes('round robin') || n.includes('cash-out')) return 'builder';
     if (n.includes('smart money') || n.includes('sharp') || n.includes('steam') || n.includes('line history') || n.includes('public betting')) return 'smartmoney';
     if (n.includes('backtesting') || n.includes('simulat') || n.includes('monte carlo') || n.includes('what-if')) return 'simulator';

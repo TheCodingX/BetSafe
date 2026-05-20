@@ -38,7 +38,6 @@
     'dashboard.html#arbitrage': 'Arbitraje',
     'dashboard.html#builder': 'Builder',
     'dashboard.html#calcpro': 'Calculadora Pro',
-    'dashboard.html#tracker': 'Tracker',
     'dashboard.html#worldcup': 'Mundial 2026',
     'dashboard.html#settings': 'Configuración',
     'pricing.html': 'Precios',
