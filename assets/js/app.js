@@ -85,7 +85,6 @@
       { label: 'Inicio', href: 'index.html' },
       { label: 'Funciones', href: 'features.html' },
       { label: 'Herramientas', href: 'tools.html' },
-      { label: 'Academia', href: 'learn.html' },
       { label: 'Precios', href: 'pricing.html' },
       { label: 'Mundial 2026', href: 'dashboard.html#worldcup' },
       { label: 'Juego Responsable', href: 'responsable.html' }
@@ -123,7 +122,7 @@
 
     // g <letter> chord
     if (window.__waitG && Date.now() - window.__waitG.t < 1500) {
-      const map = { d: 'dashboard.html', a: 'dashboard.html#arbitrage', f: 'features.html', t: 'tools.html', l: 'learn.html', p: 'pricing.html', w: 'dashboard.html#worldcup', h: 'index.html' };
+      const map = { d: 'dashboard.html', a: 'dashboard.html#arbitrage', f: 'features.html', t: 'tools.html', p: 'pricing.html', w: 'dashboard.html#worldcup', h: 'index.html' };
       const dest = map[e.key.toLowerCase()];
       if (dest) { e.preventDefault(); location.href = dest; window.__waitG = null; return; }
     }

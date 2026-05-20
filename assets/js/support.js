@@ -45,7 +45,6 @@
     'contacto.html': 'Contacto',
     'features.html': 'Funciones',
     'tools.html': 'Herramientas',
-    'learn.html': 'Academia',
     'bonos.html': 'Bonos',
     'responsable.html': 'Juego Responsable',
     'terminos.html': 'Términos',

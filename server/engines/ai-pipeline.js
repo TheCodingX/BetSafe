@@ -203,6 +203,51 @@ async function analyzeMatch(event, ctx = {}) {
   // 4) Consenso entre modelos
   const selections = mergeSelections(event, factors, quant, poisson, eloAdj, llm, extendedMarkets);
 
+  // 4.5) DEVIL'S ADVOCATE (2026-05) ──────────────────────────────────────
+  // Para picks de alta confianza, un segundo pase LLM ataca la pick buscando
+  // razones para que falle. Esto evita overconfidence (problema típico de
+  // ensembles que convergen artificialmente). Si el devil's advocate encuentra
+  // argumentos contundentes, descontamos la confidence proporcionalmente.
+  // Técnica usada en fondos cuantitativos (Stratagem, Sportradar Insights).
+  try {
+    const highConfPicks = selections
+      .filter(s => (s.confidence || 0) >= 0.62 && s.odd && s.consensusProb)
+      .slice(0, 3);   // top 3 para limitar latencia/costo
+
+    if (highConfPicks.length > 0 && llm?.llmProvider && llm.llmProvider !== 'offline') {
+      const advResult = await devilsAdvocate(factors, highConfPicks, poisson, eloAdj);
+      if (advResult?.attacks) {
+        for (const attack of advResult.attacks) {
+          const target = selections.find(s =>
+            s.market === attack.market &&
+            String(s.outcome).toLowerCase() === String(attack.outcome).toLowerCase()
+          );
+          if (target) {
+            // riskScore 0..1: cuánto valor tiene el argumento contrario
+            const risk = Math.max(0, Math.min(1, Number(attack.riskScore) || 0));
+            // Penalización: hasta -15% confidence si riskScore=1
+            const penalty = risk * 0.15;
+            const newConf = Math.max(0.30, (target.confidence || 0.5) - penalty);
+            target.devilsAdvocate = {
+              riskScore: Number(risk.toFixed(2)),
+              counterArgs: Array.isArray(attack.counterArgs) ? attack.counterArgs.slice(0, 3) : [],
+              confidencePenalty: Number(penalty.toFixed(3)),
+              originalConfidence: target.confidence
+            };
+            target.confidence = Number(newConf.toFixed(3));
+            // Recalcular EV con nueva confidence si aplica
+            if (target.consensusProb != null) {
+              // No tocamos consensusProb directamente — la confidence ya es
+              // el "tier de seguridad" downstream del modelo.
+            }
+          }
+        }
+      }
+    }
+  } catch (e) {
+    log(`[ai:devils-advocate] err ${e?.message?.slice(0, 100)}`);
+  }
+
   // 5) Enriquecer cada selection con métricas avanzadas para el frontend
   for (const s of selections) {
     if (s.odd && s.consensusProb) {
@@ -271,6 +316,19 @@ function poissonModel(f) {
   // λ base estimado desde cuotas implícitas
   const odds = [h2h.home, h2h.draw, h2h.away].filter(o => Number.isFinite(o) && o > 1);
   if (odds.length < 2) return { unavailable: true };
+
+  // ── LIQUIDITY FILTER (2026-05) ─────────────────────────────────────────
+  // Rechazar mercados con overround >8% — son mercados ilíquidos donde la
+  // casa cobra spread alto por baja confianza propia. Los edges aparentes
+  // en estos mercados suelen ser fake (la línea va a moverse al cierre).
+  // Pinnacle opera con overround ~2-3%, casas grandes 4-6%. >8% = casa
+  // chica/mercado exótico → no apostar a ciegas.
+  const totalImplied = odds.reduce((a, o) => a + (1 / o), 0);
+  const overround = totalImplied - 1;
+  if (overround > 0.08) {
+    return { unavailable: true, reason: 'illiquid-market', overround: Number(overround.toFixed(3)) };
+  }
+
   const fair = shinNoVig(odds);
   // Guard contra NaN/Infinity propagado desde shinNoVig
   if (!fair || fair.some(p => !Number.isFinite(p) || p < 0 || p > 1)) return { unavailable: true };
@@ -331,13 +389,66 @@ function poissonModel(f) {
   const impact = f.weather?.impact?.goalsMultiplier;
   if (Number.isFinite(impact) && impact > 0) muTotal *= impact;
 
-  // Distribución home/away por probabilidades implícitas
+  // Distribución home/away por probabilidades implícitas (baseline desde mercado)
   const pH = fair[0], pD = fair[1] || 0, pA = fair[2] || (1 - pH);
   const denom = pH + pD + pA;
   if (denom <= 0) return { unavailable: true };
   const homeShare = (pH + pD * 0.5) / denom;
   let lambdaH = muTotal * Math.max(0.35, Math.min(0.75, homeShare));
   let lambdaA = muTotal - lambdaH;
+
+  // ── FORM WEIGHTING (2026-05) ───────────────────────────────────────────
+  // Si tenemos goleos promedio del form reciente (últimos 5 partidos), los
+  // mezclamos con el lambda derivado del mercado. Esto le da SEÑAL PROPIA al
+  // modelo en vez de copiar el mercado. Mix 60% mercado / 40% form — la forma
+  // reciente es informativa pero el mercado tiene el wisdom of crowds.
+  //
+  // Bonus: el form se calcula con decay exponencial implícito (los 5 partidos
+  // más recientes ya están priorizados por orden cronológico desde historical.js).
+  const formH = f?.historical?.form?.home;
+  const formA = f?.historical?.form?.away;
+  if (formH && formA && formH.matches >= 3 && formA.matches >= 3
+      && Number.isFinite(formH.goalsFor) && Number.isFinite(formA.goalsFor)
+      && Number.isFinite(formH.goalsAgainst) && Number.isFinite(formA.goalsAgainst)) {
+    // Estimador form-based: el local marca según su GF promedio Y la defensa del visitante.
+    //   λH_form = (GF_home + GA_away) / 2
+    //   λA_form = (GF_away + GA_home) / 2
+    // El promedio armoniza ataque vs defensa, mejor que usar solo GF.
+    const lambdaH_form = (formH.goalsFor + formA.goalsAgainst) / 2;
+    const lambdaA_form = (formA.goalsFor + formH.goalsAgainst) / 2;
+    if (lambdaH_form > 0.2 && lambdaH_form < 5 && lambdaA_form > 0.2 && lambdaA_form < 5) {
+      lambdaH = lambdaH * 0.60 + lambdaH_form * 0.40;
+      lambdaA = lambdaA * 0.60 + lambdaA_form * 0.40;
+    }
+  }
+
+  // ── HOME ADVANTAGE BOOST (separado por liga) ──────────────────────────
+  // homeAdvantage() devuelve el multiplicador típico (~1.10-1.18 en fútbol top).
+  // El mercado ya lo descuenta parcialmente, pero el form weighting puede haber
+  // diluido la ventaja de local. Aplicamos un boost pequeño residual.
+  try {
+    const haRatio = homeAdvantage(f.event?.leagueName, sport);
+    if (Number.isFinite(haRatio) && haRatio > 1) {
+      // 30% de la home advantage se aplica como boost residual a lambdaH
+      const residualBoost = 1 + (haRatio - 1) * 0.30;
+      lambdaH *= residualBoost;
+    }
+  } catch (_) { /* opcional */ }
+
+  // ── SCHEDULE FATIGUE (2026-05) ─────────────────────────────────────────
+  // Días de descanso desde el último partido. <3 días = back-to-back/fixture
+  // congestión → -5% al lambda del equipo afectado.
+  // 4-6 días = ideal, sin ajuste. >10 días = posible rust, -2%.
+  const restH = f?.historical?.daysRestHome;
+  const restA = f?.historical?.daysRestAway;
+  if (Number.isFinite(restH)) {
+    if (restH < 3) lambdaH *= 0.95;
+    else if (restH > 10) lambdaH *= 0.98;
+  }
+  if (Number.isFinite(restA)) {
+    if (restA < 3) lambdaA *= 0.95;
+    else if (restA > 10) lambdaA *= 0.98;
+  }
 
   // Ajuste por lesiones: si el plantel del local tiene baja crítica, λH baja.
   // `severityScore` viene de factors/injuries.js (0=sano, 1=catastrófico).
@@ -347,31 +458,94 @@ function poissonModel(f) {
     if (Number.isFinite(sev.away) && sev.away > 0.4) lambdaA *= (1 - 0.15 * sev.away);
   }
 
-  // P(BTTS yes) ≈ (1 - e^-λH)(1 - e^-λA)
-  const pBttsYes = (1 - Math.exp(-lambdaH)) * (1 - Math.exp(-lambdaA));
+  // Guard final: lambdas razonables
+  lambdaH = Math.max(0.15, Math.min(5.5, lambdaH));
+  lambdaA = Math.max(0.15, Math.min(5.5, lambdaA));
 
-  // P(Over 2.5) = 1 - P(total ≤ 2)
-  const lambdaTotal = lambdaH + lambdaA;
-  const pOver25 = 1 - poissonCDF(2, lambdaTotal);
+  // ── DIXON-COLES CORRECTION (2026-05) ───────────────────────────────────
+  // Poisson plain SUBESTIMA los resultados ajustados (0-0, 1-0, 0-1, 1-1).
+  // Empíricamente en fútbol, estos resultados ocurren más seguido de lo que
+  // Poisson predice independientemente — hay correlación negativa entre
+  // goles de ambos equipos en partidos cerrados.
+  //
+  // Dixon-Coles (1997) propone una función τ(i, j, λh, λa, ρ) que ajusta
+  // probabilidades de los 4 resultados clave. ρ ∈ [-0.2, -0.05] para fútbol
+  // moderno (ρ=-0.10 es promedio en literatura académica reciente).
+  //
+  // Esto mejora calibración de:
+  //   - h2h (especialmente empate, que Poisson subestima)
+  //   - Under 1.5 / Under 2.5 (resultados bajos son más frecuentes)
+  //   - exact-score (matriz más realista)
+  const RHO = (sport === 'soccer') ? -0.10 : 0;   // solo aplicamos a fútbol
+  function tauDC(i, j, lh, la) {
+    if (RHO === 0) return 1;
+    if (i === 0 && j === 0) return 1 - (lh * la * RHO);
+    if (i === 0 && j === 1) return 1 + (lh * RHO);
+    if (i === 1 && j === 0) return 1 + (la * RHO);
+    if (i === 1 && j === 1) return 1 - RHO;
+    return 1;
+  }
 
-  // Win probs por enumeración goal grid (8x8)
+  // ── ENUMERACIÓN GOAL GRID 10x10 (mayor resolución) ────────────────────
+  // Antes 8x8 → underestima cola alta (4+ goles cada equipo). 10x10 con
+  // Dixon-Coles da mejor cobertura para over 3.5 / 4.5 y exact-scores
+  // raros. Computacionalmente trivial.
   let pHomeWin = 0, pDraw = 0, pAwayWin = 0;
-  for (let i = 0; i < 8; i++) {
-    for (let j = 0; j < 8; j++) {
-      const p = poissonPmf(i, lambdaH) * poissonPmf(j, lambdaA);
+  let pBttsYesGrid = 0;
+  let pOver15 = 0, pOver25 = 0, pOver35 = 0, pOver45 = 0;
+  let pUnder15 = 0, pUnder25 = 0, pUnder35 = 0;
+  // Matriz de exact-scores para uso downstream (top 8 más probables)
+  const scoreMatrix = [];
+  let pNormSum = 0;
+  for (let i = 0; i < 10; i++) {
+    for (let j = 0; j < 10; j++) {
+      const p = poissonPmf(i, lambdaH) * poissonPmf(j, lambdaA) * tauDC(i, j, lambdaH, lambdaA);
+      pNormSum += p;
+      scoreMatrix.push({ i, j, p });
       if (i > j) pHomeWin += p;
       else if (i === j) pDraw += p;
       else pAwayWin += p;
+      if (i > 0 && j > 0) pBttsYesGrid += p;
+      const tot = i + j;
+      if (tot >= 2) pOver15 += p; else pUnder15 += p;
+      if (tot >= 3) pOver25 += p; else pUnder25 += p;
+      if (tot >= 4) pOver35 += p; else pUnder35 += p;
+      if (tot >= 5) pOver45 += p;
     }
   }
+  // Re-normalizamos (Dixon-Coles puede dejar la matriz ligeramente !=1)
+  if (pNormSum > 0) {
+    pHomeWin /= pNormSum; pDraw /= pNormSum; pAwayWin /= pNormSum;
+    pBttsYesGrid /= pNormSum;
+    pOver15 /= pNormSum; pOver25 /= pNormSum; pOver35 /= pNormSum; pOver45 /= pNormSum;
+    pUnder15 /= pNormSum; pUnder25 /= pNormSum; pUnder35 /= pNormSum;
+  }
+
+  // Top 5 exact scores ordenados por probabilidad — útil para market 'exact-score'
+  const topExact = scoreMatrix
+    .map(s => ({ ...s, p: s.p / (pNormSum || 1) }))
+    .sort((a, b) => b.p - a.p)
+    .slice(0, 5)
+    .map(s => ({ score: `${s.i}-${s.j}`, prob: Number(s.p.toFixed(4)) }));
+
   return {
     lambdaH: Number(lambdaH.toFixed(3)),
     lambdaA: Number(lambdaA.toFixed(3)),
+    rho: RHO,
     pHomeWin: Number(pHomeWin.toFixed(4)),
     pDraw:    Number(pDraw.toFixed(4)),
     pAwayWin: Number(pAwayWin.toFixed(4)),
-    pBttsYes: Number(pBttsYes.toFixed(4)),
-    pOver25:  Number(pOver25.toFixed(4))
+    pBttsYes: Number(pBttsYesGrid.toFixed(4)),
+    pOver15:  Number(pOver15.toFixed(4)),
+    pOver25:  Number(pOver25.toFixed(4)),
+    pOver35:  Number(pOver35.toFixed(4)),
+    pOver45:  Number(pOver45.toFixed(4)),
+    pUnder15: Number(pUnder15.toFixed(4)),
+    pUnder25: Number(pUnder25.toFixed(4)),
+    pUnder35: Number(pUnder35.toFixed(4)),
+    topExact,
+    method: RHO !== 0 ? 'dixon-coles' : 'poisson',
+    formUsed: !!(formH && formA && formH.matches >= 3 && formA.matches >= 3)
   };
 }
 
@@ -458,6 +632,78 @@ function homeAdvantage(leagueName, sport) {
   if (sport === 'hockey') return 0.55;
   if (sport === 'baseball') return 0.54;
   return 0.55;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// DEVIL'S ADVOCATE LLM (2026-05)
+// Segundo pase que ataca las picks de alta confianza para detectar
+// overconfidence. Devuelve riskScore 0..1 por pick + argumentos en contra.
+// ─────────────────────────────────────────────────────────────────────────
+async function devilsAdvocate(factors, picks, poisson, elo) {
+  if (!Array.isArray(picks) || picks.length === 0) return null;
+  const sport = factors.event?.sport;
+  const league = factors.event?.leagueName || factors.event?.league;
+  const home = factors.event?.home?.name;
+  const away = factors.event?.away?.name;
+
+  const picksJson = picks.map(p => ({
+    market: p.market,
+    outcome: p.outcome,
+    label: p.label,
+    odd: p.odd,
+    confidence: p.confidence,
+    impliedProb: p.odd ? Number((1 / p.odd).toFixed(3)) : null,
+    rationale: typeof p.rationale === 'string' ? p.rationale.slice(0, 200) : null
+  }));
+
+  const ctx = {
+    sport, league, home, away,
+    poisson: poisson?.unavailable ? null : {
+      lambdaH: poisson?.lambdaH, lambdaA: poisson?.lambdaA,
+      pHome: poisson?.pHomeWin, pDraw: poisson?.pDraw, pAway: poisson?.pAwayWin,
+      pBttsYes: poisson?.pBttsYes, pOver25: poisson?.pOver25
+    },
+    historical: factors.historical && !factors.historical.unavailable ? {
+      formHome: factors.historical?.form?.home?.wdl,
+      formAway: factors.historical?.form?.away?.wdl,
+      h2hHomeWinRate: factors.historical?.h2h?.homeWinRate
+    } : null,
+    injuries: factors.injuries?.severityScore || null,
+    weather: factors.weather?.condition || null,
+    sharp: factors.sharp ? {
+      score: factors.sharp.score,
+      direction: factors.sharp.direction
+    } : null
+  };
+
+  const systemPrompt = 'Sos un trader profesional ESCÉPTICO. Tu trabajo es atacar picks de alta confianza para evitar overconfidence. Por cada pick, encontrá los argumentos MÁS FUERTES en CONTRA. Si la pick es realmente sólida, devolvé riskScore bajo (0.0-0.3). Si encontrás dudas reales, riskScore alto (0.6-1.0). NUNCA inventes argumentos débiles — si la pick está bien fundada, decilo. JSON estricto.';
+
+  const userPrompt = `Picks de alta confianza para revisar adversarialmente:
+${JSON.stringify(picksJson, null, 0)}
+
+Contexto del partido:
+${JSON.stringify(ctx, null, 0)}
+
+Por cada pick, devolvé un objeto en "attacks" con:
+{
+  "market": "<market original>",
+  "outcome": "<outcome original>",
+  "riskScore": <0.0-1.0, qué tan vulnerable es la pick a fallar>,
+  "counterArgs": ["<argumento 1 contra la pick>", "<arg 2>", "<arg 3>"]
+}
+
+JSON estricto:
+{ "attacks": [...] }`;
+
+  try {
+    const r = await llmJsonAny(systemPrompt, userPrompt, { maxTokens: 800, temperature: 0.5 });
+    if (r?.result?.attacks && Array.isArray(r.result.attacks)) {
+      return r.result;
+    }
+  } catch (e) {
+    log(`[devils-advocate] llm err ${e?.message?.slice(0, 80)}`);
+  }
+  return null;
 }
 
 async function llmStructured(factors, poisson, elo) {
