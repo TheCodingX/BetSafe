@@ -71,21 +71,26 @@
     let activeValueFilter = 'all';
 
     function computeMatchValue(m) {
-      // Solo valoramos events con 2+ casas en h2h (sino no hay comparación real).
+      // FIX 2026-05: antes descartábamos eventos con 1 sola casa (sin "comparación").
+      // El resultado: en sports menos populares (tenis, esports, MMA, hockey, etc.)
+      // muchos eventos solo tienen 1 casa cargada → todo se descartaba → tabs vacíos.
+      // Ahora: mostramos TODOS los eventos con al menos 1 casa. Si solo hay 1,
+      // marcamos la pick como "única disponible" (sin comparación de cuotas).
       const books = Object.entries(m.markets?.h2h || {}).filter(([_, b]) =>
         Number(b?.home) > 1.01 || Number(b?.away) > 1.01
       );
-      if (books.length < 2) return null;
+      if (books.length < 1) return null;   // 0 casas = nada que mostrar
 
-      // Para cada outcome (home/draw/away) calculamos mejor + peor cuota
+      // Para cada outcome (home/draw/away) calculamos mejor + peor cuota.
+      // Si solo hay 1 casa, best === worst y gapPct = 0.
       const computeOutcome = (key) => {
         const vals = books.map(([k, b]) => ({ book: k, price: Number(b?.[key]) }))
           .filter(x => Number.isFinite(x.price) && x.price > 1.01);
-        if (vals.length < 2) return null;
+        if (vals.length < 1) return null;
         vals.sort((a, b) => b.price - a.price);
         const best = vals[0], worst = vals[vals.length - 1];
-        const gapPct = ((best.price - worst.price) / worst.price) * 100;
-        return { best, worst, vals, gapPct };
+        const gapPct = vals.length >= 2 ? ((best.price - worst.price) / worst.price) * 100 : 0;
+        return { best, worst, vals, gapPct, singleBook: vals.length < 2 };
       };
 
       const outH = computeOutcome('home');
@@ -137,9 +142,33 @@
       // Body
       const tb = panel.querySelector('#cBody');
       if (!filtered.length) {
+        // FIX 2026-05: empty state CONTEXTUAL por sport — antes solo decía
+        // "sin partidos" sin explicar por qué. Ahora mostramos cuántos eventos
+        // hay del sport en orchestrator, cuántos pasaron el filter, y motivo.
+        const allMatches = matches || [];
+        const sportMatches = activeSport === 'all' ? allMatches : allMatches.filter(m => m.sport === activeSport);
+        const sportLabel = activeSport === 'all' ? 'todos los deportes' : (BSData.SPORTS.find(s => s.key === activeSport)?.name || activeSport);
+        const withOdds = sportMatches.filter(m => Object.keys(m.markets?.h2h || {}).length >= 1).length;
+        let title, hint;
+        if (sportMatches.length === 0) {
+          title = `No hay eventos de ${sportLabel} en este momento`;
+          hint = 'Probá con otro deporte o esperá unos minutos a que el sistema cargue nuevos partidos.';
+        } else if (withOdds === 0) {
+          title = `${sportMatches.length} eventos de ${sportLabel} sin cuotas cargadas todavía`;
+          hint = 'Las casas argentinas legales aún no publicaron cuotas para estos eventos. Refrescá en unos segundos.';
+        } else if (activeValueFilter === 'surebet') {
+          title = 'No hay surebets en este momento';
+          hint = `Analizamos ${sportMatches.length} eventos de ${sportLabel}. Las surebets cambian rápido — quedate mirando o cambiá el filtro.`;
+        } else if (activeValueFilter === 'material') {
+          title = `${sportMatches.length} eventos pero ninguno con gap material`;
+          hint = 'Las casas están alineadas. Sacá el filtro "valor material" para ver todos.';
+        } else {
+          title = `${sportMatches.length} eventos de ${sportLabel} disponibles`;
+          hint = 'Algunos solo tienen 1 casa con cuotas. Refrescá para ver más comparaciones.';
+        }
         tb.innerHTML = `<div class="empty" style="padding:32px;text-align:center">
-          <strong>Sin partidos que cumplan el filtro</strong>
-          <p class="muted tiny">${activeValueFilter === 'surebet' ? 'No hay surebets ahora. Cambian rápido — quedate mirando.' : activeValueFilter === 'material' ? 'Probá relajar el filtro de valor.' : 'Aguardando partidos con 2+ casas comparables.'}</p>
+          <strong>${title}</strong>
+          <p class="muted tiny" style="margin-top:8px">${hint}</p>
         </div>`;
       } else {
         tb.innerHTML = filtered.slice(0, 30).map(row).join('');
