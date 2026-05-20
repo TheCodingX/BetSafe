@@ -89,6 +89,25 @@ class ArbitrageEngine {
     const events = this.getEvents() || [];
     const fresh = events.filter(e => (Date.now() - (e.lastUpdate || 0)) < this.maxAgeMs);
 
+    // FIX 2026-05: tracking de debug por ciclo. Útil para responder "por qué no
+    // hay surebets" sin tener que adivinar. Lo exponemos vía /api/arbitrage/debug.
+    this.lastDebug = {
+      ts: Date.now(),
+      eventsTotal: events.length,
+      eventsFresh: fresh.length,
+      eventsStale: events.length - fresh.length,
+      maxAgeMs: this.maxAgeMs,
+      candidatesByType: { '1x2': 0, totals: 0, btts: 0, ah: 0, cross: 0 },
+      marketsCompared: { '1x2': 0, totals: 0, btts: 0, ah: 0, cross: 0 },
+      eventsWithoutH2h: 0, eventsWithoutTotals: 0, eventsWithoutBtts: 0,
+      eventsWithoutAh: 0, eventsWithoutDc: 0,
+      onlySingleBook: { '1x2': 0, totals: 0, btts: 0, ah: 0 },
+      negativeSumExamples: [],   // top 5 partidos con sum más cercano a 1 (casi arb)
+      filtered: { belowMinRoi: 0, suspicious: 0, palpableError: 0 },
+      detectedRaw: 0,
+      detectedAfterFilter: 0
+    };
+
     const newSurebets = [];
     const activeNow = new Set();
 
@@ -121,17 +140,52 @@ class ArbitrageEngine {
     };
 
     fresh.forEach(ev => {
+      const debugCtx = this.lastDebug;
       // 1) 2-way + 3-way en 1X2
-      this.detect1x2(ev).forEach(upsert);
+      if (!ev?.markets?.h2h) debugCtx.eventsWithoutH2h++;
+      else {
+        const books = Object.keys(ev.markets.h2h);
+        if (books.length < 2) debugCtx.onlySingleBook['1x2']++;
+        else {
+          debugCtx.marketsCompared['1x2']++;
+          // Best-vs-best sum (para reportar "casi arb")
+          const hasDraw = Object.values(ev.markets.h2h).some(m => m.draw);
+          const sides = hasDraw ? ['home', 'draw', 'away'] : ['home', 'away'];
+          const bookEntries = Object.entries(ev.markets.h2h);
+          const bestPrices = sides.map(side => bestBookSide(bookEntries, side)?.price || 0).filter(p => p > 1);
+          if (bestPrices.length === sides.length) {
+            const sumInv = bestPrices.reduce((s, o) => s + 1 / o, 0);
+            if (sumInv < 1.05 && debugCtx.negativeSumExamples.length < 5) {
+              debugCtx.negativeSumExamples.push({
+                event: `${ev.home?.name} vs ${ev.away?.name}`,
+                market: hasDraw ? 'h2h-3way' : 'h2h-2way',
+                bestPrices, sumInv: Number(sumInv.toFixed(4)),
+                roi: sumInv < 1 ? Number(((1/sumInv - 1) * 100).toFixed(2)) : null
+              });
+            }
+          }
+        }
+      }
+      const r1 = this.detect1x2(ev); debugCtx.candidatesByType['1x2'] += r1.length; r1.forEach(upsert);
       // 2) Totals
-      this.detectTotals(ev).forEach(upsert);
+      if (!ev?.markets?.totals) debugCtx.eventsWithoutTotals++;
+      else debugCtx.marketsCompared.totals++;
+      const r2 = this.detectTotals(ev); debugCtx.candidatesByType.totals += r2.length; r2.forEach(upsert);
       // 3) BTTS
-      this.detectBtts(ev).forEach(upsert);
+      if (!ev?.markets?.btts) debugCtx.eventsWithoutBtts++;
+      else if (Object.keys(ev.markets.btts).length < 2) debugCtx.onlySingleBook.btts++;
+      else debugCtx.marketsCompared.btts++;
+      const r3 = this.detectBtts(ev); debugCtx.candidatesByType.btts += r3.length; r3.forEach(upsert);
       // 4) Asian Handicap
-      this.detectAh(ev).forEach(upsert);
+      if (!ev?.markets?.ah) debugCtx.eventsWithoutAh++;
+      else debugCtx.marketsCompared.ah++;
+      const r4 = this.detectAh(ev); debugCtx.candidatesByType.ah += r4.length; r4.forEach(upsert);
       // 5) Cross-market 1X2 × DC
-      this.detect1x2VsDc(ev).forEach(upsert);
+      if (!ev?.markets?.dc) debugCtx.eventsWithoutDc++;
+      else if (ev?.markets?.h2h) debugCtx.marketsCompared.cross++;
+      const r5 = this.detect1x2VsDc(ev); debugCtx.candidatesByType.cross += r5.length; r5.forEach(upsert);
     });
+    this.lastDebug.detectedRaw = newSurebets.length;
 
     // Surebets que desaparecieron del snapshot fresco = "cerradas"
     const closed = [...this.activeIds].filter(id => !activeNow.has(id));
@@ -152,17 +206,19 @@ class ArbitrageEngine {
       const filtered = [];
       const suspicious = [];
       for (const sb of newSurebets) {
-        if (sb.netRoi < this.minRoi) continue;
-        if (sb.grossRoi > SUSPICIOUS_CAP) continue;  // data error pura
+        if (sb.netRoi < this.minRoi) { this.lastDebug.filtered.belowMinRoi++; continue; }
+        if (sb.grossRoi > SUSPICIOUS_CAP) { this.lastDebug.filtered.suspicious++; continue; }
         if (sb.grossRoi > PALPABLE_ERROR_CAP) {
           sb.flag = 'palpable-error-risk';
           suspicious.push(sb);
+          this.lastDebug.filtered.palpableError++;
           continue;
         }
         filtered.push(sb);
       }
       filtered.sort((a, b) => b.confidence - a.confidence || b.netRoi - a.netRoi);
       this.detected = filtered.concat(this.detected).slice(0, 500);
+      this.lastDebug.detectedAfterFilter = filtered.length;
       filtered.forEach(sb => this.emit('surebet', sb));
       if (suspicious.length) {
         this.suspicious = suspicious.concat(this.suspicious || []).slice(0, 100);
@@ -172,13 +228,36 @@ class ArbitrageEngine {
 
     this.lastCycleMs = Date.now() - t0;
     this._lastCycleAt = Date.now();
+    // Log resumido cada ciclo (1 línea para no spammear)
+    log(`[arb] cycle #${this.cycles} · ${fresh.length}/${events.length} eventos · candidatos: 1X2=${this.lastDebug.candidatesByType['1x2']} totals=${this.lastDebug.candidatesByType.totals} btts=${this.lastDebug.candidatesByType.btts} ah=${this.lastDebug.candidatesByType.ah} cross=${this.lastDebug.candidatesByType.cross} · filtrados: minRoi=${this.lastDebug.filtered.belowMinRoi} susp=${this.lastDebug.filtered.suspicious} · activos: ${this.activeIds.size}`);
     this.emit('arb-cycle', {
       n: this.cycles,
       durMs: this.lastCycleMs,
       eventsAnalyzed: fresh.length,
       activeSurebets: this.activeIds.size,
-      newDetections: newSurebets.length
+      newDetections: newSurebets.length,
+      debug: this.lastDebug
     });
+  }
+
+  /** Debug snapshot — devuelve diagnóstico del último ciclo. Usado por
+   *  /api/arbitrage/debug para responder "por qué no hay surebets". */
+  debugSnapshot() {
+    const base = this.lastDebug || {};
+    // Total candidatos VIVOS en este momento (no solo "nuevos en último ciclo")
+    const activeNow = this.activeIds.size;
+    return {
+      ...base,
+      activeSurebets: activeNow,
+      activeSurebetsInDetected: this.detected.filter(sb => this.activeIds.has(sb.key)).length,
+      cycles: this.cycles,
+      lastCycleMs: this.lastCycleMs,
+      lastCycleAt: this._lastCycleAt || 0,
+      interval: this.interval,
+      minRoi: this.minRoi,
+      maxAgeMs: this.maxAgeMs,
+      bankroll: this.bankroll
+    };
   }
 
   // ── Detección 1X2 multi-casa ─────────────────────────────────────────────

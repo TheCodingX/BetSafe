@@ -86,95 +86,6 @@ async function preferredJson(systemPrompt, userPrompt, opts = {}) {
   return result;
 }
 
-/* heuristicParse — Fallback regex-based parser para Coach IA cuando el LLM
- * cascade está caído. Cubre los patrones de los 7 chips de SUGGESTIONS del
- * frontend + variaciones naturales en castellano rioplatense. Su objetivo
- * NO es entender prompts complejos, sino que los botones del input SIEMPRE
- * funcionen aunque el LLM esté offline. */
-function heuristicParse(prompt, todayIso, tomorrowIso) {
-  if (typeof prompt !== 'string' || prompt.length < 5) return null;
-  const text = prompt.toLowerCase().trim();
-  const out = {};
-
-  // 1) LEGS — cuántos partidos
-  let m = text.match(/(\d+)\s*(?:partidos?|legs?|combinad[oa]s?\s+de|de\s+)/);
-  if (m) out.legs = Math.max(2, Math.min(8, parseInt(m[1], 10)));
-  else out.legs = 3;
-
-  // 2) CUOTA TARGET / RANGO
-  const oddRange = text.match(/(?:cuota\s+(?:total\s+)?(?:entre|de)\s+)(\d+(?:[.,]\d+)?)\s*(?:y|a|-)\s*(\d+(?:[.,]\d+)?)/)
-                || text.match(/(?:entre\s+)(\d+(?:[.,]\d+)?)\s*y\s*(\d+(?:[.,]\d+)?)/);
-  if (oddRange) {
-    out.minTotalOdd = parseFloat(oddRange[1].replace(',', '.'));
-    out.maxTotalOdd = parseFloat(oddRange[2].replace(',', '.'));
-    out.targetOdd = (out.minTotalOdd + out.maxTotalOdd) / 2;
-  } else {
-    m = text.match(/cuota\s+(?:total\s+)?(?:cerca\s+de\s+|de\s+|en\s+|~?\s*)?(\d+(?:[.,]\d+)?)/);
-    if (m) out.targetOdd = parseFloat(m[1].replace(',', '.'));
-  }
-
-  // 3) FECHA / VENTANA
-  if (/\bhoy\b/.test(text)) out.exactDate = todayIso;
-  else if (/\bmañ?ana\b/.test(text)) out.exactDate = tomorrowIso;
-  else if (/(esta\s+semana|los\s+pr[oó]ximos\s+d[ií]as)/.test(text)) out.timeWindow = 'week';
-  else if (/(finde|fin\s+de\s+semana|s[aá]bado|domingo)/.test(text)) out.timeWindow = 'weekend';
-  else out.timeWindow = 'any';
-
-  // 4) DEPORTE
-  if (/\btenis\b|\batp\b|\bwta\b/.test(text)) out.sport = 'tennis';
-  else if (/\bnba\b|\bb[áa]squet\b|\bbasketball\b/.test(text)) out.sport = 'basketball';
-  else if (/\bnfl\b|\bf[uú]tbol\s+americano\b/.test(text)) out.sport = 'amfootball';
-  else if (/\bmlb\b|\bb[eé]isbol\b|\bbaseball\b/.test(text)) out.sport = 'baseball';
-  else if (/\bnhl\b|\bhockey\b/.test(text)) out.sport = 'hockey';
-  else if (/\bf[uú]tbol\b|\bsoccer\b|\bpartidos?\b/.test(text)) out.sport = 'soccer';
-  else out.sport = 'all';
-
-  // 5) LIGAS conocidas
-  const leagues = [];
-  if (/(premier\s+league|epl|inglesa)/.test(text)) leagues.push('premier-league');
-  if (/(la\s+liga|laliga|primera\s+espa[nñ]ola)/.test(text)) leagues.push('la-liga');
-  if (/(serie\s+a|calcio\s+italiano)/.test(text)) leagues.push('serie-a');
-  if (/(bundesliga|alemana)/.test(text)) leagues.push('bundesliga');
-  if (/(ligue\s+1|francesa)/.test(text)) leagues.push('ligue-1');
-  if (/(liga\s+profesional\s+argentina|liga\s+argentina|\blpf\b|primera\s+argentina)/.test(text)) leagues.push('lpf');
-  if (/(brasileir[aã]o|brasilera|brasile[nñ]a)/.test(text)) leagues.push('brasileirao');
-  if (/(champions|ucl|champions\s+league)/.test(text)) leagues.push('champions-league');
-  if (/(libertadores)/.test(text)) leagues.push('copa-libertadores');
-  if (/(sudamericana)/.test(text)) leagues.push('copa-sudamericana');
-  if (/(mls)/.test(text)) leagues.push('mls');
-  if (leagues.length) out.leagues = leagues;
-
-  // 6) EXCLUDE SPORTS
-  const excludeSports = [];
-  if (/\bsin\s+esports\b|\bno\s+esports\b/.test(text)) excludeSports.push('esports');
-  if (/\bsin\s+tenis\b|\bno\s+tenis\b/.test(text)) excludeSports.push('tennis');
-  if (/\bsin\s+nba\b|\bsin\s+b[áa]squet\b/.test(text)) excludeSports.push('basketball');
-  if (excludeSports.length) out.excludeSports = excludeSports;
-
-  // 7) RIESGO
-  if (/(conservador|segur[oa]|favorit[oa]s|baj[oa]\s+riesgo)/.test(text)) out.risk = 'cons';
-  else if (/(agresiv[oa]|arriesgad[oa]|riesgo\s+alto)/.test(text)) out.risk = 'agg';
-  else if (/(equilibrad[oa]|medi[oa]|balance)/.test(text)) out.risk = 'eq';
-  else out.risk = 'eq';
-
-  // 8) MERCADOS — Política nueva 2026-05: el heurístico NO setea filters.markets
-  // por defecto. Razón: si el usuario dice "mezcla de h2h y totales" y populamos
-  // markets=['totals','match-winner'], se sobre-restringe el pool y queda en 0.
-  // Solo populamos cuando el usuario menciona UN mercado específico exclusivo
-  // (ej. "solo córners", "solo tarjetas") — eso sí justifica filtrar.
-  if (/\b(solo|s[óo]lo|únicamente)\s+(c[óo]rner|tarjet|tot|over|under|btts)/.test(text)) {
-    const mkts = [];
-    if (/c[óo]rner/.test(text)) mkts.push('corners-total');
-    if (/tarjet/.test(text)) mkts.push('cards-total');
-    if (/tot|over|under/.test(text)) mkts.push('totals');
-    if (/btts|ambos\s+marcan/.test(text)) mkts.push('btts');
-    if (mkts.length) out.markets = mkts;
-  }
-
-  out.userIntent = `Combinada de ${out.legs} partidos${out.sport!=='all'?` de ${out.sport}`:''}${leagues.length?` (${leagues.join(', ')})`:''} ${out.risk==='cons'?'conservadora':out.risk==='agg'?'agresiva':'equilibrada'}`;
-  out._source = 'heuristic-fallback';
-  return out;
-}
 const { analyzeCombo, pairCorrelation } = require('./engines/correlation');
 const { buildFactors } = require('./factors');
 
@@ -794,6 +705,11 @@ app.get('/api/surebets', (req, res) => {
     .filter(sb => sb.netRoi >= minRoi)
     .filter(sb => !sport || sb.sport === sport)
     .filter(sb => sb.confidence >= minConf);
+
+  // FIX 2026-05: meta enriquecida con datos de debug del último ciclo.
+  // Permite al frontend mostrar "X partidos analizados, Y mercados comparados,
+  // ningún arb rentable detectado por ahora" en lugar de solo "no hay".
+  const dbg = typeof arbEngine.debugSnapshot === 'function' ? arbEngine.debugSnapshot() : {};
   res.json({
     surebets: filtered,
     meta: {
@@ -802,7 +718,18 @@ app.get('/api/surebets', (req, res) => {
       lastCycleAt: snap.lastCycleAt,
       active: snap.activeSurebets,
       interval: snap.interval,
-      serverNow: Date.now()
+      serverNow: Date.now(),
+      // Datos del último análisis para el empty state profesional
+      eventsAnalyzed: dbg.eventsFresh || 0,
+      eventsTotal: dbg.eventsTotal || 0,
+      eventsStale: dbg.eventsStale || 0,
+      marketsCompared: dbg.marketsCompared
+        ? Object.values(dbg.marketsCompared).reduce((a, b) => a + b, 0)
+        : 0,
+      candidatesDetected: dbg.detectedRaw || 0,
+      candidatesAfterFilter: dbg.detectedAfterFilter || 0,
+      filteredByMinRoi: dbg.filtered?.belowMinRoi || 0,
+      filteredSuspicious: (dbg.filtered?.suspicious || 0) + (dbg.filtered?.palpableError || 0)
     }
   });
 });
@@ -812,6 +739,81 @@ app.get('/api/arbitrage/snapshot', (req, res) => {
   res.setHeader('Pragma', 'no-cache');
   res.json(arbEngine.snapshot());
 });
+
+/* GET /api/arbitrage/debug — diagnóstico completo del último ciclo del motor
+ * de arbitraje. Responde "por qué no hay surebets" mostrando cada paso del
+ * pipeline: eventos cargados → fresh (cuotas <90s) → candidatos por mercado
+ * → cómo se filtraron. Incluye top 5 partidos con sum más cercano a 1
+ * (casi-arbs) para investigación. */
+app.get('/api/arbitrage/debug', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, max-age=0, must-revalidate');
+  const dbg = typeof arbEngine.debugSnapshot === 'function' ? arbEngine.debugSnapshot() : null;
+  if (!dbg) return res.json({ error: 'engine no debug ready' });
+  const orchEvents = orchestrator.events({ sport: 'all' });
+  const sourcesOk = orchestrator.sourcesOk?.() || 0;
+  res.json({
+    timestamp: dbg.ts,
+    cycles: dbg.cycles,
+    lastCycleMs: dbg.lastCycleMs,
+    pipeline: {
+      orchestratorEvents: orchEvents.length,
+      eventsTotal: dbg.eventsTotal,
+      eventsFresh: dbg.eventsFresh,
+      eventsStale: dbg.eventsStale,
+      maxAgeMs: dbg.maxAgeMs,
+      sourcesOk
+    },
+    marketsCompared: dbg.marketsCompared,
+    candidatesByType: dbg.candidatesByType,
+    eventsWithoutMarket: {
+      h2h: dbg.eventsWithoutH2h,
+      totals: dbg.eventsWithoutTotals,
+      btts: dbg.eventsWithoutBtts,
+      ah: dbg.eventsWithoutAh,
+      dc: dbg.eventsWithoutDc
+    },
+    onlySingleBook: dbg.onlySingleBook,
+    detectedRaw: dbg.detectedRaw,
+    detectedAfterFilter: dbg.detectedAfterFilter,
+    filteredOut: dbg.filtered,
+    config: {
+      minRoiNet: dbg.minRoi,
+      palpableErrorCap: 0.12,
+      suspiciousCap: 0.25,
+      bankroll: dbg.bankroll,
+      interval: dbg.interval
+    },
+    closeCalls: dbg.negativeSumExamples,    // partidos con sumInv cerca de 1
+    diagnosis: diagnoseArb(dbg, orchEvents.length)
+  });
+});
+
+/** Diagnóstico humano-legible para el endpoint debug. */
+function diagnoseArb(dbg, orchEventsTotal) {
+  const issues = [];
+  if (orchEventsTotal === 0) {
+    issues.push({ severity: 'high', code: 'no-events', message: 'El orchestrator no tiene eventos cargados. Verificá scrapers y The Odds API.' });
+  } else if (dbg.eventsFresh === 0 && dbg.eventsTotal > 0) {
+    issues.push({ severity: 'high', code: 'all-stale', message: `Los ${dbg.eventsTotal} eventos están stale (>90s sin update). Verificá ciclo de scraping.` });
+  }
+  const allMarkets = Object.values(dbg.marketsCompared || {}).reduce((a, b) => a + b, 0);
+  if (allMarkets === 0 && dbg.eventsFresh > 0) {
+    issues.push({ severity: 'high', code: 'no-markets', message: 'Eventos cargados pero sin mercados comparables (h2h/totals/btts vacíos). Verificá scrapers.' });
+  }
+  const singleBookTotal = Object.values(dbg.onlySingleBook || {}).reduce((a, b) => a + b, 0);
+  if (singleBookTotal > 0 && allMarkets > 0 && (singleBookTotal / dbg.eventsFresh) > 0.5) {
+    issues.push({ severity: 'medium', code: 'single-source', message: `${singleBookTotal} eventos solo tienen UNA casa con cuotas. Para arb se necesitan ≥2 casas con el mismo mercado.` });
+  }
+  const totalCandidates = Object.values(dbg.candidatesByType || {}).reduce((a, b) => a + b, 0);
+  if (totalCandidates === 0 && allMarkets > 0) {
+    issues.push({ severity: 'low', code: 'no-arb-opportunities', message: 'Las cuotas entre casas están alineadas — no hay diferencias arbitrables ahora mismo.' });
+  } else if (totalCandidates > 0 && dbg.detectedAfterFilter === 0) {
+    if (dbg.filtered?.belowMinRoi > 0) issues.push({ severity: 'medium', code: 'all-below-min-roi', message: `${dbg.filtered.belowMinRoi} arbs detectados pero todos con ROI por debajo del mínimo. Probá bajar minRoi.` });
+    if (dbg.filtered?.suspicious + dbg.filtered?.palpableError > 0) issues.push({ severity: 'low', code: 'suspicious-filtered', message: `${dbg.filtered.suspicious + dbg.filtered.palpableError} arbs descartados como cuotas erróneas (ROI >12% típicamente palpable error).` });
+  }
+  if (!issues.length) issues.push({ severity: 'ok', code: 'healthy', message: 'Pipeline saludable. Si no aparecen arbs es porque el mercado está eficiente en este momento.' });
+  return issues;
+}
 
 app.get('/api/steam', (req, res) => {
   // Filtrar steam moves de esports/sims/leagues bloqueadas — el smart money
@@ -2813,20 +2815,12 @@ INSTRUCCIONES FINALES:
     log(`[betsafe-ai] parse err: ${e?.message?.slice(0, 100)}`);
   }
 
-  // FIX 2026-05: Fallback heurístico cuando el LLM parser no responde.
-  // Antes esto devolvía 503 → user veía "no hay" siempre que LLM cayera.
-  // Ahora extraemos los filtros con regex de los patrones comunes de los
-  // chips de SUGGESTIONS (combinada segura/equilibrada/agresiva/liga/etc).
-  // Cobertura: los 7 chips del frontend Coach IA + variaciones naturales.
-  if (!parsed || typeof parsed !== 'object') {
-    log(`[betsafe-ai] LLM parser offline — usando fallback heurístico`);
-    parsed = heuristicParse(prompt, todayArtIso, fmt(tomorrowArt));
-  }
-
-  // Si NI LLM NI heurística pudo extraer NADA útil, ahora sí error.
+  // POLÍTICA 2026-05: Coach IA usa LLM real OBLIGATORIO. No hay fallback
+  // heurístico — si LLM no responde, devolvemos mensaje claro al usuario.
+  // Razón: el producto premium $1500/mes promete análisis IA real, no regex.
   if (!parsed || typeof parsed !== 'object') {
     return res.status(503).json({
-      error: 'No pude entender tu pedido. Probá con más detalle (cantidad de partidos, cuota, deporte).',
+      error: 'El análisis IA no está disponible en este momento. Reintentá en unos segundos.',
       retry: true
     });
   }

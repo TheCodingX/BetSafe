@@ -395,15 +395,41 @@
     function renderSurebets(list, f) {
       const host = panel.querySelector('#arbList');
       if (!list.length) {
+        // FIX 2026-05: empty state CON DATOS reales del backend (no más texto vacío).
+        // Mostramos: cuántos partidos analizamos, cuántos mercados comparamos,
+        // si hay candidatos descartados por filtros, y el motivo profesional.
+        const m = lastMeta || {};
+        const eventsAnalyzed = m.eventsAnalyzed || 0;
+        const marketsCompared = m.marketsCompared || 0;
+        const filteredByMinRoi = m.filteredByMinRoi || 0;
+        const filteredSusp = m.filteredSuspicious || 0;
+        const cycles = m.cycles || 0;
+        let title = 'Buscando oportunidades de ganancia segura';
+        let hint;
+        if (eventsAnalyzed === 0) {
+          title = 'Conectando con las casas';
+          hint = `Iniciando análisis de cuotas en vivo. Las oportunidades aparecerán automáticamente cuando detectemos diferencias entre las casas argentinas legales.`;
+        } else if (filteredByMinRoi > 0) {
+          title = `${filteredByMinRoi} ${filteredByMinRoi === 1 ? 'oportunidad detectada' : 'oportunidades detectadas'} bajo tu filtro de ROI`;
+          hint = `Analizamos ${eventsAnalyzed} partidos en ${marketsCompared.toLocaleString('es-AR')} mercados. ${filteredByMinRoi} ${filteredByMinRoi === 1 ? 'arbitraje fue descartado' : 'arbitrajes fueron descartados'} por estar por debajo de tu ROI mínimo. Bajá el filtro para verlas.`;
+        } else if (filteredSusp > 0) {
+          title = 'Sin arbitrajes rentables en este momento';
+          hint = `Analizamos ${eventsAnalyzed} partidos · ${marketsCompared.toLocaleString('es-AR')} mercados comparados. Detectamos ${filteredSusp} ${filteredSusp === 1 ? 'cuota sospechosa' : 'cuotas sospechosas'} (probable error de la casa, descartadas por seguridad).`;
+        } else if (eventsAnalyzed > 0) {
+          title = 'Sin arbitrajes rentables en este momento';
+          hint = `Analizamos ${eventsAnalyzed} partidos · ${marketsCompared.toLocaleString('es-AR')} mercados comparados · ${cycles} ciclos. Las casas están alineadas — no hay diferencias arbitrables ahora mismo. Seguimos monitoreando cada 5 segundos.`;
+        } else {
+          hint = 'Las ganancias seguras aparecen cuando dos casas tienen cuotas diferentes para el mismo partido. Revisamos las 6 casas legales argentinas cada 5 segundos.';
+        }
         host.innerHTML = `
         <div class="bs-empty-prem">
           <div class="bs-empty-prem__ico">
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.3-4.3"/></svg>
           </div>
-          <strong class="bs-empty-prem__title">Buscando oportunidades de ganancia segura</strong>
-          <p class="bs-empty-prem__hint">Las ganancias seguras aparecen cuando dos casas tienen cuotas diferentes para el mismo partido. Las apuestas se cierran cuando las casas se igualan. Revisamos las 6 casas legales argentinas cada 5 segundos.</p>
+          <strong class="bs-empty-prem__title">${title}</strong>
+          <p class="bs-empty-prem__hint">${hint}</p>
           <div class="cluster" style="gap:6px;flex-wrap:wrap;justify-content:center;margin-top:6px">
-            <button class="btn btn-outline btn-sm" data-arb-lower-roi>Mostrar también ganancias chicas (desde 0.1%)</button>
+            ${filteredByMinRoi > 0 ? `<button class="btn btn-primary btn-sm" data-arb-lower-roi>Bajar a 0.1% y ver ${filteredByMinRoi}</button>` : `<button class="btn btn-outline btn-sm" data-arb-lower-roi>Mostrar también ganancias chicas (desde 0.1%)</button>`}
             <button class="btn btn-outline btn-sm" data-arb-relax-age>Incluir cuotas más viejas (10 min)</button>
             <button class="btn btn-ghost btn-sm" data-arb-clear-fit>Sin límite de monto</button>
           </div>
