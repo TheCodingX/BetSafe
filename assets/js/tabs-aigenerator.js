@@ -25,7 +25,7 @@
           </p>
           <div class="row" style="justify-content:center;gap:8px">
             <a href="pricing.html" class="btn btn-premium btn-lg">Pasar a VIP</a>
-            <a href="login.html" class="btn btn-outline btn-lg">Probar demo VIP</a>
+            <a href="login.html" class="btn btn-outline btn-lg">Iniciar sesión</a>
           </div>
         </div>`;
       return;
@@ -1027,7 +1027,7 @@
           <span class="muted tiny">Stake base: ${BSUI.money(stake)} ARS</span>
         </div>
         ${aiGlobalNarrative ? `<div class="card card-tinted card-pad-sm mb-3" style="border-left:3px solid var(--brand-500);background:rgba(var(--brand-500-rgb,30,75,200),0.04)">
-          <div class="row between" style="align-items:center"><strong class="tiny">Lectura global IA${aiProvider ? ` <span class="badge badge-success tiny" style="margin-left:6px">${BSUI.esc(aiProvider)}</span>` : ''}</strong></div>
+          <div class="row between" style="align-items:center"><strong class="tiny">Lectura global IA${aiProvider ? ` <span class="badge badge-success tiny" style="margin-left:6px">✓ Activa</span>` : ''}</strong></div>
           <p class="muted tiny" style="margin-top:6px;line-height:1.5">${BSUI.esc(aiGlobalNarrative)}</p>
         </div>` : ''}
         ${aiHealth === 'degraded' ? `<div class="card card-pad-sm mb-3" style="border-left:3px solid var(--warning,#d97706);background:color-mix(in srgb, var(--warning,#d97706) 6%, transparent)">
@@ -1035,9 +1035,10 @@
           <p class="muted tiny" style="margin-top:4px;line-height:1.45">Estas combinadas se armaron con análisis estadístico (sin IA generativa). Esperá un minuto y volvé a generar para que la IA las revise.</p>
         </div>` : ''}
         ${aiHealth === 'no-keys' ? `<div class="card card-pad-sm mb-3" style="border-left:3px solid var(--info,#2563eb);background:color-mix(in srgb, var(--info,#2563eb) 5%, transparent)">
-          <strong class="tiny">ℹ Sin keys de IA configuradas</strong>
-          <p class="muted tiny" style="margin-top:4px;line-height:1.45">El motor cuantitativo armó las combinadas. Para análisis IA profundo, configurá BS_GEMINI_API_KEY o BS_GROQ_API_KEY en el backend.</p>
+          <strong class="tiny">ℹ Análisis IA en mantenimiento</strong>
+          <p class="muted tiny" style="margin-top:4px;line-height:1.45">El motor estadístico armó las combinadas. El análisis IA volverá en unos minutos.</p>
         </div>` : ''}
+        ${BSUI.aiDisclaimer ? BSUI.aiDisclaimer({ compact: true }) : ''}
         <div class="grid ${combos.length === 1 ? '' : 'grid-2'}" style="gap:18px">
           ${combos.map((c, ci) => {
             // Métricas computadas una sola vez para usar en el render premium.

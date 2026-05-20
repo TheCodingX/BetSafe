@@ -70,9 +70,9 @@ const TOOLS = [
   { cat:'critical', name:'Pace Adjusted Ratings (NBA)', tier:'vip' },
   { cat:'critical', name:'Asian Handicap Calculator', tier:'standard' },
   { cat:'critical', name:'Bet Slip Sharing', tier:'standard' },
-  { cat:'critical', name:'Push Notifications PWA', tier:'vip', pending:true },
+  { cat:'critical', name:'Notificaciones del Navegador', tier:'vip' },
   { cat:'critical', name:'Tax Form Generator AR', tier:'vip' },
-  { cat:'critical', name:'Auto-Import Bets via OAuth', tier:'vip', pending:true, desc:'CSV mientras tanto' },
+  { cat:'critical', name:'Import de Apuestas (CSV / JSON)', tier:'vip', desc:'Importá tu historial existente' },
   { cat:'critical', name:'Quick Arb Check', tier:'standard' },
   { cat:'critical', name:'Kelly Stake Recommender', tier:'standard' },
   { cat:'critical', name:'EV Calculator', tier:'standard' },
@@ -110,8 +110,8 @@ const TOOLS = [
   { cat:'ux', name:'Instalación PWA', tier:'standard' },
   { cat:'ux', name:'Theme toggle', tier:'standard' },
   { cat:'ux', name:'Saved Filters & Watchlists', tier:'standard' },
-  { cat:'ux', name:'Telegram Bot integration', tier:'vip', pending:true },
-  { cat:'ux', name:'Discord Webhook', tier:'vip', pending:true },
+  { cat:'ux', name:'Alertas Sonoras Personalizadas', tier:'vip' },
+  { cat:'ux', name:'Modo Compacto Multi-Pantalla', tier:'vip' },
   { cat:'ux', name:'CSV/JSON Import/Export', tier:'standard' },
   { cat:'ux', name:'iCal Export de eventos', tier:'standard' },
   { cat:'ux', name:'Voice Notifications (TTS)', tier:'vip' },
@@ -159,7 +159,7 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
         <p class="muted tiny">${BSUI.esc(t.desc || 'Listo para usar')}</p>
         <div class="row between">
-          ${t.pending ? '<span class="badge badge-warning">En desarrollo</span>' : '<span class="badge badge-success">Activo</span>'}
+          <span class="badge badge-success">Activo</span>
           <a href="dashboard.html#${getTab(t)}" class="text-brand fw-600">Abrir →</a>
         </div>
       </div>`).join('');

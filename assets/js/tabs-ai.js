@@ -708,7 +708,7 @@
       return;
     }
     const isVip = BSAuth.isVip();
-    let html = renderAgeBanner() + state.combos.map((c, idx) => comboCardPro(c, idx)).join('');
+    let html = renderAgeBanner() + (BSUI.aiDisclaimer ? BSUI.aiDisclaimer({ compact: true }) : '') + state.combos.map((c, idx) => comboCardPro(c, idx)).join('');
     // Teaser VIP al final si no-VIP (limit 3) para tentarlo
     if (!isVip) {
       html += `
@@ -1570,8 +1570,8 @@ ${legsText}
             <span class="muted tiny">${BSUI.dt(ev.start)}</span>
             ${renderSharpBadge(analysis)}
             ${analysis.llmProvider && analysis.llmProvider !== 'offline'
-              ? `<span class="badge badge-success tiny" title="Análisis con IA generativa (${BSUI.esc(analysis.llmProvider)})">Análisis IA · ${BSUI.esc(analysis.llmProvider)}</span>`
-              : `<span class="badge badge-warning tiny" title="La IA generativa no está disponible en este momento. El análisis usa solo nuestros modelos estadísticos. Refrescá en 1 min para que la IA revise.">⚠ Análisis sin IA</span>`}
+              ? `<span class="badge badge-success tiny" title="Análisis con inteligencia artificial avanzada">✓ Análisis IA</span>`
+              : `<span class="badge badge-warning tiny" title="El análisis IA no está disponible en este momento. Refrescá en unos segundos.">Análisis estadístico</span>`}
           </div>
         </header>
 

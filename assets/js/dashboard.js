@@ -212,10 +212,10 @@
 
   function showVipUpsell(tab) {
     const html = `
-      <h3 class="h3 mb-2">${tab.label} es <span class="text-gold">VIP</span></h3>
-      <p class="muted mb-4">Esta sección requiere plan VIP. Probá en modo demo o pasate ahora con la cuenta <span class="kbd">vip</span> / <span class="kbd">vip</span>.</p>
+      <h3 class="h3 mb-2">${tab.label} requiere <span class="text-gold">VIP</span></h3>
+      <p class="muted mb-4">Esta sección es parte del plan VIP. Activá tu prueba o accedé a los planes disponibles.</p>
       <div class="grid grid-2">
-        <button class="btn btn-outline btn-block" id="upDemo">Probar como demo VIP</button>
+        <button class="btn btn-outline btn-block" id="upDemo">Activar prueba VIP</button>
         <a href="pricing.html" class="btn btn-gold btn-block">Ver planes</a>
       </div>
     `;
@@ -224,7 +224,7 @@
       BSAuth.upgradeToVip();
       BSUI.applyVip(true);
       BSUI.confetti(80);
-      BSUI.toast({ title: 'Modo VIP activado (demo)', message: 'Acceso completo desbloqueado.', type: 'success' });
+      BSUI.toast({ title: 'Prueba VIP activada', message: 'Acceso completo desbloqueado.', type: 'success' });
       close();
       renderSidebar();
       bindUpgradeCard();

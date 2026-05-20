@@ -218,7 +218,7 @@ La probabilidad implícita de las cuotas observadas refleja un mercado con marge
 Las últimas cinco performances de ambos equipos convergen hacia su media histórica. Considerá impacto de localía (+3-5%), congestión de fixture y bajas confirmadas en plantel. La línea actual sugiere consenso del mercado.
 
 **Aviso de riesgo**
-Gestioná stake con criterio Kelly fraccional (¼ a ½ Kelly). Volatilidad alta en mercados secundarios. *Modo offline — IA en cascada no respondió. Conectá Groq/Gemini/OpenRouter en Settings para análisis cualitativo completo.*`;
+Gestioná stake con criterio Kelly fraccional (¼ a ½ Kelly). Volatilidad alta en mercados secundarios. *Análisis estadístico — el análisis IA no está disponible en este momento. Intentá nuevamente en unos segundos.*`;
   }
 
   // ── Football-data.org (opcional, fixtures suplementarios) ────────────────

@@ -805,6 +805,22 @@
     lockTabTitle();
   }
 
+  // Banner reusable para mostrar antes/después de combinadas e IA picks.
+  // Cumple con regulación responsable + protección legal del producto premium.
+  function aiDisclaimer(opts = {}) {
+    const compact = opts.compact === true;
+    const style = compact
+      ? 'padding:8px 12px;margin:8px 0 12px;font-size:.78rem;line-height:1.45;border-left:3px solid var(--brand-500,#2563eb);background:color-mix(in srgb, var(--brand-500,#2563eb) 4%, transparent);border-radius:6px;color:var(--text-muted)'
+      : 'padding:12px 14px;margin:12px 0 16px;font-size:.85rem;line-height:1.55;border-left:3px solid var(--brand-500,#2563eb);background:color-mix(in srgb, var(--brand-500,#2563eb) 5%, transparent);border-radius:8px;color:var(--text-muted)';
+    return `
+      <div class="ai-disclaimer reveal" style="${style}">
+        <strong style="color:var(--text);">Análisis estadístico, no garantía.</strong>
+        Estas recomendaciones se basan en modelos de inteligencia artificial y datos del mercado.
+        Ningún sistema garantiza resultados — apostá con responsabilidad y solo lo que estés dispuesto a perder.
+        <a href="responsable.html" style="color:var(--brand-500,#2563eb);font-weight:600;text-decoration:none">+18 · Juego responsable</a>
+      </div>`;
+  }
+
   global.BSUI = {
     money, pct, num, pctInt, pctRaw, safeFixed, dt, dur, fmtAR,
     bindNaNPctCleaner,
@@ -817,6 +833,8 @@
     // v2
     bindTilt, bindSpotlight, bindStagger, spawnVipParticles,
     bindVipCursor, unbindVipCursor, mountAiStatus, flashOdd,
-    mountHeroOrbs, autoCount
+    mountHeroOrbs, autoCount,
+    // v3 — disclaimer reusable
+    aiDisclaimer
   };
 })(window);

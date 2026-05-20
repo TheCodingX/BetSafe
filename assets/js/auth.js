@@ -52,10 +52,7 @@
       a.user.toLowerCase() === id.toLowerCase() && a.pass === pass
     );
     if (!acc) {
-      const msg = supabaseAvailable()
-        ? 'Credenciales inválidas. Usá tu email o probá demo: admin/admin · vip/vip'
-        : 'Credenciales inválidas. Probá admin/admin o vip/vip';
-      return { ok: false, error: msg };
+      return { ok: false, error: 'Credenciales inválidas. Verificá tu usuario y contraseña.' };
     }
     const session = {
       user: acc.user, tier: acc.tier, name: acc.name, email: acc.email,
@@ -70,7 +67,7 @@
   // ─────────────────────────────────────────────────────────────────────────
   async function signUp({ email, password, name }) {
     if (!supabaseAvailable()) {
-      return { ok: false, error: 'Sign-up no disponible en modo demo. Configurá Supabase en Settings.' };
+      return { ok: false, error: 'El servicio de registro no está disponible en este momento. Intentá nuevamente en unos minutos.' };
     }
     const r = await BSSupabase.signUp({ email, password, name });
     if (!r.ok) return { ok: false, error: r.error?.message || 'No se pudo registrar' };

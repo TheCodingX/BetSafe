@@ -16,7 +16,7 @@
           <div class="row between"><span>Plan</span><span class="badge ${session?.tier==='vip'?'badge-gold':'badge-brand'}">${session?.tier?.toUpperCase()}</span></div>
           <div class="row between"><span>Email</span><strong>${BSUI.esc(session?.email || '—')}</strong></div>
           <button class="btn btn-outline" id="logout">Cerrar sesión</button>
-          ${session?.tier !== 'vip' ? `<button class="btn btn-gold mag" id="goVip">Pasar a VIP (demo)</button>` : ''}
+          ${session?.tier !== 'vip' ? `<button class="btn btn-gold mag" id="goVip">Activar plan VIP</button>` : ''}
         </div>
 
         <div class="card stack">
@@ -29,8 +29,8 @@
         <div class="card stack">
           <strong>Notificaciones</strong>
           <label class="toggle"><input type="checkbox" id="setN1" ${settings.notifications ? 'checked' : ''}><span class="track"></span><span>Alertas in-app (surebets, movimientos del mercado)</span></label>
-          <label class="toggle"><input type="checkbox" id="setN2" disabled><span class="track"></span><span class="muted">Notificaciones push al móvil — próximamente</span></label>
-          <label class="toggle"><input type="checkbox" id="setN3" disabled><span class="track"></span><span class="muted">Reporte diario por email — próximamente</span></label>
+          <label class="toggle"><input type="checkbox" id="setN4" ${settings.alertSound !== false ? 'checked' : ''}><span class="track"></span><span>Sonido al detectar oportunidades</span></label>
+          <label class="toggle"><input type="checkbox" id="setN5" ${settings.alertDesktop ? 'checked' : ''}><span class="track"></span><span>Notificaciones del navegador</span></label>
         </div>
 
         <div class="card stack">
@@ -63,6 +63,16 @@
     panel.querySelector('#setDark').addEventListener('change', e => BSUI.applyTheme(e.target.checked ? 'dark' : 'light'));
     panel.querySelector('#setSound').addEventListener('change', e => { settings.sound = e.target.checked; BSStore.set(BSStore.KEYS.settings, settings); });
     panel.querySelector('#setN1').addEventListener('change', e => { settings.notifications = e.target.checked; BSStore.set(BSStore.KEYS.settings, settings); });
+    panel.querySelector('#setN4')?.addEventListener('change', e => { settings.alertSound = e.target.checked; BSStore.set(BSStore.KEYS.settings, settings); });
+    panel.querySelector('#setN5')?.addEventListener('change', async e => {
+      if (e.target.checked) {
+        if (!('Notification' in window)) { e.target.checked = false; BSUI.toast({ title: 'Tu navegador no soporta notificaciones', type: 'warning' }); return; }
+        const perm = await Notification.requestPermission();
+        if (perm !== 'granted') { e.target.checked = false; BSUI.toast({ title: 'Permiso denegado', message: 'Activá las notificaciones desde la configuración del navegador.', type: 'warning' }); return; }
+      }
+      settings.alertDesktop = e.target.checked;
+      BSStore.set(BSStore.KEYS.settings, settings);
+    });
     panel.querySelector('#setMotion').addEventListener('change', e => {
       settings.reducedMotion = e.target.checked;
       BSStore.set(BSStore.KEYS.settings, settings);

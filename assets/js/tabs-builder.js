@@ -472,7 +472,9 @@
       if (!r) return;
       const riskColor = { low: 'success', mid: 'warning', high: 'danger', extreme: 'danger' }[r.riskAssessment] || 'warning';
       const riskLabel = { low: 'Bajo', mid: 'Medio', high: 'Alto', extreme: 'Extremo' }[r.riskAssessment] || 'Medio';
-      const provider = r.provider === 'groq' ? '<span class="badge badge-success tiny" style="margin-left:6px">IA: groq</span>' : '<span class="badge tiny" style="margin-left:6px">offline</span>';
+      const provider = r.provider === 'groq' || r.provider === 'openai' || r.provider === 'gemini' || r.provider === 'cerebras'
+        ? '<span class="badge badge-success tiny" style="margin-left:6px">✓ Análisis IA</span>'
+        : '<span class="badge tiny" style="margin-left:6px">Análisis estadístico</span>';
       const corrHtml = (r.correlationWarnings || []).length
         ? `<div class="cluster" style="flex-wrap:wrap;gap:4px;margin-top:6px">${r.correlationWarnings.map(w => `<span class="badge badge-warning tiny">⚠ ${BSUI.esc(w)}</span>`).join('')}</div>`
         : '';

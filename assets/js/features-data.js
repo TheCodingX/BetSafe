@@ -27,7 +27,7 @@ window.FEATURES_DATA = [
       { name: 'Justificación con datos: forma, lesiones, value', tier: 'standard' },
       { name: 'Quant IA de combinadas 2/3/4 legs', tier: 'standard' },
       { name: 'Detección de correlación entre legs', tier: 'vip', desc: 'Evitá combinadas trampa' },
-      { name: 'Modelo Poisson xG (1X2, BTTS, Over 2.5)', tier: 'vip' },
+      { name: 'Modelo de goles esperados (1X2, BTTS, Más/Menos 2.5)', tier: 'vip' },
       { name: 'Matriz de resultados exactos', tier: 'vip', desc: 'Hasta 5 goles' },
       { name: 'Análisis IA premium en cualquier partido', tier: 'vip' }
     ]
@@ -117,10 +117,10 @@ window.FEATURES_DATA = [
     items: [
       { name: 'Monte Carlo 1000+ runs', tier: 'vip' },
       { name: 'Percentiles de outcome (P5/P25/P50/P75/P95)', tier: 'vip' },
-      { name: 'What-If: enumeración de escenarios 2^N', tier: 'vip' },
-      { name: 'Elo rating update con K-factor configurable', tier: 'vip' },
-      { name: 'Markov streak projection', tier: 'vip' },
-      { name: 'Bayesian Probability Updater', tier: 'vip' }
+      { name: 'Simulador "What-If" multi-escenario', tier: 'vip' },
+      { name: 'Ranking dinámico de equipos (Elo)', tier: 'vip' },
+      { name: 'Proyección de rachas en vivo', tier: 'vip' },
+      { name: 'Actualizador de probabilidades bayesiano', tier: 'vip' }
     ]
   },
   {
@@ -164,8 +164,8 @@ window.FEATURES_DATA = [
       { name: 'Alertas por deporte / liga', tier: 'vip' },
       { name: 'Price alerts (avisame si una cuota llega a X)', tier: 'vip' },
       { name: 'Detección de tilt automática', tier: 'vip', desc: '4+ pérdidas + stake +50%' },
-      { name: 'Push notifications a dispositivo', tier: 'vip', pending: true },
-      { name: 'Webhook a Discord / Telegram', tier: 'vip', pending: true }
+      { name: 'Notificaciones del navegador (alertas instantáneas)', tier: 'vip' },
+      { name: 'Sonido de alerta al detectar oportunidades', tier: 'vip' }
     ]
   },
   {

@@ -1957,15 +1957,17 @@ app.post('/api/generator', express.json(), async (req, res) => {
     // si hay >=2 legs. Esto fuerza variedad real (h2h + corners + cards + ...).
     const maxLegsPerMarket = legs >= 2 ? 1 : legs;
 
-    // FIX #10: piso dinámico de "bias bajista" por batch. Para count=3 combos
-    // permitimos hasta ⌈count×legs/4⌉ Unders en total (≈25%). Resto debe ser
-    // diverso (h2h, AH, BTTS-Yes, corners, etc).
+    // FIX #10: piso dinámico de bias por batch. Limitamos CADA dirección de
+    // outcome (Under/Over/BTTS-No/BTTS-Yes) a un % del batch total. Esto
+    // evita concentración tanto si el modelo se sesga Under (problema
+    // documentado) como si overcorregimos al lado Over. Si en una jornada
+    // hay 6 partidos donde el modelo dice "Over", apostar 6 Overs en 2
+    // combos te expone a un día de defensivos. Diversidad direccional > volumen.
     const batchTotalLegs = count * legs;
-    const MAX_UNDER_IN_BATCH = Math.max(1, Math.ceil(batchTotalLegs * 0.30));
-    const MAX_BTTSNO_IN_BATCH = Math.max(1, Math.ceil(batchTotalLegs * 0.30));
+    const MAX_PER_DIRECTION = Math.max(1, Math.ceil(batchTotalLegs * 0.30));
 
     // PASADA 1: STRICT — ningún mercado repetido + skip de picks ya usadas
-    // en otros combos del batch + tope de bias Under/BTTS-No.
+    // en otros combos del batch + tope de bias direccional por batch.
     for (const p of candidates) {
       const evId = p.event.id;
       const cur = usedByEvent.get(evId) || 0;
@@ -1974,10 +1976,9 @@ app.post('/api/generator', express.json(), async (req, res) => {
       if (mktCount >= maxLegsPerMarket) continue;  // STRICT: no repetimos mercado
       // FIX #9 STRICT: si esta pick ya está en otro combo del batch, skip.
       if ((picksUsedAcrossCombos.get(pickSig(p)) || 0) > 0) continue;
-      // FIX #10: tope de bias por batch.
+      // FIX #10: tope de bias DIRECCIONAL por batch (Under/Over/BTTS-No/BTTS-Yes).
       const bias = classifyBias(p);
-      if (bias === 'under' && outcomeBiasCount.under >= MAX_UNDER_IN_BATCH) continue;
-      if (bias === 'btts_no' && outcomeBiasCount.btts_no >= MAX_BTTSNO_IN_BATCH) continue;
+      if (bias && outcomeBiasCount[bias] >= MAX_PER_DIRECTION) continue;
       if (mixSports && usedSports.has(p.event.sport) && chosen.length < legs && candidates.some(c => !usedSports.has(c.event.sport) && !chosen.includes(c))) {
         continue;
       }
@@ -2006,8 +2007,7 @@ app.post('/api/generator', express.json(), async (req, res) => {
         const sharedAlready = chosen.filter(c => (picksUsedAcrossCombos.get(pickSig(c)) || 0) > 0).length;
         if ((picksUsedAcrossCombos.get(pickSig(p)) || 0) > 0 && sharedAlready >= 1) continue;
         const bias = classifyBias(p);
-        if (bias === 'under' && outcomeBiasCount.under >= MAX_UNDER_IN_BATCH) continue;
-        if (bias === 'btts_no' && outcomeBiasCount.btts_no >= MAX_BTTSNO_IN_BATCH) continue;
+        if (bias && outcomeBiasCount[bias] >= MAX_PER_DIRECTION) continue;
         chosen.push(p);
         usedByEvent.set(evId, cur + 1);
         usedMarkets.set(p.sel.market, mktCount + 1);
@@ -2015,7 +2015,7 @@ app.post('/api/generator', express.json(), async (req, res) => {
       }
     }
     // PASADA 3 (último recurso): si igual no llegamos, llenamos sin restricciones
-    // de mercado/sharing, pero MANTENEMOS el tope de bias Under/BTTS-No por batch.
+    // de mercado/sharing, pero MANTENEMOS el tope de bias direccional por batch.
     if (chosen.length < legs) {
       for (const p of candidates) {
         if (chosen.includes(p)) continue;
@@ -2023,8 +2023,7 @@ app.post('/api/generator', express.json(), async (req, res) => {
         const cur = usedByEvent.get(evId) || 0;
         if (cur >= legsPerMatch) continue;
         const bias = classifyBias(p);
-        if (bias === 'under' && outcomeBiasCount.under >= MAX_UNDER_IN_BATCH) continue;
-        if (bias === 'btts_no' && outcomeBiasCount.btts_no >= MAX_BTTSNO_IN_BATCH) continue;
+        if (bias && outcomeBiasCount[bias] >= MAX_PER_DIRECTION) continue;
         chosen.push(p);
         usedByEvent.set(evId, cur + 1);
         if (chosen.length >= legs) break;
