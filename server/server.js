@@ -1200,16 +1200,21 @@ Generá las ${count} mejores combinadas posibles. Usá los índices del pool. Re
     function pickIndices(n, startIdx, preferLowOdd) {
       const picked = [];
       const seenEvents = new Set();
+      const seenLabels = new Set();   // FIX 2026-05: evitar 2 picks idénticas (ej. "Menos de 6.5 tarjetas" de 2 partidos)
       const candidates = preferLowOdd
         ? ranked.slice().sort((a, b) => a.sel.odd - b.sel.odd)
         : ranked;
       for (let i = startIdx; i < candidates.length && picked.length < n; i++) {
         const p = candidates[i];
         if (seenEvents.has(p.event.id)) continue;
+        // Dedup por label normalizado para forzar diversidad de mercados en el combo
+        const labelKey = String(p.sel.label || '').toLowerCase().trim();
+        if (labelKey && seenLabels.has(labelKey)) continue;
         const originalIdx = topPool.indexOf(p);
         if (originalIdx < 0) continue;
         picked.push(originalIdx);
         seenEvents.add(p.event.id);
+        if (labelKey) seenLabels.add(labelKey);
       }
       return picked;
     }
@@ -1964,21 +1969,25 @@ app.post('/api/generator', express.json(), async (req, res) => {
     const usedByEvent = new Map();   // eventId → count
     const usedSports = new Set();
     const usedMarkets = new Map();   // market → count
+    // FIX 2026-05: contador LOCAL de bias dentro del combo. Antes solo
+    // teníamos outcomeBiasCount (global batch) lo cual permitía que UN
+    // combo solo armara 4 Unders. Ahora limitamos también dentro del combo.
+    const inComboBias = { under: 0, over: 0, btts_no: 0, btts_yes: 0 };
     // Diversity threshold ESTRICTO: ningún mercado puede repetirse en 2+ legs
     // si hay >=2 legs. Esto fuerza variedad real (h2h + corners + cards + ...).
     const maxLegsPerMarket = legs >= 2 ? 1 : legs;
 
-    // FIX #10: piso dinámico de bias por batch. Limitamos CADA dirección de
-    // outcome (Under/Over/BTTS-No/BTTS-Yes) a un % del batch total. Esto
-    // evita concentración tanto si el modelo se sesga Under (problema
-    // documentado) como si overcorregimos al lado Over. Si en una jornada
-    // hay 6 partidos donde el modelo dice "Over", apostar 6 Overs en 2
-    // combos te expone a un día de defensivos. Diversidad direccional > volumen.
+    // FIX #10: piso dinámico de bias. Limitamos CADA dirección de outcome
+    // (Under/Over/BTTS-No/BTTS-Yes) a un % en dos dimensiones:
+    //   1) Dentro del MISMO combo (max 50% de legs por dirección, mínimo 1)
+    //   2) Entre combos del batch (max 30% del total de legs)
+    // Antes solo era #2 → un combo agresivo podía tener 4 Unders. Ahora no.
     const batchTotalLegs = count * legs;
     const MAX_PER_DIRECTION = Math.max(1, Math.ceil(batchTotalLegs * 0.30));
+    const MAX_PER_DIRECTION_IN_COMBO = Math.max(1, Math.ceil(legs * 0.50));
 
     // PASADA 1: STRICT — ningún mercado repetido + skip de picks ya usadas
-    // en otros combos del batch + tope de bias direccional por batch.
+    // en otros combos del batch + tope de bias direccional por batch + por combo.
     for (const p of candidates) {
       const evId = p.event.id;
       const cur = usedByEvent.get(evId) || 0;
@@ -1987,9 +1996,10 @@ app.post('/api/generator', express.json(), async (req, res) => {
       if (mktCount >= maxLegsPerMarket) continue;  // STRICT: no repetimos mercado
       // FIX #9 STRICT: si esta pick ya está en otro combo del batch, skip.
       if ((picksUsedAcrossCombos.get(pickSig(p)) || 0) > 0) continue;
-      // FIX #10: tope de bias DIRECCIONAL por batch (Under/Over/BTTS-No/BTTS-Yes).
+      // FIX #10: tope DOBLE — direccional por BATCH + por COMBO interno.
       const bias = classifyBias(p);
       if (bias && outcomeBiasCount[bias] >= MAX_PER_DIRECTION) continue;
+      if (bias && inComboBias[bias] >= MAX_PER_DIRECTION_IN_COMBO) continue;
       if (mixSports && usedSports.has(p.event.sport) && chosen.length < legs && candidates.some(c => !usedSports.has(c.event.sport) && !chosen.includes(c))) {
         continue;
       }
@@ -1997,6 +2007,7 @@ app.post('/api/generator', express.json(), async (req, res) => {
       usedByEvent.set(evId, cur + 1);
       usedSports.add(p.event.sport);
       usedMarkets.set(p.sel.market, mktCount + 1);
+      if (bias) inComboBias[bias]++;
       if (chosen.length >= legs) break;
     }
 
@@ -2019,14 +2030,16 @@ app.post('/api/generator', express.json(), async (req, res) => {
         if ((picksUsedAcrossCombos.get(pickSig(p)) || 0) > 0 && sharedAlready >= 1) continue;
         const bias = classifyBias(p);
         if (bias && outcomeBiasCount[bias] >= MAX_PER_DIRECTION) continue;
+        if (bias && inComboBias[bias] >= MAX_PER_DIRECTION_IN_COMBO) continue;
         chosen.push(p);
         usedByEvent.set(evId, cur + 1);
         usedMarkets.set(p.sel.market, mktCount + 1);
+        if (bias) inComboBias[bias]++;
         if (chosen.length >= legs) break;
       }
     }
     // PASADA 3 (último recurso): si igual no llegamos, llenamos sin restricciones
-    // de mercado/sharing, pero MANTENEMOS el tope de bias direccional por batch.
+    // de mercado/sharing, pero MANTENEMOS los topes de bias direccional.
     if (chosen.length < legs) {
       for (const p of candidates) {
         if (chosen.includes(p)) continue;
@@ -2035,8 +2048,10 @@ app.post('/api/generator', express.json(), async (req, res) => {
         if (cur >= legsPerMatch) continue;
         const bias = classifyBias(p);
         if (bias && outcomeBiasCount[bias] >= MAX_PER_DIRECTION) continue;
+        if (bias && inComboBias[bias] >= MAX_PER_DIRECTION_IN_COMBO) continue;
         chosen.push(p);
         usedByEvent.set(evId, cur + 1);
+        if (bias) inComboBias[bias]++;
         if (chosen.length >= legs) break;
       }
     }
