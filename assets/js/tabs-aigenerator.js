@@ -961,21 +961,28 @@
       if (!backendCombos.length) {
         const meta = resp.meta || {};
         const reasons = [];
-        if (meta.analyzed === 0) reasons.push(`<li>No hay partidos analizados (¿el motor está caído?)</li>`);
+        if (meta.analyzed === 0) reasons.push(`<li>No hay partidos disponibles en este momento. Intentá nuevamente en unos minutos.</li>`);
         else if (meta.passing === 0) {
-          reasons.push(`<li>${meta.analyzed} partidos analizados, pero <strong>0 pasaron tus filtros</strong></li>`);
-          if (useSharp) reasons.push(`<li><strong>Destildá "Priorizar partidos con movimiento sharp"</strong> — la mayoría de los partidos no tiene sharp detectado</li>`);
-          if (useInjuries) reasons.push(`<li>Destildá "Filtrar lesiones reportadas"</li>`);
-          if (useWeather) reasons.push(`<li>Destildá "Considerar clima"</li>`);
+          reasons.push(`<li>Tus filtros son muy restrictivos para los partidos disponibles ahora.</li>`);
+          if (useSharp) reasons.push(`<li>Probá <strong>destildar "Priorizar partidos con movimiento sharp"</strong></li>`);
+          if (useInjuries) reasons.push(`<li>Probá destildar "Filtrar lesiones reportadas"</li>`);
+          if (useWeather) reasons.push(`<li>Probá destildar "Considerar clima"</li>`);
         } else if (meta.poolSize === 0) {
-          reasons.push(`<li>${meta.passing} partidos pasaron filtros, pero ninguna selection matchea tus mercados/casas</li>`);
-          if (books.length < 3) reasons.push(`<li>Sumá MÁS casinos en el paso 1 (tenés ${books.length})</li>`);
-          reasons.push(`<li>Asegurate que los mercados elegidos cubran las casas</li>`);
+          reasons.push(`<li>Ninguna selección coincide con tus mercados y casas elegidos.</li>`);
+          if (books.length < 3) reasons.push(`<li>Sumá más casas de apuestas en el paso 1 (tenés ${books.length} seleccionada${books.length===1?'':'s'})</li>`);
+          reasons.push(`<li>Ampliá los mercados a considerar</li>`);
         } else {
-          reasons.push(`<li>Pool de ${meta.poolSize} picks, pero no se pudo armar combo de ${n} legs</li>`);
-          reasons.push(`<li>Bajá legs por combinada a 2-3</li>`);
+          reasons.push(`<li>Encontramos picks pero <strong>ninguna combinación supera nuestro umbral de calidad</strong> para el nivel de riesgo elegido.</li>`);
+          reasons.push(`<li>Esto es intencional: preferimos no mostrarte combinadas mediocres.</li>`);
+          reasons.push(`<li>Probá bajar legs por combinada a 2-3 o cambiar el nivel de riesgo.</li>`);
         }
-        panel.querySelector('#agOutput').innerHTML = `<div class="card stack" style="padding:32px"><strong style="text-align:center;display:block">Sin combinadas generadas</strong><p class="muted tiny" style="text-align:center;margin-top:8px">Motor analizó <strong>${meta.analyzed || 0}</strong> partidos · <strong>${meta.passing || 0}</strong> pasaron filtros · pool de <strong>${meta.poolSize || 0}</strong> picks</p><ul class="muted tiny" style="text-align:left;max-width:520px;margin:14px auto 0">${reasons.join('')}</ul></div>`;
+        panel.querySelector('#agOutput').innerHTML = `
+          <div class="card stack reveal" style="padding:40px;text-align:center;border:1px solid var(--border);background:linear-gradient(180deg,transparent,color-mix(in srgb,var(--brand-500,#2563eb) 3%,transparent))">
+            <div style="font-size:42px;line-height:1;margin-bottom:8px;opacity:.55">🎯</div>
+            <strong style="font-size:1.15rem;display:block">Sin combinadas que pasen el filtro de calidad</strong>
+            <p class="muted tiny" style="margin-top:8px;max-width:560px;margin-left:auto;margin-right:auto;line-height:1.5">Analizamos <strong>${meta.analyzed || 0}</strong> partidos · <strong>${meta.passing || 0}</strong> pasaron tus filtros · pool de <strong>${meta.poolSize || 0}</strong> picks.<br><span style="color:var(--brand-500,#2563eb);font-weight:600">No te armamos una combinada de baja calidad solo para llenar espacio.</span></p>
+            <ul class="muted tiny" style="text-align:left;max-width:520px;margin:18px auto 0;line-height:1.55;padding-left:20px">${reasons.join('')}</ul>
+          </div>`;
         return;
       }
 
@@ -1031,8 +1038,8 @@
           <p class="muted tiny" style="margin-top:6px;line-height:1.5">${BSUI.esc(aiGlobalNarrative)}</p>
         </div>` : ''}
         ${aiHealth === 'degraded' ? `<div class="card card-pad-sm mb-3" style="border-left:3px solid var(--warning,#d97706);background:color-mix(in srgb, var(--warning,#d97706) 6%, transparent)">
-          <strong class="tiny">⚠ La IA no está disponible en este momento</strong>
-          <p class="muted tiny" style="margin-top:4px;line-height:1.45">Estas combinadas se armaron con análisis estadístico (sin IA generativa). Esperá un minuto y volvé a generar para que la IA las revise.</p>
+          <strong class="tiny">⚠ Análisis IA en mantenimiento</strong>
+          <p class="muted tiny" style="margin-top:4px;line-height:1.45">Estas combinadas se armaron con análisis estadístico. El análisis IA profundo volverá a estar disponible en unos minutos — refrescá para que las revise.</p>
         </div>` : ''}
         ${aiHealth === 'no-keys' ? `<div class="card card-pad-sm mb-3" style="border-left:3px solid var(--info,#2563eb);background:color-mix(in srgb, var(--info,#2563eb) 5%, transparent)">
           <strong class="tiny">ℹ Análisis IA en mantenimiento</strong>

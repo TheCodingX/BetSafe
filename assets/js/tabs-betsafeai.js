@@ -656,6 +656,7 @@
           </div>
         ` : '')}
 
+        ${BSUI.aiDisclaimer ? BSUI.aiDisclaimer({ compact: true }) : ''}
         <div class="bsai-legs">
           ${r.legs.map((l, i) => renderLeg(l, i)).join('')}
         </div>
