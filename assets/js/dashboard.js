@@ -12,7 +12,7 @@
     //    2) Constructor Quant: vos configurás filtros → el motor arma
     //    3) Coach IA: lenguaje natural → la IA conversa y arma
     { id: 'ai',          label: 'Picks del día',  icon: 'bolt',    vipOnly: false, desc: 'Curados por IA — listos para apostar' },
-    { id: 'aigenerator', label: 'Constructor Quant', icon: 'layers', vipOnly: true,  desc: 'Vos elegís filtros, el motor arma combinadas' },
+    { id: 'aigenerator', label: 'Constructor Quant', icon: 'blocks', vipOnly: true,  desc: 'Vos elegís filtros, el motor arma combinadas' },
     { id: 'betsafeai',   label: 'Coach IA',       icon: 'sparkle', vipOnly: true,  desc: 'Pedí en lenguaje natural lo que querés',
       flagshipVip: true },
     // Builder REMOVIDO del sidebar a pedido del usuario (2026-05-17). El

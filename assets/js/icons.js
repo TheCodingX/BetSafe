@@ -39,6 +39,9 @@
     filter: 'M3 4h18l-7 9v6l-4 2v-8L3 4z',
     // layers: 3 capas apiladas — metáfora de "constructor / armado por partes"
     layers: 'M12 2L2 7l10 5 10-5-10-5zM2 12l10 5 10-5M2 17l10 5 10-5',
+    // blocks: 3 cubos sólidos + 1 en L sin cerrar — "ensamblado modular"
+    // (Constructor Quant: piezas que se arman según tus filtros)
+    blocks: 'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7',
     sliders: 'M4 7h7M14 7h6M4 12h2M9 12h11M4 17h12M19 17h1M8 5v4M16 10v4M14 15v4',
     cart: 'M2 3h2l3.6 13.59A2 2 0 0 0 9.55 18h7.45a2 2 0 0 0 1.95-1.59L21 8H6',
     refresh: 'M21 12a9 9 0 1 1-3-6.7L21 8M21 3v5h-5',
