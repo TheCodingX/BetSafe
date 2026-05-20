@@ -124,13 +124,6 @@
                 ]
               },
               {
-                title:'⚽ Goleadores',
-                items:[
-                  ['goalscorer-anytime','Goleador anytime'],
-                  ['first-goalscorer','Primer goleador']
-                ]
-              },
-              {
                 title:'⚽ Tarjetas / Disciplina',
                 items:[
                   ['cards-total','Total de tarjetas'],
@@ -159,10 +152,7 @@
                   ['totals-points','Total puntos'],
                   ['totals-points-team','Puntos por equipo'],
                   ['totals-q1','Total 1Q'],
-                  ['overtime','Prórroga'],
-                  ['player-points','Puntos jugador'],
-                  ['player-rebounds','Rebotes jugador'],
-                  ['player-assists','Asistencias jugador']
+                  ['overtime','Prórroga']
                 ]
               },
               {

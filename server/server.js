@@ -1694,19 +1694,24 @@ NO incluyas markdown fuera de **bold** y links plain text estilo "dashboard.html
 // (córners, tarjetas, goleadores, marcador exacto, etc.) para que el generador
 // produzca combinadas variadas en vez de "4 unders y un h2h".
 app.post('/api/generator', express.json(), async (req, res) => {
-  // Catálogo COMPLETO de mercados — single source of truth en lib/marketCatalog.
-  // Antes era una lista manual desincronizada con el prompt LLM. Ahora todo
-  // sale del mismo catálogo (126 keys legacy + variantes nuevas).
-  // El LLM ve el mismo catálogo en ai-pipeline.llmStructured() vía describeForPrompt.
-  const { allLegacyKeys: _allLegacyKeys } = require('./lib/marketCatalog');
-  const ALL_MARKETS_DEFAULT = _allLegacyKeys();
+  // FIX 2026-05: mercados COLECTIVOS only — single source of truth en marketCatalog.
+  // El motor NO analiza player props (goleadores, tiros/tarjetas/asistencias por
+  // jugador, etc.) porque la data no es consistente entre casas. Solo trabajamos
+  // con mercados colectivos: 1X2, doble oportunidad, totales, BTTS, hándicap,
+  // corners/tarjetas/faltas TOTALES, ht-result, primer equipo en marcar, etc.
+  const { collectiveLegacyKeys: _collectiveLegacyKeys, isPlayerKey: _isPlayerKey } = require('./lib/marketCatalog');
+  const ALL_MARKETS_DEFAULT = _collectiveLegacyKeys();
 
   const {
     sport = 'all', leagues = [], risk = 'eq', legs = 3, count = 3,
     minSharp = 0, skipInjured = false, skipBadWeather = false,
-    skipCorrelated = true, markets = ALL_MARKETS_DEFAULT,
+    skipCorrelated = true, markets: _marketsRaw = ALL_MARKETS_DEFAULT,
     books = []
   } = req.body || {};
+  // Aunque el frontend mande mercados de jugador explícitamente, los excluimos
+  // del motor por política del producto (data insuficiente para confiabilidad).
+  const markets = (Array.isArray(_marketsRaw) ? _marketsRaw : ALL_MARKETS_DEFAULT)
+    .filter(m => !_isPlayerKey(m));
 
   // Trace de filtros (para ver dónde se pierden eventos)
   const trace = {};
@@ -1816,13 +1821,36 @@ app.post('/api/generator', express.json(), async (req, res) => {
   // Ahora aplicamos pisos por nivel de riesgo. Una pick que no supera el piso
   // NO entra al pool — preferimos devolver menos combinadas (o ninguna) a
   // armar combos con picks que el motor descarta como EV-negativos.
-  const MIN_EV_BY_RISK = { cons: 2.0, eq: 1.5, agg: 0.5 };
-  const MIN_CONF_BY_RISK = { cons: 0.58, eq: 0.52, agg: 0.46 };
-  const minEv = MIN_EV_BY_RISK[risk] ?? 1.5;
-  const minConf = MIN_CONF_BY_RISK[risk] ?? 0.50;
+  // FIX 2026-05: pisos PROGRESIVOS por riesgo + tier de fallback.
+  // Si el pool queda vacío con el piso estricto, bajamos a "tier2" (más laxo).
+  // Si sigue vacío, bajamos a "tier3" (mínimo aceptable). NUNCA devolvemos
+  // "0 picks" si hay partidos reales — la promesa del producto es siempre
+  // intentar generar una combinada válida.
+  const EV_TIERS = {
+    cons: [2.0, 1.0, 0.0],   // estricto / medio / minimo
+    eq:   [1.5, 0.5, 0.0],
+    agg:  [0.5, 0.0, -1.0]   // agresivo permite incluso EV ligeramente negativo en último recurso
+  };
+  const CONF_TIERS = {
+    cons: [0.58, 0.52, 0.46],
+    eq:   [0.52, 0.48, 0.44],
+    agg:  [0.46, 0.42, 0.38]
+  };
+  const evTiers = EV_TIERS[risk] || EV_TIERS.eq;
+  const confTiers = CONF_TIERS[risk] || CONF_TIERS.eq;
   trace.poolRejectedLowEv = 0;
   trace.poolRejectedLowConf = 0;
-  const pool = [];
+  trace.poolTierUsed = 0;   // 0 = estricto, 1 = medio, 2 = mínimo
+
+  // Construir pool en tier 0 → si vacío, reintentar tier 1 → tier 2
+  let pool = [];
+  for (let tier = 0; tier < 3 && pool.length === 0; tier++) {
+    const minEv = evTiers[tier];
+    const minConf = confTiers[tier];
+    trace.poolTierUsed = tier;
+    trace.poolRejectedLowEv = 0;
+    trace.poolRejectedLowConf = 0;
+    pool = [];
   for (const a of passing) {
     const evSelections = (a.selections || [])
       .filter(s => markets.includes(s.market))
@@ -1912,6 +1940,7 @@ app.post('/api/generator', express.json(), async (req, res) => {
       pool.push({ event: a.event, factors: a.factors, sel, score });
     }
   }
+  }   // cierre del for (tier)
   pool.sort((a, b) => b.score - a.score);
 
   // ── Estrategia de construcción de combos ──
@@ -3262,6 +3291,11 @@ INSTRUCCIONES FINALES:
         if (sel.analytical && !allowAnalytical) continue;
         // SKIP si no tiene book asignado (no es de una casa real) — pero permitir si analytical OK
         if (!sel.book && !allowAnalytical) continue;
+        // FIX 2026-05: SKIP player props (goleadores, tiros/tarjetas/asistencias
+        // por jugador). Data no es consistente entre casas → política del
+        // producto = solo mercados colectivos.
+        const { isPlayerKey: __isPlayerKey } = require('./lib/marketCatalog');
+        if (__isPlayerKey(sel.market)) continue;
         // PISOS DE CALIDAD: ningún pick con EV o conf por debajo del piso del riesgo
         if ((sel.consensusEv || 0) < _COACH_MIN_EV) continue;
         if ((sel.confidence || 0) < _COACH_MIN_CONF) continue;

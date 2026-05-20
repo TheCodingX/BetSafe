@@ -1864,7 +1864,12 @@ function mergeSelections(event, factors, quant, poisson, elo, llm, extendedMarke
     }
   });
 
-  return out;
+  // ── PASO 5 (FIX 2026-05): excluir player props del output final ──
+  // Por política del producto, el motor NO emite selections de mercados de
+  // jugadores individuales (goleador, tiros/asistencias/tarjetas por jugador).
+  // Si el LLM o algún factor extendido generó alguna, la filtramos acá.
+  const { isPlayerKey: _isPlayerKey } = require('../lib/marketCatalog');
+  return out.filter(s => !_isPlayerKey(s.market));
 }
 
 function applyFactorPenalties(confidence, variant, factors) {

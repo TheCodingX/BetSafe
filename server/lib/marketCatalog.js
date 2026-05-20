@@ -220,6 +220,52 @@ function allLegacyKeys() {
   return [...new Set(MARKETS.map(m => m.key))];
 }
 
+/* FIX 2026-05: filtro de mercados COLECTIVOS (excluye player props).
+ * El motor NO analiza mercados de jugadores individuales (goleadores, tiros/
+ * tarjetas/pases/asistencias por jugador) porque la data no es consistente
+ * entre casas. Solo trabajamos con mercados colectivos: 1X2, totales,
+ * BTTS, hándicap, corners/tarjetas/faltas TOTALES, ht-result, etc.
+ * Cards-total / corners-total / fouls-total son mercados de EQUIPO,
+ * no individuales → sí se mantienen. */
+function isPlayerMarket(market) {
+  if (!market) return false;
+  if (market.byPlayer === true) return true;
+  const k = String(market.key || '').toLowerCase();
+  if (/^player-/.test(k)) return true;
+  if (/^(goalscorer-|first-goalscorer|last-goalscorer)/.test(k)) return true;
+  if (/^(pitcher-|batter-)/.test(k)) return true;
+  return false;
+}
+
+/** Mercados COLECTIVOS — pool por defecto del motor de combinadas. */
+function collectiveMarkets() {
+  return MARKETS.filter(m => !isPlayerMarket(m));
+}
+
+/** Lista plana de keys colectivas (sin prefijo de deporte). */
+function collectiveLegacyKeys() {
+  return [...new Set(collectiveMarkets().map(m => m.key))];
+}
+
+/** ¿La key de un selection es un mercado de jugador? Para filtrar selections
+ *  generadas (no solo definiciones del catálogo). */
+function isPlayerKey(key) {
+  const k = String(key || '').toLowerCase();
+  if (/^player-/.test(k)) return true;
+  if (/^(goalscorer|first-goalscorer|last-goalscorer)/.test(k)) return true;
+  if (/^(pitcher-|batter-)/.test(k)) return true;
+  const legacyPlayerKeys = new Set([
+    'goalscorer-anytime', 'first-goalscorer', 'last-goalscorer',
+    'player-card', 'player-sent-off', 'player-multi-goal', 'player-scores-both-halves',
+    'player-shots-on-target', 'player-total-shots', 'player-assists',
+    'player-fouls-committed', 'player-fouls-suffered', 'player-passes', 'player-tackles',
+    'player-points', 'player-rebounds', 'player-steals', 'player-blocks',
+    'player-threes', 'player-turnovers', 'player-double-double', 'player-triple-double',
+    'player-pra'
+  ]);
+  return legacyPlayerKeys.has(k);
+}
+
 /** Devuelve true si un key:string corresponde a un mercado registrado. */
 function isKnownMarket(key, sport) {
   if (sport) return MARKETS.some(m => m.key === key && m.sport === sport);
@@ -227,13 +273,12 @@ function isKnownMarket(key, sport) {
 }
 
 /** Renderiza una lista de mercados como string compacto para incluir en system
- *  prompt LLM. Una línea por mercado: "  • key (Nombre) — outcomes — líneas". */
+ *  prompt LLM. Solo mercados COLECTIVOS (no player props). */
 function describeForPrompt(sport, books) {
-  const list = marketsForSportAndBooks(sport, books);
+  const list = marketsForSportAndBooks(sport, books).filter(m => !isPlayerMarket(m));
   return list.map(m => {
     const lineStr = m.lines ? ` (líneas: ${m.lines.join(', ')})` : '';
-    const playerStr = m.byPlayer ? ' [por jugador]' : '';
-    return `  • ${m.key} — ${m.name} — outcomes: ${(m.outcomes||[]).join('|')}${lineStr}${playerStr}`;
+    return `  • ${m.key} — ${m.name} — outcomes: ${(m.outcomes||[]).join('|')}${lineStr}`;
   }).join('\n');
 }
 
@@ -245,6 +290,10 @@ module.exports = {
   marketsForSportAndBooks,
   allKeys,
   allLegacyKeys,
+  collectiveMarkets,
+  collectiveLegacyKeys,
+  isPlayerMarket,
+  isPlayerKey,
   isKnownMarket,
   describeForPrompt
 };
