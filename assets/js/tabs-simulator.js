@@ -1,328 +1,509 @@
-/* BetSafe — Simulador (Standard)
- *  - $100.000 ARS de dinero ficticio inicial
- *  - Usa EXACTAMENTE las mismas combinadas que AI Picks Standard:
- *      5 partidos del día × 3 variantes (Conservador/Equilibrado/Agresivo) = 15
- *  - Resuelve resultados estocásticamente con seed determinístico (LCG)
- *    usando la probabilidad implícita de cada cuota (con varianza realista)
- *  - Tracking persistente: bankroll, historial, win rate, ROI, evolución
- *  - localStorage key: bs:simulator
- */
+/* BetSafe — Simulador (refactor 2026-05)
+ * ────────────────────────────────────────────────────────────────────────────
+ * Simulación PROFESIONAL de apuestas con dinero ficticio.
+ *
+ * Flujo:
+ *   1) Usuario configura banca + nivel de riesgo
+ *   2) IA recomienda combinadas REALES del motor (/api/curated-combos)
+ *      basadas en partidos del día con cuotas vivas
+ *   3) Usuario elige una y "simula" la apuesta → queda en estado PENDIENTE
+ *   4) Cuando el partido termina (start + 2.5h), el sistema resuelve la
+ *      apuesta usando probabilidad implícita de la cuota (con varianza
+ *      realista). Auto-update de banca + métricas.
+ *
+ * Estados de cada apuesta:
+ *   - 'pending'   : el partido aún no empezó / no terminó
+ *   - 'won'       : ganó (todas las legs)
+ *   - 'lost'      : perdió (al menos 1 leg falló)
+ *
+ * Persistencia: localStorage `bs:simulator:v2`
+ * ────────────────────────────────────────────────────────────────────────── */
 (function () {
   'use strict';
 
-  const STORE_KEY = 'bs:simulator';
+  const STORE_KEY = 'bs:simulator:v2';
+  const RESOLUTION_DELAY_MS = 2.5 * 60 * 60 * 1000;  // 2.5h después del start
 
   function load() {
-    return BSStore.get(STORE_KEY) || {
+    const d = BSStore.get(STORE_KEY);
+    if (d && typeof d === 'object') return d;
+    return {
       bankroll: 100000,
       initial: 100000,
-      history: [],            // [{at, action, picks[], stake, payout, profit, balanceAfter}]
+      risk: 'eq',          // cons / eq / agg
+      bets: [],            // [{id, ts, combo, stake, status, resolvedAt, payout, profit, balanceAfter, legs[]}]
       wins: 0,
       losses: 0
     };
   }
   function save(s) { BSStore.set(STORE_KEY, s); }
 
-  // Build the same 5×3=15 combinadas as AI Picks Standard.
-  // Usa cuotas REALES del backend de scraping. Si no hay datos en vivo,
-  // devuelve [] y la UI muestra empty state.
-  function buildPicks() {
-    const live = BSData.liveEvents({}).filter(m => m.markets && m.markets.h2h && Object.keys(m.markets.h2h).length);
-    const matches = live.slice(0, 5);
-    if (!matches.length) return [];
-    return matches.map(m => {
-      const o = m.markets.h2h.bplay || Object.values(m.markets.h2h)[0];
-      if (!o || (!o.home && !o.away)) return null;
-      return {
-        match: m,
-        variants: [
-          { type: 'cons', label: m.home.name + ' o empate (1X)',
-            odd: 1 / ((1 / o.home) + (o.draw ? 1 / o.draw : 0.10)),
-            p:   (1 / o.home) + (o.draw ? 1 / o.draw : 0.10) },
-          { type: 'eq',   label: 'Empate o ' + m.away.name + ' (X2)',
-            odd: o.draw ? 1 / ((1 / o.draw) + (1 / o.away)) : o.away * 0.95,
-            p:   o.draw ? (1 / o.draw) + (1 / o.away) : 1 / o.away },
-          { type: 'agg',  label: m.away.name + ' +1.5 hándicap',
-            odd: Math.max(1.4, o.away * 0.6),
-            p:   0.65 }
-        ]
-      };
-    }).filter(Boolean);
+  /* RESOLVER APUESTAS PENDIENTES
+   * Cada apuesta pendiente cuyo último start + 2.5h pasó se resuelve.
+   * Para cada leg: roll vs probabilidad implícita (con +5% varianza).
+   * Si TODAS las legs ganan, combo gana. Si falla 1+, pierde. */
+  function resolvePendingBets(state) {
+    const now = Date.now();
+    let changed = false;
+    for (const bet of state.bets) {
+      if (bet.status !== 'pending') continue;
+      const lastStart = Math.max(...(bet.legs || []).map(l => l.start || 0).filter(Boolean), 0);
+      if (!lastStart || now < lastStart + RESOLUTION_DELAY_MS) continue;
+
+      // Resolver cada leg con probabilidad implícita
+      // baseProb = confidence si existe, sino 1/odd
+      let allWon = true;
+      const resolvedLegs = (bet.legs || []).map(l => {
+        const baseProb = Number.isFinite(l.confidence) ? l.confidence : (1 / Math.max(1.01, l.odd || 2));
+        // Varianza: ±5% sobre la prob base (mercado real no es perfectamente eficiente)
+        const noise = (Math.random() - 0.5) * 0.10;
+        const adjustedProb = Math.max(0.05, Math.min(0.97, baseProb + noise));
+        const won = Math.random() < adjustedProb;
+        if (!won) allWon = false;
+        return { ...l, _won: won };
+      });
+      bet.legs = resolvedLegs;
+      bet.status = allWon ? 'won' : 'lost';
+      bet.resolvedAt = now;
+      if (allWon) {
+        bet.payout = Math.round(bet.stake * (bet.combo?.totalOdd || 1));
+        bet.profit = bet.payout - bet.stake;
+        state.bankroll += bet.profit;
+        state.wins++;
+      } else {
+        bet.payout = 0;
+        bet.profit = -bet.stake;
+        state.bankroll += bet.profit;
+        state.losses++;
+      }
+      bet.balanceAfter = state.bankroll;
+      changed = true;
+    }
+    return changed;
+  }
+
+  /* Cargar combinadas recomendadas REALES del motor (/api/curated-combos) */
+  async function fetchRecommendedCombos(risk) {
+    try {
+      // /api/curated-combos devuelve combinadas reales con análisis IA.
+      // Si /api/generator está habilitado, usamos el endpoint que más datos da.
+      const url = `/api/generator`;
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sport: 'soccer',
+          risk: risk || 'eq',
+          legs: 3,
+          count: 5,
+          useAiBuilder: false
+        }),
+        signal: AbortSignal.timeout(60000)
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
+      return Array.isArray(data?.combos) ? data.combos : [];
+    } catch (e) {
+      console.warn('[simulator] error cargando combos:', e?.message);
+      return [];
+    }
   }
 
   async function render(panel) {
-    // Esperar al primer snapshot del backend
     if (!BSData.liveReady()) {
-      panel.innerHTML = `<div class="card stack" style="min-height:240px;padding:40px;text-align:center"><strong>Cargando partidos del día…</strong><p class="muted tiny">Conectando con las casas legales argentinas.</p></div>`;
+      panel.innerHTML = renderLoadingState();
       await BSData.awaitLive({ timeoutMs: 12000 });
     }
+
     const state = load();
-    const isVip = BSAuth.isVip();
-    const picks = buildPicks();
-    if (!picks.length) {
-      panel.innerHTML = `<div class="card stack" style="min-height:240px;padding:40px;text-align:center"><strong>Sin partidos en vivo todavía</strong><p class="muted">Cuando estén disponibles los próximos partidos, el simulador se habilita con cuotas reales.</p><span class="muted tiny">${BSData.liveFreshness()}</span></div>`;
-      const onSnap = () => { if (BSData.liveReady()) { window.removeEventListener('bs:live-snapshot', onSnap); render(panel); } };
-      window.addEventListener('bs:live-snapshot', onSnap, { once: true });
-      return;
-    }
-    const grandTotal = state.history.reduce((a, h) => a + (h.profit || 0), 0);
+    // Resolver apuestas pendientes al entrar
+    if (resolvePendingBets(state)) save(state);
+
+    // Render layout principal
+    panel.innerHTML = renderLayout(state);
+
+    // Cargar combos recomendados en background
+    const combosHost = panel.querySelector('#simCombos');
+    combosHost.innerHTML = renderCombosLoading();
+    const combos = await fetchRecommendedCombos(state.risk);
+    combosHost.innerHTML = combos.length
+      ? combos.map((c, i) => renderComboCard(c, i, state)).join('')
+      : renderCombosEmpty();
+
+    // Bindings
+    bindControls(panel, state);
+    bindComboActions(panel, state, combos);
+    bindMyBetsActions(panel, state);
+    drawEvolution(panel.querySelector('#simChart'), state);
+  }
+
+  /* ═══════ TEMPLATES ═══════ */
+
+  function renderLoadingState() {
+    return `<div class="card stack" style="min-height:240px;padding:40px;text-align:center">
+      <strong>Cargando partidos del día…</strong>
+      <p class="muted tiny">Conectando con las casas legales argentinas.</p>
+    </div>`;
+  }
+
+  function renderLayout(state) {
+    const grandTotal = state.bankroll - state.initial;
     const trades = state.wins + state.losses;
     const winRate = trades ? (state.wins / trades) * 100 : 0;
     const roiPct = ((state.bankroll - state.initial) / state.initial) * 100;
+    const pending = state.bets.filter(b => b.status === 'pending').length;
 
-    panel.innerHTML = `
-      <div class="row between mb-4">
-        <div>
-          <h2 class="h3">Simulador · probá con plata ficticia<a class="help-q" tabindex="0" data-tip="Probá la efectividad real de BetSafe sin arriesgar plata. Usás las MISMAS apuestas que recomienda la IA (5 partidos × 3 variantes = 15 jugadas). Las apuestas se resuelven con probabilidad real, así ves cómo evolucionaría tu banca de verdad."></a></h2>
-          <p class="muted">Plata ficticia · 5 partidos × 3 combinadas · Las mismas apuestas que recomienda la IA</p>
-        </div>
-        <div class="cluster">
-          <button class="btn btn-outline" id="simReset">${BSIcons.svg('refresh',{size:14})} Reiniciar banca</button>
-        </div>
-      </div>
-
-      <!-- KPI grid -->
-      <div class="grid grid-4 mb-4 reveal-stagger">
-        <div class="tracker-kpi">
-          <div class="label">Bankroll actual</div>
-          <div class="value" id="simBank">${BSUI.money(state.bankroll)}</div>
-          <div class="delta ${roiPct >= 0 ? 'up' : 'down'}">${roiPct >= 0 ? '+' : ''}${roiPct.toFixed(2)}%</div>
-        </div>
-        <div class="tracker-kpi">
-          <div class="label">Profit total</div>
-          <div class="value ${grandTotal >= 0 ? 'text-success' : 'text-danger'}">${grandTotal >= 0 ? '+' : ''}${BSUI.money(grandTotal)}</div>
-          <div class="delta">desde ${BSUI.money(state.initial)}</div>
-        </div>
-        <div class="tracker-kpi">
-          <div class="label">Win rate</div>
-          <div class="value">${winRate.toFixed(1)}%</div>
-          <div class="delta">${state.wins}W · ${state.losses}L</div>
-        </div>
-        <div class="tracker-kpi">
-          <div class="label">Picks resueltos</div>
-          <div class="value">${trades}</div>
-          <div class="delta">${state.history.length - trades} pendientes</div>
-        </div>
-      </div>
-
-      <!-- Stake bar + bankroll evolution -->
-      <div class="grid grid-2 mb-4">
-        <div class="card stack">
-          <div class="row between">
-            <strong>¿Cuánto apostás?<a class="help-q" tabindex="0" data-tip="Elegí cuánto apostar en la próxima jugada. Si ganás, te devolvemos tu apuesta × la cuota. Si perdés, se descuenta de tu banca ficticia."></a></strong>
-            <span class="muted tiny">% de tu plata: <strong id="simStakePct" class="num">5%</strong></span>
-          </div>
-          <div class="num-stepper" data-stepper="simstake" style="align-self:center">
-            <button type="button" class="num-stepper-btn" data-step="-" aria-label="Disminuir"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14"/></svg></button>
-            <input class="num-stepper-input" id="simStake" type="text" inputmode="numeric" pattern="[0-9]*" value="5000" />
-            <button type="button" class="num-stepper-btn" data-step="+" aria-label="Aumentar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
-          </div>
-          <div class="cluster" style="justify-content:center;gap:6px;flex-wrap:wrap">
-            ${[1, 2, 5, 10, 20].map(p => `<button class="btn btn-outline btn-sm sim-pct" data-pct="${p}">${p}%</button>`).join('')}
-          </div>
-        </div>
-        <div class="card stack">
-          <strong>Evolución de banca<a class="help-q" tabindex="0" data-tip="Curva de tu bankroll a través de las apuestas resueltas. Verde si subiste, rojo si bajaste."></a></strong>
-          <canvas id="simChart" style="width:100%;height:160px"></canvas>
-        </div>
-      </div>
-
-      <!-- 15 combinadas grid -->
-      <div class="card stack mb-4">
-        <div class="row between">
-          <strong>15 combinadas del día<a class="help-q" tabindex="0" data-tip="Las mismas combinadas que AI Picks Standard. 5 partidos × 3 variantes (Conservador / Equilibrado / Agresivo) = 15 picks. Cada uno con su cuota, probabilidad estimada y los 3 books que mejor pagan."></a></strong>
-          <span class="muted tiny">Click "Apostar" para simular</span>
-        </div>
-        <div class="grid grid-auto-lg" id="simPicks"></div>
-      </div>
-
-      <!-- History -->
-      <div class="card stack">
-        <strong>Historial de simulaciones<a class="help-q" tabindex="0" data-tip="Cada pick que apostaste con resultado, payout y balance acumulado. Exportable a CSV."></a></strong>
-        <div class="table-wrap">
-          <table class="table">
-            <thead><tr><th>Hora</th><th>Pick</th><th>Cuota</th><th>Stake</th><th>Resultado</th><th>Profit</th><th>Balance</th></tr></thead>
-            <tbody id="simHistory"></tbody>
-          </table>
-        </div>
-        <div class="row gap-2 mt-2">
-          <button class="btn btn-outline btn-sm" id="simExport">Exportar CSV</button>
-          <button class="btn btn-ghost btn-sm" id="simClear">Limpiar historial</button>
-        </div>
-      </div>
-    `;
-
-    // ---- Picks render ----
-    const grid = panel.querySelector('#simPicks');
-    grid.innerHTML = picks.map((p, mi) => `
-      <div class="card card-hover stack reveal" style="--i:${mi}">
-        <div class="row between">
+    return `
+      <!-- HERO ─────────────────────────────────────────────────────── -->
+      <header class="sim-hero reveal" style="background:linear-gradient(135deg, rgba(30,75,200,.06), rgba(255,193,7,.04));border:1px solid var(--border);border-radius:16px;padding:24px 26px;margin-bottom:20px">
+        <div class="row between" style="align-items:flex-start;gap:16px;flex-wrap:wrap">
           <div>
-            <div class="cluster">
-              ${BSIcons.teamLogo(p.match.home, { size: 22 })}
-              <strong>${BSUI.esc(p.match.home.name)}</strong>
-              <span class="dim">vs</span>
-              <strong>${BSUI.esc(p.match.away.name)}</strong>
-              ${BSIcons.teamLogo(p.match.away, { size: 22 })}
-            </div>
-            <div class="muted tiny">${BSUI.esc(p.match.leagueName)} · ${BSUI.dt(p.match.start)}</div>
+            <span class="badge" style="background:var(--brand-500);color:white;margin-bottom:6px;display:inline-block">SIMULADOR</span>
+            <h2 class="h3" style="margin:0;font-size:1.4rem">Probá tus estrategias con dinero ficticio</h2>
+            <p class="muted tiny" style="margin-top:6px;line-height:1.5;max-width:580px">
+              La IA analiza los partidos del día y te recomienda combinadas reales.
+              Vos elegís cuál "simular" — el sistema resuelve las apuestas cuando terminan
+              los partidos y trackeá tu evolución sin arriesgar plata real.
+            </p>
           </div>
-          <span class="badge badge-info">${SPORT_LABEL(p.match.sport)}</span>
+          <button class="btn btn-outline btn-sm" id="simReset">
+            ${BSIcons.svg('refresh', { size: 14 })} Reiniciar banca
+          </button>
         </div>
-        <div class="grid grid-3" style="gap:8px">
-          ${p.variants.map((v, vi) => `
-            <button class="card card-tinted card-pad-sm stack-sm sim-pick"
-                    style="text-align:left;padding:10px;cursor:pointer"
-                    data-mi="${mi}" data-vi="${vi}">
-              <span class="risk-pill ${vi===0?'low':vi===1?'mid':'high'}">${vi===0?'Conserv.':vi===1?'Equil.':'Agresivo'}</span>
-              <strong class="num" style="font-size:1.1rem">${v.odd.toFixed(2)}</strong>
-              <span class="tiny">${BSUI.esc(v.label)}</span>
-              <span class="tiny muted">EV: ${((v.odd * v.p - 1) * 100).toFixed(1)}%</span>
-              <span class="cluster" style="gap:3px;font-size:.62rem;flex-wrap:wrap">
-                ${top3Books(p.match.id, 'h2h', vi===0 ? 'home' : vi===1 ? (p.match.markets?.h2h?.[Object.keys(p.match.markets?.h2h||{})[0]]?.draw ? 'draw' : 'away') : 'away').map(b => `<span style="display:inline-flex;align-items:center;gap:2px;padding:1px 5px;background:var(--surface);border:1px solid var(--border);border-radius:999px">${window.BSLogos?BSLogos.bookLogo(b.key,{size:12}):''}<span>${BSUI.esc(b.name)}</span>${b.odd?`<strong class="num">${b.odd.toFixed(2)}</strong>`:''}</span>`).join('')}
-              </span>
-              <span class="btn btn-primary btn-sm" style="margin-top:6px;justify-content:center">Apostar</span>
-            </button>
-          `).join('')}
+      </header>
+
+      <!-- KPI GRID ─────────────────────────────────────────────────── -->
+      <div class="grid grid-4 reveal-stagger" style="gap:14px;margin-bottom:20px">
+        ${kpiCard('Banca actual', BSUI.money(state.bankroll), `${roiPct >= 0 ? '+' : ''}${roiPct.toFixed(2)}%`, roiPct >= 0 ? 'up' : 'down')}
+        ${kpiCard('Profit total', `${grandTotal >= 0 ? '+' : ''}${BSUI.money(grandTotal)}`, `desde ${BSUI.money(state.initial)}`, grandTotal >= 0 ? 'up' : 'down')}
+        ${kpiCard('Win rate', `${winRate.toFixed(1)}%`, `${state.wins}W · ${state.losses}L`, '')}
+        ${kpiCard('Apuestas activas', `${pending}`, trades === 0 && pending === 0 ? 'Empezá ahora' : `${trades} resueltas`, '')}
+      </div>
+
+      <!-- BANCA + CHART ────────────────────────────────────────────── -->
+      <div class="grid" style="grid-template-columns: 320px 1fr;gap:18px;margin-bottom:22px" data-resp-stack>
+        <div class="card stack" style="padding:18px">
+          <strong style="font-size:.95rem">Configuración</strong>
+          <div>
+            <label class="muted tiny" style="display:block;margin-bottom:4px">Banca ficticia</label>
+            <div class="num-stepper" data-stepper="simbank" style="width:100%">
+              <button type="button" class="num-stepper-btn" data-step="-" aria-label="Disminuir"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14"/></svg></button>
+              <input class="num-stepper-input" id="simBankInput" type="text" inputmode="numeric" pattern="[0-9]*" value="${state.bankroll}" />
+              <button type="button" class="num-stepper-btn" data-step="+" aria-label="Aumentar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
+            </div>
+          </div>
+          <div>
+            <label class="muted tiny" style="display:block;margin-bottom:4px">Nivel de riesgo</label>
+            <div class="seg" id="simRiskSeg" style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px">
+              ${['cons', 'eq', 'agg'].map(r => `<button type="button" class="${state.risk === r ? 'active' : ''}" data-risk="${r}">${r === 'cons' ? 'Seguro' : r === 'eq' ? 'Equilibrado' : 'Agresivo'}</button>`).join('')}
+            </div>
+          </div>
+          <p class="muted tiny" style="line-height:1.45;margin:0">
+            ${state.risk === 'cons' ? 'Cuotas individuales 1.10–1.40. Bajo riesgo, ganancias chicas.' :
+              state.risk === 'eq'   ? 'Cuotas individuales 1.40–2.30. Balance entre riesgo y valor.' :
+                                       'Cuotas individuales >2.30. Alto riesgo, ganancias grandes.'}
+          </p>
+        </div>
+        <div class="card stack" style="padding:18px">
+          <div class="row between">
+            <strong style="font-size:.95rem">Evolución de banca</strong>
+            <span class="muted tiny">Últimas ${Math.min(30, state.bets.length)} apuestas</span>
+          </div>
+          <canvas id="simChart" style="width:100%;height:180px"></canvas>
         </div>
       </div>
-    `).join('');
 
-    // ---- Stake stepper ----
-    const stakeEl = panel.querySelector('#simStake');
-    panel.querySelectorAll('[data-stepper="simstake"] .num-stepper-btn').forEach(btn => {
+      <!-- COMBINADAS RECOMENDADAS ──────────────────────────────────── -->
+      <section style="margin-bottom:28px">
+        <div class="row between" style="margin-bottom:14px">
+          <div>
+            <h3 class="h3" style="margin:0;font-size:1.15rem">Combinadas recomendadas por IA</h3>
+            <p class="muted tiny" style="margin-top:2px">Análisis estadístico — elegí cuál querés simular</p>
+          </div>
+          <button class="btn btn-outline btn-sm" id="simRefreshCombos">${BSIcons.svg('refresh', { size: 14 })} Actualizar</button>
+        </div>
+        <div class="grid" style="grid-template-columns:repeat(auto-fill, minmax(330px, 1fr));gap:14px" id="simCombos"></div>
+      </section>
+
+      <!-- MIS APUESTAS ─────────────────────────────────────────────── -->
+      <section>
+        <div class="row between" style="margin-bottom:14px">
+          <div>
+            <h3 class="h3" style="margin:0;font-size:1.15rem">Mis apuestas simuladas</h3>
+            <p class="muted tiny" style="margin-top:2px">${pending > 0 ? `${pending} pendientes · ` : ''}${state.wins + state.losses} resueltas</p>
+          </div>
+          <div class="cluster" style="gap:6px">
+            <button class="btn btn-ghost btn-sm" id="simExport">Exportar CSV</button>
+            <button class="btn btn-ghost btn-sm" id="simClear">Limpiar historial</button>
+          </div>
+        </div>
+        <div class="card stack" style="padding:16px">
+          ${state.bets.length === 0 ?
+            `<div style="padding:32px;text-align:center;opacity:.6">
+              <div style="font-size:36px;margin-bottom:8px">🎯</div>
+              <strong>Tus apuestas simuladas van a aparecer acá</strong>
+              <p class="muted tiny" style="margin-top:6px">Elegí una combinada recomendada arriba y clickeá "Simular apuesta".</p>
+            </div>` :
+            renderBetsTable(state)}
+        </div>
+      </section>
+    `;
+  }
+
+  function kpiCard(label, value, delta, dir) {
+    const dirCls = dir === 'up' ? 'text-success' : dir === 'down' ? 'text-danger' : '';
+    return `<div class="card stack" style="padding:16px;gap:4px">
+      <div class="muted tiny" style="text-transform:uppercase;letter-spacing:.04em;font-size:.65rem">${label}</div>
+      <div class="num" style="font-size:1.35rem;font-weight:700;line-height:1.2">${value}</div>
+      <div class="tiny ${dirCls}" style="opacity:.85">${delta}</div>
+    </div>`;
+  }
+
+  function renderCombosLoading() {
+    return Array(3).fill(0).map(() => `<div class="card stack" style="padding:16px;opacity:.5;min-height:180px">
+      <div style="height:14px;background:var(--border);border-radius:4px;width:60%"></div>
+      <div style="height:10px;background:var(--border);border-radius:4px;width:90%"></div>
+      <div style="height:10px;background:var(--border);border-radius:4px;width:80%"></div>
+      <div style="margin-top:auto;height:32px;background:var(--border);border-radius:6px"></div>
+    </div>`).join('');
+  }
+
+  function renderCombosEmpty() {
+    return `<div class="card stack" style="padding:32px;text-align:center;grid-column:1/-1">
+      <div style="font-size:32px;opacity:.5">⏳</div>
+      <strong>El motor IA está analizando partidos</strong>
+      <p class="muted tiny" style="margin-top:6px">Refrescá en unos segundos o probá con otro nivel de riesgo.</p>
+    </div>`;
+  }
+
+  function renderComboCard(combo, idx, state) {
+    const legs = combo.legs || [];
+    const totalOdd = combo.totalOdd || legs.reduce((a, l) => a * (l.odd || 1), 1);
+    const probReal = legs.reduce((a, l) => a * Math.max(0.05, l.confidence || 0.5), 1);
+    const probPct = Math.round(probReal * 100);
+    const stake = Math.round(state.bankroll * 0.05);   // 5% banca por default
+    const potentialWin = Math.round(stake * totalOdd);
+    const riskLabel = combo.type === 'cons' ? 'Seguro' : combo.type === 'agg' ? 'Agresivo' : 'Equilibrado';
+    const riskColor = combo.type === 'cons' ? 'success' : combo.type === 'agg' ? 'danger' : 'warning';
+
+    return `<div class="card card-hover stack reveal" style="--i:${idx};padding:16px;gap:12px">
+      <div class="row between" style="align-items:flex-start">
+        <div>
+          <div class="cluster" style="gap:6px;flex-wrap:wrap;margin-bottom:4px">
+            <span class="badge badge-${riskColor} tiny">${riskLabel}</span>
+            <span class="muted tiny">${legs.length} legs</span>
+          </div>
+          <div style="font-size:1.5rem;font-weight:700;line-height:1">${totalOdd.toFixed(2)}</div>
+          <div class="muted tiny">Cuota total</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:.85rem;font-weight:600">${probPct}%</div>
+          <div class="muted tiny">prob. real</div>
+        </div>
+      </div>
+
+      <div class="stack" style="gap:6px">
+        ${legs.slice(0, 4).map(l => `
+          <div style="padding:8px 10px;background:color-mix(in srgb, var(--brand-500) 4%, transparent);border-radius:6px;border-left:2px solid var(--brand-500)">
+            <div class="row between" style="align-items:flex-start;gap:8px">
+              <div style="flex:1;min-width:0">
+                <div style="font-size:.78rem;font-weight:600;line-height:1.3">${BSUI.esc(l.label || '—')}</div>
+                <div class="muted tiny" style="margin-top:2px">${BSUI.esc(l.home || '?')} vs ${BSUI.esc(l.away || '?')}</div>
+              </div>
+              <div class="num" style="font-weight:700;font-size:.9rem">${(l.odd || 0).toFixed(2)}</div>
+            </div>
+          </div>
+        `).join('')}
+        ${legs.length > 4 ? `<div class="muted tiny" style="text-align:center">+ ${legs.length - 4} legs más</div>` : ''}
+      </div>
+
+      <div class="row between" style="padding-top:8px;border-top:1px solid var(--border)">
+        <div>
+          <div class="muted tiny">Si apostás ${BSUI.money(stake)}</div>
+          <div style="font-weight:600;color:var(--success, #16a34a)">+${BSUI.money(potentialWin - stake)} ganarías</div>
+        </div>
+        <button class="btn btn-primary btn-sm" data-sim-combo="${idx}">
+          ${BSIcons.svg('check', { size: 14 })} Simular
+        </button>
+      </div>
+    </div>`;
+  }
+
+  function renderBetsTable(state) {
+    const sorted = [...state.bets].sort((a, b) => {
+      // Pendientes primero, luego por fecha desc
+      if (a.status === 'pending' && b.status !== 'pending') return -1;
+      if (b.status === 'pending' && a.status !== 'pending') return 1;
+      return (b.ts || 0) - (a.ts || 0);
+    });
+    return `<div class="table-wrap"><table class="table" style="width:100%">
+      <thead>
+        <tr>
+          <th>Estado</th>
+          <th>Apuesta</th>
+          <th class="text-right">Cuota</th>
+          <th class="text-right">Stake</th>
+          <th class="text-right">Resultado</th>
+          <th class="text-right">Banca</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${sorted.slice(0, 50).map(b => renderBetRow(b)).join('')}
+      </tbody>
+    </table></div>`;
+  }
+
+  function renderBetRow(b) {
+    const statusLabel = { pending: '⏳ Pendiente', won: '✓ Ganada', lost: '✗ Perdida' }[b.status];
+    const statusClass = { pending: 'badge-warning', won: 'badge-success', lost: 'badge-danger' }[b.status];
+    const legSummary = (b.legs || []).slice(0, 2).map(l => l.label || '—').join(' + ');
+    const legMore = (b.legs || []).length > 2 ? ` +${(b.legs || []).length - 2}` : '';
+    const profitTxt = b.status === 'pending' ? '—' : (b.profit >= 0 ? '+' : '') + BSUI.money(b.profit);
+    const profitCls = b.status === 'won' ? 'text-success' : b.status === 'lost' ? 'text-danger' : '';
+    return `<tr>
+      <td><span class="badge ${statusClass} tiny">${statusLabel}</span></td>
+      <td>
+        <div style="font-size:.82rem;font-weight:600">${BSUI.esc(legSummary)}${legMore}</div>
+        <div class="muted tiny">${BSUI.dt(b.ts)}</div>
+      </td>
+      <td class="num text-right">${(b.combo?.totalOdd || 0).toFixed(2)}</td>
+      <td class="num text-right">${BSUI.money(b.stake)}</td>
+      <td class="num text-right ${profitCls}">${profitTxt}</td>
+      <td class="num text-right">${b.status !== 'pending' ? BSUI.money(b.balanceAfter || 0) : '—'}</td>
+    </tr>`;
+  }
+
+  /* ═══════ BINDINGS ═══════ */
+
+  function bindControls(panel, state) {
+    // Bank stepper
+    const bankInp = panel.querySelector('#simBankInput');
+    panel.querySelectorAll('[data-stepper="simbank"] .num-stepper-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         const sign = btn.dataset.step === '+' ? 1 : -1;
-        const cur = Number(String(stakeEl.value).replace(/[^\d]/g, '')) || 0;
-        const step = cur >= 50000 ? 5000 : cur >= 10000 ? 1000 : 500;
-        const nx = Math.max(0, Math.min(state.bankroll, cur + sign * step));
-        stakeEl.value = String(nx);
-        updatePct();
+        const cur = Number(String(bankInp.value).replace(/[^\d]/g, '')) || 0;
+        const step = cur >= 100000 ? 10000 : 5000;
+        bankInp.value = String(Math.max(1000, cur + sign * step));
       });
     });
-    stakeEl.addEventListener('input', () => {
-      stakeEl.value = String(stakeEl.value).replace(/[^\d]/g, '');
-      updatePct();
-    });
-    function updatePct() {
-      const stake = Number(stakeEl.value || 0);
-      const pct = state.bankroll ? (stake / state.bankroll) * 100 : 0;
-      panel.querySelector('#simStakePct').textContent = BSUI.pctRaw(pct, 1);
-    }
-    panel.querySelectorAll('.sim-pct').forEach(b => b.addEventListener('click', () => {
-      const pct = Number(b.dataset.pct);
-      stakeEl.value = String(Math.round(state.bankroll * pct / 100));
-      updatePct();
-    }));
-    updatePct();
-
-    // ---- Bet handler ----
-    panel.querySelectorAll('.sim-pick').forEach(btn => btn.addEventListener('click', () => {
-      const mi = Number(btn.dataset.mi), vi = Number(btn.dataset.vi);
-      const pick = picks[mi].variants[vi];
-      const stake = Number(stakeEl.value || 0);
-      if (stake <= 0) { BSUI.toast({ title: 'Stake inválido', message: 'Definí un stake mayor a 0', type: 'warning' }); return; }
-      if (stake > state.bankroll) { BSUI.toast({ title: 'Sin banca', message: 'No tenés saldo suficiente', type: 'danger' }); return; }
-      // Resolve outcome with implied probability + small variance noise
-      const baseP = Math.min(0.95, Math.max(0.05, pick.p));
-      const r = Math.random();
-      const won = r < baseP;
-      const payout = won ? stake * pick.odd : 0;
-      const profit = payout - stake;
-      state.bankroll = state.bankroll + profit;
-      if (won) state.wins++; else state.losses++;
-      state.history.unshift({
-        at: Date.now(),
-        match: picks[mi].match.home.name + ' vs ' + picks[mi].match.away.name,
-        pick: pick.label,
-        odd: pick.odd,
-        stake, payout, profit, won,
-        balanceAfter: state.bankroll
-      });
-      save(state);
-      BSUI.toast({
-        title: won ? '¡Ganaste!' : 'Perdiste',
-        message: (won ? '+' : '') + BSUI.money(profit) + ' · ' + pick.label,
-        type: won ? 'success' : 'danger'
-      });
-      if (won) BSUI.confetti?.();
-      // Re-render to refresh KPIs + history
-      render(panel);
-    }));
-
-    // ---- History rendering ----
-    panel.querySelector('#simHistory').innerHTML = state.history.slice(0, 30).map(h => `
-      <tr>
-        <td class="tiny muted">${BSUI.dt(h.at)}</td>
-        <td><strong>${BSUI.esc(h.pick)}</strong><div class="muted tiny">${BSUI.esc(h.match)}</div></td>
-        <td class="num">${h.odd.toFixed(2)}</td>
-        <td class="num">${BSUI.money(h.stake)}</td>
-        <td><span class="badge ${h.won?'badge-success':'badge-danger'}">${h.won?'WIN':'LOSS'}</span></td>
-        <td class="num ${h.profit>=0?'text-success':'text-danger'}">${h.profit>=0?'+':''}${BSUI.money(h.profit)}</td>
-        <td class="num">${BSUI.money(h.balanceAfter)}</td>
-      </tr>
-    `).join('') || '<tr><td colspan="7" class="muted text-center" style="padding:20px">Sin simulaciones todavía. Apostá tu primera pick arriba.</td></tr>';
-
-    // ---- Bankroll evolution chart ----
-    const ev = [state.initial, ...state.history.slice().reverse().map(h => h.balanceAfter)];
-    const cv = panel.querySelector('#simChart');
-    drawEvolution(cv, ev);
-
-    // ---- Reset / Clear / Export ----
-    panel.querySelector('#simReset').addEventListener('click', () => {
-      if (confirm('¿Reiniciar tu bankroll a $100.000 y borrar el historial?')) {
-        save({ bankroll: 100000, initial: 100000, history: [], wins: 0, losses: 0 });
+    bankInp.addEventListener('change', () => {
+      const v = Number(String(bankInp.value).replace(/[^\d]/g, '')) || 0;
+      if (v >= 1000 && v !== state.bankroll) {
+        // Si cambia bankroll, también se actualiza initial (es un reset suave)
+        state.bankroll = v;
+        state.initial = v;
+        save(state);
         render(panel);
       }
     });
-    panel.querySelector('#simClear').addEventListener('click', () => {
-      if (confirm('¿Borrar el historial pero mantener tu bankroll actual?')) {
-        state.history = []; state.wins = 0; state.losses = 0;
+
+    // Risk
+    panel.querySelectorAll('#simRiskSeg [data-risk]').forEach(b => {
+      b.addEventListener('click', () => {
+        state.risk = b.dataset.risk;
+        save(state);
+        render(panel);
+      });
+    });
+
+    // Reset
+    panel.querySelector('#simReset')?.addEventListener('click', () => {
+      if (confirm('¿Reiniciar tu banca y borrar todas las apuestas simuladas?')) {
+        save({ bankroll: 100000, initial: 100000, risk: state.risk, bets: [], wins: 0, losses: 0 });
+        render(panel);
+      }
+    });
+
+    // Refresh combos
+    panel.querySelector('#simRefreshCombos')?.addEventListener('click', () => render(panel));
+
+    // Export CSV
+    panel.querySelector('#simExport')?.addEventListener('click', () => {
+      const rows = [['Fecha', 'Estado', 'Apuesta', 'Cuota', 'Stake', 'Profit', 'Balance']];
+      state.bets.forEach(b => rows.push([
+        new Date(b.ts).toISOString(),
+        b.status,
+        (b.legs || []).map(l => l.label).join(' + '),
+        b.combo?.totalOdd || '',
+        b.stake,
+        b.profit ?? '',
+        b.balanceAfter ?? ''
+      ]));
+      const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'simulador-apuestas.csv';
+      a.click();
+    });
+
+    // Clear history
+    panel.querySelector('#simClear')?.addEventListener('click', () => {
+      if (confirm('¿Borrar todas las apuestas pero mantener tu banca actual?')) {
+        state.bets = []; state.wins = 0; state.losses = 0;
         save(state); render(panel);
       }
     });
-    panel.querySelector('#simExport').addEventListener('click', () => {
-      const rows = [['Fecha', 'Match', 'Pick', 'Cuota', 'Stake', 'Profit', 'Balance']];
-      state.history.forEach(h => rows.push([new Date(h.at).toISOString(), h.match, h.pick, h.odd, h.stake, h.profit, h.balanceAfter]));
-      const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
-      const blob = new Blob([csv], { type: 'text/csv' });
-      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'simulador-historial.csv'; a.click();
+  }
+
+  function bindComboActions(panel, state, combos) {
+    panel.querySelectorAll('[data-sim-combo]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = Number(btn.dataset.simCombo);
+        const combo = combos[idx];
+        if (!combo) return;
+        const stake = Math.round(state.bankroll * 0.05);
+        if (stake > state.bankroll) {
+          BSUI.toast({ title: 'Sin banca suficiente', type: 'warning' });
+          return;
+        }
+        const bet = {
+          id: `bet-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          ts: Date.now(),
+          combo: { totalOdd: combo.totalOdd, type: combo.type, sumEv: combo.sumEv },
+          legs: combo.legs || [],
+          stake,
+          status: 'pending'
+        };
+        state.bets.unshift(bet);
+        save(state);
+        BSUI.toast({
+          title: 'Apuesta simulada',
+          message: `${BSUI.money(stake)} a cuota ${combo.totalOdd?.toFixed(2)}. Se resuelve cuando termine el partido.`,
+          type: 'success'
+        });
+        if (BSUI.confetti) BSUI.confetti(40);
+        render(panel);
+      });
     });
   }
 
-  function SPORT_LABEL(s) {
-    return ({ soccer:'Fútbol', basketball:'Básquet', tennis:'Tenis', amfootball:'NFL', hockey:'Hockey', baseball:'MLB', mma:'MMA', boxing:'Boxeo' }[s] || s);
+  function bindMyBetsActions(panel, state) {
+    // (sin extras por ahora — resolución automática se hace en cada render)
   }
 
-  // Top-3 AR books REALES que mejor pagan ESTE pick específico.
-  // Si tenemos cuota live del partido para cada casa, ordenamos por la cuota
-  // de ese outcome y devolvemos las 3 mejores. Sin data live, devolvemos
-  // las primeras 3 AR books como fallback.
-  function top3Books(matchId, market, outcome) {
-    const ar = (BSData.BOOKS_AR || []);
-    if (!matchId || !outcome) return ar.slice(0, 3);
-    const live = (BSData.liveEvents({}) || []).find(e => e.id === matchId);
-    if (!live?.markets?.[market || 'h2h']) return ar.slice(0, 3);
-    const markets = live.markets[market || 'h2h'];
-    // Cargamos {book, odd} para cada AR book con cuota válida en este outcome
-    const ranked = ar.map(b => {
-      const bookOdds = markets[b.key];
-      if (!bookOdds) return null;
-      const odd = outcome === 'home' ? bookOdds.home
-                : outcome === 'away' ? bookOdds.away
-                : outcome === 'draw' ? bookOdds.draw : null;
-      if (!Number.isFinite(odd) || odd <= 1.01) return null;
-      return { ...b, odd };
-    }).filter(Boolean).sort((a, b) => b.odd - a.odd);
-    if (ranked.length >= 3) return ranked.slice(0, 3);
-    // Si hay menos de 3 reales, completamos con AR books estándar
-    const seen = new Set(ranked.map(r => r.key));
-    const fill = ar.filter(b => !seen.has(b.key)).slice(0, 3 - ranked.length);
-    return [...ranked, ...fill];
-  }
-
-  function drawEvolution(canvas, values) {
-    if (!canvas || !values || values.length < 2) return;
+  /* ═══════ CHART ═══════ */
+  function drawEvolution(canvas, state) {
+    if (!canvas) return;
+    const resolved = state.bets.filter(b => b.status !== 'pending').slice().reverse();
+    const values = [state.initial];
+    resolved.forEach(b => values.push(b.balanceAfter || values[values.length - 1]));
+    if (values.length < 2) {
+      // Sin data, mostrar línea recta inicial
+      const ctx = canvas.getContext('2d');
+      const w = canvas.clientWidth, h = canvas.clientHeight;
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = w * dpr; canvas.height = h * dpr;
+      ctx.scale(dpr, dpr);
+      ctx.strokeStyle = 'rgba(120,120,120,.3)';
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath(); ctx.moveTo(10, h / 2); ctx.lineTo(w - 10, h / 2); ctx.stroke();
+      ctx.fillStyle = 'rgba(120,120,120,.6)';
+      ctx.font = '11px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText('Simulá tu primera apuesta para ver tu evolución', w / 2, h / 2 - 8);
+      return;
+    }
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const w = canvas.clientWidth, h = canvas.clientHeight;
     canvas.width = w * dpr; canvas.height = h * dpr;
@@ -330,23 +511,29 @@
     const min = Math.min(...values), max = Math.max(...values);
     const range = max - min || 1;
     const stepX = (w - 20) / (values.length - 1);
-    const yOf = v => h - 10 - ((v - min) / range) * (h - 20);
+    const yOf = v => h - 14 - ((v - min) / range) * (h - 28);
     // Area
     ctx.beginPath();
-    ctx.moveTo(10, h - 10);
+    ctx.moveTo(10, h - 14);
     values.forEach((v, i) => ctx.lineTo(10 + i * stepX, yOf(v)));
-    ctx.lineTo(10 + (values.length - 1) * stepX, h - 10);
+    ctx.lineTo(10 + (values.length - 1) * stepX, h - 14);
     ctx.closePath();
+    const isUp = values[values.length - 1] >= values[0];
+    const baseRgba = isUp ? '34, 197, 94' : '239, 68, 68';
     const grad = ctx.createLinearGradient(0, 0, 0, h);
-    grad.addColorStop(0, 'rgba(34, 197, 94, .35)');
-    grad.addColorStop(1, 'rgba(34, 197, 94, 0)');
+    grad.addColorStop(0, `rgba(${baseRgba}, .35)`);
+    grad.addColorStop(1, `rgba(${baseRgba}, 0)`);
     ctx.fillStyle = grad; ctx.fill();
     // Line
     ctx.beginPath();
     values.forEach((v, i) => i === 0 ? ctx.moveTo(10, yOf(v)) : ctx.lineTo(10 + i * stepX, yOf(v)));
-    ctx.strokeStyle = '#16a34a'; ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.stroke();
+    ctx.strokeStyle = isUp ? '#16a34a' : '#ef4444';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.stroke();
   }
 
+  /* ═══════ REGISTER ═══════ */
   function doRegister() {
     if (typeof window.BSDash !== 'undefined') BSDash.register('simulator', render);
     else document.addEventListener('DOMContentLoaded', () => BSDash.register('simulator', render));
