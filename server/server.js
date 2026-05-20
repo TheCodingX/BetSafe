@@ -85,6 +85,96 @@ async function preferredJson(systemPrompt, userPrompt, opts = {}) {
   if (provider !== 'groq-70b') log(`[preferredJson] respondió ${provider}`);
   return result;
 }
+
+/* heuristicParse — Fallback regex-based parser para Coach IA cuando el LLM
+ * cascade está caído. Cubre los patrones de los 7 chips de SUGGESTIONS del
+ * frontend + variaciones naturales en castellano rioplatense. Su objetivo
+ * NO es entender prompts complejos, sino que los botones del input SIEMPRE
+ * funcionen aunque el LLM esté offline. */
+function heuristicParse(prompt, todayIso, tomorrowIso) {
+  if (typeof prompt !== 'string' || prompt.length < 5) return null;
+  const text = prompt.toLowerCase().trim();
+  const out = {};
+
+  // 1) LEGS — cuántos partidos
+  let m = text.match(/(\d+)\s*(?:partidos?|legs?|combinad[oa]s?\s+de|de\s+)/);
+  if (m) out.legs = Math.max(2, Math.min(8, parseInt(m[1], 10)));
+  else out.legs = 3;
+
+  // 2) CUOTA TARGET / RANGO
+  const oddRange = text.match(/(?:cuota\s+(?:total\s+)?(?:entre|de)\s+)(\d+(?:[.,]\d+)?)\s*(?:y|a|-)\s*(\d+(?:[.,]\d+)?)/)
+                || text.match(/(?:entre\s+)(\d+(?:[.,]\d+)?)\s*y\s*(\d+(?:[.,]\d+)?)/);
+  if (oddRange) {
+    out.minTotalOdd = parseFloat(oddRange[1].replace(',', '.'));
+    out.maxTotalOdd = parseFloat(oddRange[2].replace(',', '.'));
+    out.targetOdd = (out.minTotalOdd + out.maxTotalOdd) / 2;
+  } else {
+    m = text.match(/cuota\s+(?:total\s+)?(?:cerca\s+de\s+|de\s+|en\s+|~?\s*)?(\d+(?:[.,]\d+)?)/);
+    if (m) out.targetOdd = parseFloat(m[1].replace(',', '.'));
+  }
+
+  // 3) FECHA / VENTANA
+  if (/\bhoy\b/.test(text)) out.exactDate = todayIso;
+  else if (/\bmañ?ana\b/.test(text)) out.exactDate = tomorrowIso;
+  else if (/(esta\s+semana|los\s+pr[oó]ximos\s+d[ií]as)/.test(text)) out.timeWindow = 'week';
+  else if (/(finde|fin\s+de\s+semana|s[aá]bado|domingo)/.test(text)) out.timeWindow = 'weekend';
+  else out.timeWindow = 'any';
+
+  // 4) DEPORTE
+  if (/\btenis\b|\batp\b|\bwta\b/.test(text)) out.sport = 'tennis';
+  else if (/\bnba\b|\bb[áa]squet\b|\bbasketball\b/.test(text)) out.sport = 'basketball';
+  else if (/\bnfl\b|\bf[uú]tbol\s+americano\b/.test(text)) out.sport = 'amfootball';
+  else if (/\bmlb\b|\bb[eé]isbol\b|\bbaseball\b/.test(text)) out.sport = 'baseball';
+  else if (/\bnhl\b|\bhockey\b/.test(text)) out.sport = 'hockey';
+  else if (/\bf[uú]tbol\b|\bsoccer\b|\bpartidos?\b/.test(text)) out.sport = 'soccer';
+  else out.sport = 'all';
+
+  // 5) LIGAS conocidas
+  const leagues = [];
+  if (/(premier\s+league|epl|inglesa)/.test(text)) leagues.push('premier-league');
+  if (/(la\s+liga|laliga|primera\s+espa[nñ]ola)/.test(text)) leagues.push('la-liga');
+  if (/(serie\s+a|calcio\s+italiano)/.test(text)) leagues.push('serie-a');
+  if (/(bundesliga|alemana)/.test(text)) leagues.push('bundesliga');
+  if (/(ligue\s+1|francesa)/.test(text)) leagues.push('ligue-1');
+  if (/(liga\s+profesional\s+argentina|liga\s+argentina|\blpf\b|primera\s+argentina)/.test(text)) leagues.push('lpf');
+  if (/(brasileir[aã]o|brasilera|brasile[nñ]a)/.test(text)) leagues.push('brasileirao');
+  if (/(champions|ucl|champions\s+league)/.test(text)) leagues.push('champions-league');
+  if (/(libertadores)/.test(text)) leagues.push('copa-libertadores');
+  if (/(sudamericana)/.test(text)) leagues.push('copa-sudamericana');
+  if (/(mls)/.test(text)) leagues.push('mls');
+  if (leagues.length) out.leagues = leagues;
+
+  // 6) EXCLUDE SPORTS
+  const excludeSports = [];
+  if (/\bsin\s+esports\b|\bno\s+esports\b/.test(text)) excludeSports.push('esports');
+  if (/\bsin\s+tenis\b|\bno\s+tenis\b/.test(text)) excludeSports.push('tennis');
+  if (/\bsin\s+nba\b|\bsin\s+b[áa]squet\b/.test(text)) excludeSports.push('basketball');
+  if (excludeSports.length) out.excludeSports = excludeSports;
+
+  // 7) RIESGO
+  if (/(conservador|segur[oa]|favorit[oa]s|baj[oa]\s+riesgo)/.test(text)) out.risk = 'cons';
+  else if (/(agresiv[oa]|arriesgad[oa]|riesgo\s+alto)/.test(text)) out.risk = 'agg';
+  else if (/(equilibrad[oa]|medi[oa]|balance)/.test(text)) out.risk = 'eq';
+  else out.risk = 'eq';
+
+  // 8) MERCADOS — Política nueva 2026-05: el heurístico NO setea filters.markets
+  // por defecto. Razón: si el usuario dice "mezcla de h2h y totales" y populamos
+  // markets=['totals','match-winner'], se sobre-restringe el pool y queda en 0.
+  // Solo populamos cuando el usuario menciona UN mercado específico exclusivo
+  // (ej. "solo córners", "solo tarjetas") — eso sí justifica filtrar.
+  if (/\b(solo|s[óo]lo|únicamente)\s+(c[óo]rner|tarjet|tot|over|under|btts)/.test(text)) {
+    const mkts = [];
+    if (/c[óo]rner/.test(text)) mkts.push('corners-total');
+    if (/tarjet/.test(text)) mkts.push('cards-total');
+    if (/tot|over|under/.test(text)) mkts.push('totals');
+    if (/btts|ambos\s+marcan/.test(text)) mkts.push('btts');
+    if (mkts.length) out.markets = mkts;
+  }
+
+  out.userIntent = `Combinada de ${out.legs} partidos${out.sport!=='all'?` de ${out.sport}`:''}${leagues.length?` (${leagues.join(', ')})`:''} ${out.risk==='cons'?'conservadora':out.risk==='agg'?'agresiva':'equilibrada'}`;
+  out._source = 'heuristic-fallback';
+  return out;
+}
 const { analyzeCombo, pairCorrelation } = require('./engines/correlation');
 const { buildFactors } = require('./factors');
 
@@ -2723,11 +2813,20 @@ INSTRUCCIONES FINALES:
     log(`[betsafe-ai] parse err: ${e?.message?.slice(0, 100)}`);
   }
 
-  // Si el parser TOTALMENTE falló, devolvemos error claro en lugar de armar
-  // una combinada random con defaults — eso engaña al user.
-  if (!parsed || (typeof parsed !== 'object')) {
+  // FIX 2026-05: Fallback heurístico cuando el LLM parser no responde.
+  // Antes esto devolvía 503 → user veía "no hay" siempre que LLM cayera.
+  // Ahora extraemos los filtros con regex de los patrones comunes de los
+  // chips de SUGGESTIONS (combinada segura/equilibrada/agresiva/liga/etc).
+  // Cobertura: los 7 chips del frontend Coach IA + variaciones naturales.
+  if (!parsed || typeof parsed !== 'object') {
+    log(`[betsafe-ai] LLM parser offline — usando fallback heurístico`);
+    parsed = heuristicParse(prompt, todayArtIso, fmt(tomorrowArt));
+  }
+
+  // Si NI LLM NI heurística pudo extraer NADA útil, ahora sí error.
+  if (!parsed || typeof parsed !== 'object') {
     return res.status(503).json({
-      error: 'El motor IA no está respondiendo en este momento. Refrescá en unos segundos.',
+      error: 'No pude entender tu pedido. Probá con más detalle (cantidad de partidos, cuota, deporte).',
       retry: true
     });
   }
@@ -3269,13 +3368,32 @@ INSTRUCCIONES FINALES:
     log(`[betsafe-ai] user asked analytical markets [${filters.markets.filter(m => ANALYTICAL_ONLY_MARKETS.has(m)).join(',')}] → enabling analytical pool`);
   }
 
-  // FIX 2026-05: pisos de calidad para Coach IA (consistentes con /api/generator).
-  // Una pick que el motor evalúa por debajo del piso NO debe entrar a la combinada.
-  // Risk-aware: conservador exige más EV+confidence, agresivo permite más laxo.
-  const _COACH_MIN_EV   = { cons: 2.0, eq: 1.5, agg: 0.5 }[filters.risk] ?? 1.5;
-  const _COACH_MIN_CONF = { cons: 0.58, eq: 0.52, agg: 0.46 }[filters.risk] ?? 0.50;
+  // FIX 2026-05: pisos PROGRESIVOS para Coach IA (consistente con /api/generator).
+  // Si el pool queda vacío con piso estricto, bajamos a tier 1 y luego tier 2.
+  // La promesa del producto = siempre intentar armar una combinada si hay partidos.
+  const COACH_EV_TIERS = {
+    cons: [2.0, 1.0, 0.0],
+    eq:   [1.5, 0.5, 0.0],
+    agg:  [0.5, 0.0, -1.0]
+  };
+  const COACH_CONF_TIERS = {
+    cons: [0.58, 0.52, 0.46],
+    eq:   [0.52, 0.48, 0.44],
+    agg:  [0.46, 0.42, 0.38]
+  };
+  let _coachEvTier = (COACH_EV_TIERS[filters.risk] || COACH_EV_TIERS.eq);
+  let _coachConfTier = (COACH_CONF_TIERS[filters.risk] || COACH_CONF_TIERS.eq);
+  let _coachTierUsed = 0;
+  let _COACH_MIN_EV   = _coachEvTier[0];
+  let _COACH_MIN_CONF = _coachConfTier[0];
+
   function buildPool(applyBookLock) {
     const out = [];
+    // FIX 2026-05: en tier 2 (mínimo), permitir analytical picks aunque no
+    // tengan book asignado. Es la última red de seguridad antes de fallar —
+    // mejor mostrar un pick analítico (corners, totales calculados) con
+    // "cuota estimada" que devolver "no hay" al usuario que clickeó un chip.
+    const _allowAnalyticalNow = allowAnalytical || _coachTierUsed >= 2;
     for (const r of analyzed) {
       if (r.status !== 'fulfilled' || !r.value) continue;
       const a = r.value;
@@ -3287,16 +3405,14 @@ INSTRUCCIONES FINALES:
       }
       for (let sel of candidateSels) {
         if (!sel || !sel.odd) continue;
-        // SKIP analytical UNLESS user pidió analytical-only markets explícitamente
-        if (sel.analytical && !allowAnalytical) continue;
-        // SKIP si no tiene book asignado (no es de una casa real) — pero permitir si analytical OK
-        if (!sel.book && !allowAnalytical) continue;
-        // FIX 2026-05: SKIP player props (goleadores, tiros/tarjetas/asistencias
-        // por jugador). Data no es consistente entre casas → política del
-        // producto = solo mercados colectivos.
+        // SKIP analytical UNLESS user pidió analytical-only markets O estamos en tier 2
+        if (sel.analytical && !_allowAnalyticalNow) continue;
+        // SKIP si no tiene book asignado — pero permitir si analytical OK
+        if (!sel.book && !_allowAnalyticalNow) continue;
+        // FIX 2026-05: SKIP player props siempre (política del producto)
         const { isPlayerKey: __isPlayerKey } = require('./lib/marketCatalog');
         if (__isPlayerKey(sel.market)) continue;
-        // PISOS DE CALIDAD: ningún pick con EV o conf por debajo del piso del riesgo
+        // PISOS DE CALIDAD progresivos: tier 0 estricto, 1 medio, 2 mínimo.
         if ((sel.consensusEv || 0) < _COACH_MIN_EV) continue;
         if ((sel.confidence || 0) < _COACH_MIN_CONF) continue;
         if (applyBookLock && filters.books.length) {
@@ -3316,7 +3432,16 @@ INSTRUCCIONES FINALES:
     return out;
   }
 
+  // Fallback progresivo: si Tier 0 no llega a filters.legs, bajamos a Tier 1, etc.
   let pool = buildPool(true);
+  while (pool.length < filters.legs && _coachTierUsed < 2) {
+    _coachTierUsed++;
+    _COACH_MIN_EV = _coachEvTier[_coachTierUsed];
+    _COACH_MIN_CONF = _coachConfTier[_coachTierUsed];
+    log(`[betsafe-ai] pool insuficiente (${pool.length}/${filters.legs}) → bajando a tier ${_coachTierUsed} (EV>=${_COACH_MIN_EV}, conf>=${_COACH_MIN_CONF})`);
+    pool = buildPool(true);
+  }
+  if (_coachTierUsed > 0) filters._tierUsed = _coachTierUsed;
 
   // ── AUTO-FALLBACK del book lock ──
   // Si con la casa elegida no tenemos suficientes picks, RELAJAMOS el book
@@ -3718,6 +3843,7 @@ INSTRUCCIONES FINALES:
   const seenEvents = new Set();
   const seenMatches = new Set();
   const seenPicks = new Set();
+  const seenLabels = new Set();   // FIX 2026-05: evita combinada con 4 picks de mismo label
   function matchKey(ev) {
     const start = Math.floor((Number(ev?.start) || 0) / 60000); // minuto
     const home = normalizeTeam(ev?.home?.name || '')?.id || '';
@@ -3727,16 +3853,22 @@ INSTRUCCIONES FINALES:
   function pickKey(c) {
     return `${matchKey(c.event)}|${c.sel.market}|${c.sel.outcome}|${c.sel.line || ''}`;
   }
+  function labelKey(c) {
+    return String(c.sel?.label || '').toLowerCase().trim();
+  }
   chosen = chosen.filter(c => {
     const eid = c.event?.id;
     const mk  = matchKey(c.event);
     const pk  = pickKey(c);
+    const lk  = labelKey(c);
     if (eid && seenEvents.has(eid)) return false;
     if (seenMatches.has(mk)) return false;
     if (seenPicks.has(pk)) return false;
+    if (lk && seenLabels.has(lk)) return false;   // FIX: dedup por label
     if (eid) seenEvents.add(eid);
     seenMatches.add(mk);
     seenPicks.add(pk);
+    if (lk) seenLabels.add(lk);
     return true;
   });
   // Si quedaron menos por dedup, completar con sortedPool (respetando dedup también)
@@ -3746,6 +3878,8 @@ INSTRUCCIONES FINALES:
       const eid = p.event?.id;
       const mk  = matchKey(p.event);
       const pk  = pickKey(p);
+      const lk  = labelKey(p);
+      if (lk && seenLabels.has(lk)) continue;
       if (eid && seenEvents.has(eid)) continue;
       if (seenMatches.has(mk)) continue;
       if (seenPicks.has(pk)) continue;
@@ -3753,6 +3887,7 @@ INSTRUCCIONES FINALES:
       if (eid) seenEvents.add(eid);
       seenMatches.add(mk);
       seenPicks.add(pk);
+      if (lk) seenLabels.add(lk);
       if (chosen.length >= filters.legs) break;
     }
   }
