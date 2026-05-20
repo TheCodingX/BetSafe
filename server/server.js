@@ -1912,9 +1912,18 @@ app.post('/api/generator', express.json(), async (req, res) => {
   const MAX_STALE_MS = 90_000;
   const _now = Date.now();
   trace.afterStalenessFilter_skipped = 0;
+  trace.afterStartedFilter_skipped = 0;
   events = events.filter(e => {
     const age = _now - (e.lastUpdate || 0);
     if (age > MAX_STALE_MS) { trace.afterStalenessFilter_skipped++; return false; }
+    // FIX 2026-05: rechazar eventos ya empezados (start time pasó).
+    // Los casinos suspenden mercados pre-match cuando arranca el partido;
+    // si entra al combo, cuando el user vaya al casino la cuota ya cerró.
+    // 60s de tolerancia para diferencia de relojes/timezone.
+    if (Number.isFinite(e.start) && e.start < _now - 60_000) {
+      trace.afterStartedFilter_skipped++;
+      return false;
+    }
     return true;
   });
   trace.afterStalenessFilter = events.length;

@@ -108,19 +108,6 @@ create table if not exists public.saved_picks (
 create index if not exists idx_saved_picks_user on public.saved_picks(user_id, created_at desc);
 
 -- ─────────────────────────────────────────────────────────────────────────
--- tracker_notes — notas del usuario en el tracker
--- ─────────────────────────────────────────────────────────────────────────
-create table if not exists public.tracker_notes (
-  id          uuid primary key default gen_random_uuid(),
-  user_id     uuid not null references auth.users on delete cascade,
-  note        text not null,
-  tag         text,
-  at          timestamp with time zone default now()
-);
-
-create index if not exists idx_tracker_notes_user on public.tracker_notes(user_id, at desc);
-
--- ─────────────────────────────────────────────────────────────────────────
 -- arb_history — historial de surebets detectadas (compartido o privado)
 -- ─────────────────────────────────────────────────────────────────────────
 create table if not exists public.arb_history (
@@ -147,7 +134,6 @@ alter table public.bankroll      enable row level security;
 alter table public.bet_history   enable row level security;
 alter table public.slips         enable row level security;
 alter table public.saved_picks   enable row level security;
-alter table public.tracker_notes enable row level security;
 alter table public.arb_history   enable row level security;
 
 -- Cada usuario solo lee/escribe sus propias filas
@@ -183,11 +169,6 @@ do $$ begin
   drop policy if exists "saved_picks: rw own" on public.saved_picks;
 end $$;
 create policy "saved_picks: rw own" on public.saved_picks for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
-
-do $$ begin
-  drop policy if exists "tracker_notes: rw own" on public.tracker_notes;
-end $$;
-create policy "tracker_notes: rw own" on public.tracker_notes for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 do $$ begin
   drop policy if exists "arb_history: rw own" on public.arb_history;

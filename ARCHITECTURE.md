@@ -84,8 +84,7 @@ Definidas en `BSStore.KEYS`:
 8. `smartmoney` — alertas custom + stream sharp/public
 9. `whatif` — 2^N enumeration + Monte Carlo
 10. `worldcup` — Mundial 2026 hub completo
-11. `tracker` — historial filtrable + KPIs + bars chart + worst-trade rule
-12. `settings` — apariencia, datos, atajos
+11. `settings` — apariencia, datos, atajos
 
 ## Datos sintéticos vs reales
 - `BSData.makeMatches()` genera matches deterministas (LCG seed) con 25 books.

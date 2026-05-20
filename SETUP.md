@@ -148,11 +148,9 @@ interoperabilidad y buena fe contractual. Disclaimer completo en
 | `assets/js/tabs-comparator.js`     | Comparador 12 casas — push en vivo           |
 | `assets/js/tabs-arbitrage.js`      | Surebets del backend                         |
 | `assets/js/tabs-smartmoney.js`     | Steam moves del backend                      |
-| `assets/js/tabs-tracker.js`        | Historial REAL del usuario (no fake)         |
 
 ## Próximos pasos sugeridos
 
 1. **Tests E2E** de cada scraper individualmente.
 2. **Cache Redis** entre instancias si escalás horizontalmente.
-3. **Supabase persistence** para tracker — actualmente vive en localStorage.
-4. **Push notifications FCM** cuando aparece una surebet ROI > umbral.
+3. **Push notifications FCM** cuando aparece una surebet ROI > umbral.

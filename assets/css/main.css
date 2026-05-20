@@ -13687,3 +13687,15 @@ html[data-theme=light] .hero-visual .cmp-demo,
 /* Ocultar en páginas legales/404 si se quiere (clase opt-out manual) */
 body.no-support .bs-support { display: none; }
 
+/* ────────────────────────────────────────────────────────────────────
+   SIMULADOR — Responsive layout (FIX 2026-05)
+   En desktop el grid es 320px + 1fr (banca + chart). En mobile/tablet
+   se apila vertical para evitar boxes montadas.
+   ──────────────────────────────────────────────────────────────────── */
+@media (max-width: 980px) {
+  .sim-banca-grid { grid-template-columns: 1fr !important; }
+}
+.sim-hero {
+  background: linear-gradient(135deg, rgba(30,75,200,.06), rgba(255,193,7,.04));
+}
+

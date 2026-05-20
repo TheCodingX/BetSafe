@@ -181,7 +181,7 @@
       </div>
 
       <!-- BANCA + CHART ────────────────────────────────────────────── -->
-      <div class="grid" style="grid-template-columns: 320px 1fr;gap:18px;margin-bottom:22px" data-resp-stack>
+      <div class="sim-banca-grid" style="display:grid;grid-template-columns: 320px 1fr;gap:18px;margin-bottom:22px">
         <div class="card stack" style="padding:18px">
           <strong style="font-size:.95rem">Configuración</strong>
           <div>
@@ -281,10 +281,20 @@
     const totalOdd = combo.totalOdd || legs.reduce((a, l) => a * (l.odd || 1), 1);
     const probReal = legs.reduce((a, l) => a * Math.max(0.05, l.confidence || 0.5), 1);
     const probPct = Math.round(probReal * 100);
-    const stake = Math.round(state.bankroll * 0.05);   // 5% banca por default
+    const stake = Math.round(state.bankroll * 0.05);
     const potentialWin = Math.round(stake * totalOdd);
     const riskLabel = combo.type === 'cons' ? 'Seguro' : combo.type === 'agg' ? 'Agresivo' : 'Equilibrado';
     const riskColor = combo.type === 'cons' ? 'success' : combo.type === 'agg' ? 'danger' : 'warning';
+    // FIX 2026-05: EV + confianza visibles + book recomendado
+    const sumEv = combo.sumEv != null ? combo.sumEv : (combo.evAdjusted != null ? combo.evAdjusted : null);
+    const evPct = sumEv != null ? sumEv : null;
+    const avgConf = combo.avgConfidence != null
+      ? Math.round(combo.avgConfidence * 100)
+      : Math.round((legs.reduce((a, l) => a + (l.confidence || 0), 0) / Math.max(1, legs.length)) * 100);
+    // Mejor casa: derivada de las legs (mode del bestBook si hay múltiples)
+    const bookCount = {};
+    legs.forEach(l => { const b = l.bestBook || l.book; if (b) bookCount[b] = (bookCount[b] || 0) + 1; });
+    const topBook = Object.entries(bookCount).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
 
     return `<div class="card card-hover stack reveal" style="--i:${idx};padding:16px;gap:12px">
       <div class="row between" style="align-items:flex-start">
@@ -292,6 +302,7 @@
           <div class="cluster" style="gap:6px;flex-wrap:wrap;margin-bottom:4px">
             <span class="badge badge-${riskColor} tiny">${riskLabel}</span>
             <span class="muted tiny">${legs.length} legs</span>
+            ${evPct != null ? `<span class="badge badge-info tiny" title="Valor esperado">EV ${evPct >= 0 ? '+' : ''}${Number(evPct).toFixed(1)}%</span>` : ''}
           </div>
           <div style="font-size:1.5rem;font-weight:700;line-height:1">${totalOdd.toFixed(2)}</div>
           <div class="muted tiny">Cuota total</div>
@@ -299,6 +310,7 @@
         <div style="text-align:right">
           <div style="font-size:.85rem;font-weight:600">${probPct}%</div>
           <div class="muted tiny">prob. real</div>
+          <div class="tiny" style="margin-top:6px;color:var(--text-muted)">Confianza ${avgConf}%</div>
         </div>
       </div>
 
@@ -308,7 +320,7 @@
             <div class="row between" style="align-items:flex-start;gap:8px">
               <div style="flex:1;min-width:0">
                 <div style="font-size:.78rem;font-weight:600;line-height:1.3">${BSUI.esc(l.label || '—')}</div>
-                <div class="muted tiny" style="margin-top:2px">${BSUI.esc(l.home || '?')} vs ${BSUI.esc(l.away || '?')}</div>
+                <div class="muted tiny" style="margin-top:2px">${BSUI.esc(l.home || '?')} vs ${BSUI.esc(l.away || '?')}${l.bestBook ? ` · <strong>${BSUI.esc(l.bestBook)}</strong>` : (l.book ? ` · ${BSUI.esc(l.book)}` : '')}</div>
               </div>
               <div class="num" style="font-weight:700;font-size:.9rem">${(l.odd || 0).toFixed(2)}</div>
             </div>
@@ -316,6 +328,8 @@
         `).join('')}
         ${legs.length > 4 ? `<div class="muted tiny" style="text-align:center">+ ${legs.length - 4} legs más</div>` : ''}
       </div>
+
+      ${topBook ? `<div class="muted tiny" style="text-align:center;padding:4px 8px;background:color-mix(in srgb, var(--success,#16a34a) 6%, transparent);border-radius:6px">⭐ Mejor cuota encontrada en <strong style="color:var(--text)">${BSUI.esc(topBook)}</strong></div>` : ''}
 
       <div class="row between" style="padding-top:8px;border-top:1px solid var(--border)">
         <div>
@@ -360,11 +374,13 @@
     const legMore = (b.legs || []).length > 2 ? ` +${(b.legs || []).length - 2}` : '';
     const profitTxt = b.status === 'pending' ? '—' : (b.profit >= 0 ? '+' : '') + BSUI.money(b.profit);
     const profitCls = b.status === 'won' ? 'text-success' : b.status === 'lost' ? 'text-danger' : '';
+    const bookTxt = b.book ? `<div class="muted tiny" style="margin-top:2px">📍 ${BSUI.esc(b.book)}</div>` : '';
     return `<tr>
       <td><span class="badge ${statusClass} tiny">${statusLabel}</span></td>
       <td>
         <div style="font-size:.82rem;font-weight:600">${BSUI.esc(legSummary)}${legMore}</div>
         <div class="muted tiny">${BSUI.dt(b.ts)}</div>
+        ${bookTxt}
       </td>
       <td class="num text-right">${(b.combo?.totalOdd || 0).toFixed(2)}</td>
       <td class="num text-right">${BSUI.money(b.stake)}</td>
@@ -457,12 +473,17 @@
           BSUI.toast({ title: 'Sin banca suficiente', type: 'warning' });
           return;
         }
+        // FIX 2026-05: detectar mejor casa del combo para tracking
+        const bc = {};
+        (combo.legs || []).forEach(l => { const b = l.bestBook || l.book; if (b) bc[b] = (bc[b] || 0) + 1; });
+        const topBook = Object.entries(bc).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
         const bet = {
           id: `bet-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           ts: Date.now(),
-          combo: { totalOdd: combo.totalOdd, type: combo.type, sumEv: combo.sumEv },
+          combo: { totalOdd: combo.totalOdd, type: combo.type, sumEv: combo.sumEv, avgConfidence: combo.avgConfidence },
           legs: combo.legs || [],
           stake,
+          book: topBook,
           status: 'pending'
         };
         state.bets.unshift(bet);

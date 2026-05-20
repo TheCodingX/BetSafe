@@ -156,7 +156,7 @@ admin/admin · 42. Theme toggle · 43. Atajos teclado · 44. Favoritos · 45. Re
   in-session, Smart Money Alerts >5%, public bet %, correlación entre legs.
 - **Performance analytics** (6): ROI por deporte/liga/mercado/book, profit por mes, profit
   por día semana, mejor/peor pick, cuota promedio W vs L, skill vs luck (CLV-based).
-- **Tools pro AR** (5): tax calc 5 jurisdicciones AR, promo tracker, watchlist persistente,
+- **Tools pro AR** (4): tax calc 5 jurisdicciones AR, watchlist persistente,
   weather impact por sede, export CSV/JSON universal.
 - **Otros** (47): backtesting visual 5 estrategias, multi-account portfolio (recreación/pro/test),
   API REST con keys, educational courses 6 cursos, verified track record con hash,
@@ -417,7 +417,6 @@ Mix-blend-mode usado moderadamente.
 │       ├── tabs-smartmoney.js           VIP
 │       ├── tabs-whatif.js               VIP
 │       ├── tabs-worldcup.js  ⭐ MEJORADO Logos FIFA + WC26 + confederation oficiales
-│       ├── tabs-tracker.js
 │       ├── tabs-settings.js
 │       └── features-data.js             155 funciones catalogadas
 └── data/                                (mock CSVs/JSONs)
@@ -437,8 +436,7 @@ Mix-blend-mode usado moderadamente.
 7. **Heatmap value** en dashboard overview — overview a 9.5.
 8. **Same-Game Parlay correlator** visual en builder — builder a 9.5.
 9. **Export PDF** de reportes en CalcPro — calcpro a 9.5.
-10. **Gráfico CLV histórico** en tracker — tracker a 9.5.
-11. **Gráfico line movement** en SmartMoney — smartmoney a 9.5.
+10. **Gráfico line movement** en SmartMoney — smartmoney a 9.5.
 12. **Iconos animados en hover** en value props grid (lottie-like sin lottie) — landing 9.5.
 
 ### 10.2 P1 — features moats
