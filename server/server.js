@@ -1928,10 +1928,28 @@ app.post('/api/generator', express.json(), async (req, res) => {
     eq:   [0.52, 0.48, 0.44],
     agg:  [0.46, 0.42, 0.38]
   };
+
+  // FIX 2026-05: RANGO DE CUOTA POR LEG según riesgo. Antes el motor podía
+  // armar una "combinada equilibrada" con legs de 1.03 — eso rompe la
+  // promesa del riesgo elegido. Ahora CADA pick individual debe respetar
+  // el rango. No se compensa con promedio.
+  // CONSERVADOR: legs entre 1.10 y 1.40 (cuota total típica 2-4)
+  // EQUILIBRADO: legs entre 1.40 y 2.30 (cuota total típica 4-15)
+  // AGRESIVO:    legs > 2.30 (cuota total típica 15-50+)
+  const LEG_ODD_RANGE = {
+    cons: { min: 1.10, max: 1.40 },
+    eq:   { min: 1.40, max: 2.30 },
+    agg:  { min: 2.30, max: 30.0 }
+  };
+  const legOddRange = LEG_ODD_RANGE[risk] || LEG_ODD_RANGE.eq;
+
   const evTiers = EV_TIERS[risk] || EV_TIERS.eq;
   const confTiers = CONF_TIERS[risk] || CONF_TIERS.eq;
   trace.poolRejectedLowEv = 0;
   trace.poolRejectedLowConf = 0;
+  trace.poolRejectedByLegOddRange = 0;
+  trace.poolRejectedByBookLock = 0;
+  trace.legOddRange = legOddRange;
   trace.poolTierUsed = 0;   // 0 = estricto, 1 = medio, 2 = mínimo
 
   // Construir pool en tier 0 → si vacío, reintentar tier 1 → tier 2
@@ -1942,17 +1960,39 @@ app.post('/api/generator', express.json(), async (req, res) => {
     trace.poolTierUsed = tier;
     trace.poolRejectedLowEv = 0;
     trace.poolRejectedLowConf = 0;
+    trace.poolRejectedByLegOddRange = 0;
+    trace.poolRejectedByBookLock = 0;
     pool = [];
   for (const a of passing) {
     const evSelections = (a.selections || [])
       .filter(s => markets.includes(s.market))
-      // Analytical picks NO se filtran por casa (no tienen book asignado)
-      .filter(s => s.analytical || !wantedBooks.length || wantedBooks.includes(s.book));
+      // FIX 2026-05: BOOK LOCK DURO — si el usuario seleccionó casas, las
+      // analytical picks (sin book real) también se descartan. Política
+      // nueva: cuando el user elige casinos específicos, TODA pick debe
+      // existir realmente en alguno de esos casinos. No se inventan picks.
+      .filter(s => {
+        if (!wantedBooks.length) return true;
+        // Si el user pidió casas específicas, sin libro real → descartar
+        if (!s.book) { trace.poolRejectedByBookLock++; return false; }
+        if (!wantedBooks.includes(s.book)) { trace.poolRejectedByBookLock++; return false; }
+        return true;
+      });
     for (const sel of evSelections) {
       // Pisos duros: EV y confidence por nivel de riesgo. Una pick que el
       // propio motor evalúa por debajo del piso NO debe formar combinada.
       if ((sel.consensusEv || 0) < minEv) { trace.poolRejectedLowEv++; continue; }
       if ((sel.confidence || 0) < minConf) { trace.poolRejectedLowConf++; continue; }
+      // FIX 2026-05: RANGO DE CUOTA POR LEG — regla CRÍTICA del riesgo.
+      // Cada pick individual respeta el rango. No promedios, no compensación.
+      // En tier 2 (mínimo) relajamos ligeramente (±10%) para no quedar sin combos.
+      const odd = sel.odd || 0;
+      const tolerance = tier === 2 ? 0.10 : 0;
+      const _min = legOddRange.min * (1 - tolerance);
+      const _max = legOddRange.max * (1 + tolerance);
+      if (odd < _min || odd > _max) {
+        trace.poolRejectedByLegOddRange++;
+        continue;
+      }
       // Scoring v5.5 — "máxima precisión dentro del riesgo elegido por el user"
       //
       // El user fija el riesgo (cuota target, legs, count). El motor NO debe
@@ -1971,7 +2011,7 @@ app.post('/api/generator', express.json(), async (req, res) => {
       // (buildOneCombo) con sampling exhaustivo respetando target_odd.
       const ev = sel.consensusEv || 0;          // % (-100..+100), value vs fair
       const conf = sel.confidence || 0;         // 0..1, prob real del modelo
-      const odd = sel.odd || 1.5;
+      // `odd` ya está declarado más arriba como sel.odd para el filtro de leg range
       const fairProb = odd > 1.01 ? (1 / odd) : 0.5;
       // edge = qué tan undervalued está la cuota para el modelo
       const edgeRatio = fairProb > 0 ? Math.max(0, (conf - fairProb) / fairProb) : 0;
@@ -2070,6 +2110,41 @@ app.post('/api/generator', express.json(), async (req, res) => {
     if (m === 'btts' && (o === 'no' || o === 'btts_no')) return 'btts_no';
     if (m === 'btts' && (o === 'yes' || o === 'btts_yes')) return 'btts_yes';
     return null;
+  }
+
+  /* FIX 2026-05: helper para sacar las cuotas que TODAS las casas tienen
+   * para la misma selection (eventId + market + outcome + line). Devuelve
+   * array [{book, odd}] solo para casas con cuota válida. Útil para mostrar
+   * "Mejor cuota en X: Y.YY" cuando el user pidió múltiples casinos.
+   * Si wantedBooks tiene contenido, filtra solo esos casinos. */
+  function collectBookOddsForSelection(ev, sel) {
+    const out = [];
+    if (!ev?.markets || !sel?.market) return out;
+    const byBook = ev.markets[sel.market];
+    if (!byBook || typeof byBook !== 'object') return out;
+    const outcomeKey = String(sel.outcome || '').toLowerCase();
+    for (const [book, marketData] of Object.entries(byBook)) {
+      if (wantedBooks.length && !wantedBooks.includes(book)) continue;
+      if (!marketData) continue;
+      // totals/AH usan líneas, h2h/btts/dc no
+      let price = null;
+      if (sel.market === 'totals' || sel.market === 'corners-total' || sel.market === 'cards-total' || sel.market === 'fouls-total') {
+        const line = sel.line;
+        const byLine = (line != null) ? marketData[line] : marketData;
+        if (byLine && byLine[outcomeKey] && Number.isFinite(byLine[outcomeKey])) price = byLine[outcomeKey];
+      } else if (sel.market === 'ah') {
+        // ah usa home_minus/away_plus directamente
+        if (Number.isFinite(marketData[outcomeKey])) price = marketData[outcomeKey];
+      } else {
+        // h2h, btts, dc, dnb, ht-result, etc.
+        if (Number.isFinite(marketData[outcomeKey])) price = marketData[outcomeKey];
+      }
+      if (Number.isFinite(price) && price > 1.01) {
+        out.push({ book, odd: Number(price.toFixed(2)) });
+      }
+    }
+    out.sort((a, b) => b.odd - a.odd);   // mejor cuota primero
+    return out;
   }
 
   function buildOneCombo(targetType, excludeSigs, comboIdx = 0) {
@@ -2203,16 +2278,52 @@ app.post('/api/generator', express.json(), async (req, res) => {
       }
     }
 
-    const comboLegs = chosen.map(p => ({
-      eventId: p.event.id,
-      home: p.event.home?.name, away: p.event.away?.name,
-      sport: p.event.sport, league: p.event.leagueName,
-      market: p.sel.market, outcome: p.sel.outcome, line: p.sel.line,
-      label: p.sel.label, odd: p.sel.odd, book: p.sel.book,
-      confidence: p.sel.confidence, ev: p.sel.consensusEv,
-      rationale: p.sel.rationale, tacticalNotes: p.sel.tacticalNotes,
-      factors: p.sel.factors
-    }));
+    const comboLegs = chosen.map(p => {
+      // FIX 2026-05: enriquecer cada leg con TODAS las casas que tienen esa
+      // misma cuota disponible + indicador de mejor cuota. Permite al
+      // frontend mostrar "Mejor cuota en BetWarrior: 1.85" en vez de solo
+      // la pick + casa única.
+      const allBooksForLeg = collectBookOddsForSelection(p.event, p.sel);
+      const bestBookEntry = allBooksForLeg.length > 0
+        ? allBooksForLeg.reduce((b, x) => (x.odd > b.odd ? x : b), allBooksForLeg[0])
+        : { book: p.sel.book, odd: p.sel.odd };
+      return {
+        eventId: p.event.id,
+        home: p.event.home?.name, away: p.event.away?.name,
+        sport: p.event.sport, league: p.event.leagueName,
+        market: p.sel.market, outcome: p.sel.outcome, line: p.sel.line,
+        label: p.sel.label, odd: p.sel.odd, book: p.sel.book,
+        confidence: p.sel.confidence, ev: p.sel.consensusEv,
+        rationale: p.sel.rationale, tacticalNotes: p.sel.tacticalNotes,
+        factors: p.sel.factors,
+        // Multi-book data (Fix 2026-05)
+        bookOdds: allBooksForLeg,                              // [{book, odd}, ...]
+        bestBook: bestBookEntry.book,
+        bestBookOdd: Number(bestBookEntry.odd?.toFixed(2)) || p.sel.odd
+      };
+    });
+
+    // FIX 2026-05: VALIDACIÓN FINAL antes de devolver el combo.
+    // Cada leg DEBE respetar el rango de cuota del riesgo (regla crítica
+    // del usuario: aplicar leg por leg, no promedio). Si alguna leg está
+    // fuera, descartamos todo el combo y buildOneCombo reintenta.
+    // En tier 2 toleramos 10% de margen, sino regla estricta.
+    const _legTolerance = trace.poolTierUsed === 2 ? 0.10 : 0;
+    const _legMin = legOddRange.min * (1 - _legTolerance);
+    const _legMax = legOddRange.max * (1 + _legTolerance);
+    const violatingLegs = comboLegs.filter(l => l.odd < _legMin || l.odd > _legMax);
+    if (violatingLegs.length > 0) {
+      trace.combosRejectedByLegRange = (trace.combosRejectedByLegRange || 0) + 1;
+      return null;  // reintentar con otras legs
+    }
+    // Si el user pidió casinos específicos, cada leg DEBE ser de esos casinos.
+    if (wantedBooks.length > 0) {
+      const violatingBook = comboLegs.filter(l => !l.book || !wantedBooks.includes(l.book));
+      if (violatingBook.length > 0) {
+        trace.combosRejectedByBookLock = (trace.combosRejectedByBookLock || 0) + 1;
+        return null;
+      }
+    }
 
     const corr = analyzeCombo(comboLegs);
     // FIX 2026-05: Antes había un bypass `skipCorrCheck = legsPerMatch > 1`
