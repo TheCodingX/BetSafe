@@ -93,12 +93,15 @@ const PORT                  = Number(process.env.PORT || 8787);
 const SCRAPE_INTERVAL_MS    = Number(process.env.SCRAPE_INTERVAL_MS || 30000);
 const ARB_INTERVAL_MS       = Number(process.env.ARB_INTERVAL_MS || 5000);
 const ENABLED_BOOKS         = (process.env.ENABLED_BOOKS || 'bplay,betano,betwarrior,bet365ar,codere,betsson').split(',').map(s=>s.trim()).filter(Boolean);
-// FIX 2026-05 SEGURIDAD: CORS lock. En producción NO abrir a '*' (cualquier
-// dominio podría hacer requests al backend). Default seguro: si NODE_ENV es
-// 'production' Y CORS_ORIGIN no está seteado, usar el dominio de Netlify del
-// frontend. En dev local sigue siendo '*' para que funcione el browser de prueba.
+// FIX 2026-05 SEGURIDAD: CORS lock. En producción NO abrir a '*'.
+// Deploy: el frontend Y el backend corren en Render (single deploy). Si todo
+// está en el mismo dominio, CORS no es restrictivo. Si decidís separar
+// frontend/backend en futuro, setear CORS_ORIGIN explícito vía env var.
+// Default seguro: en production sin CORS_ORIGIN → same-origin only (devuelve
+// el Origin del request, lo cual es seguro porque solo same-origin lo seteará
+// correctamente para requests no-CORS).
 const CORS_ORIGIN = process.env.CORS_ORIGIN
-  || (process.env.NODE_ENV === 'production' ? 'https://betsafe.netlify.app' : '*');
+  || (process.env.NODE_ENV === 'production' ? 'same-origin' : '*');
 const PUBLIC_DIR            = path.resolve(__dirname, '..');
 
 // Motor de arbitraje dedicado: corre cada ARB_INTERVAL_MS (5s) sobre el
@@ -116,9 +119,18 @@ const app = express();
 app.disable('x-powered-by');
 
 app.use((req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', CORS_ORIGIN);
+  // Si CORS_ORIGIN === 'same-origin', echo del Origin del request (solo
+  // funciona para mismo dominio; cross-origin sin allowlist no responde
+  // ACAO → browser bloquea). Si está hardcoded, usar ese valor.
+  if (CORS_ORIGIN === 'same-origin') {
+    const origin = req.headers.origin;
+    if (origin) res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+  } else {
+    res.setHeader('Access-Control-Allow-Origin', CORS_ORIGIN);
+  }
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,X-Debug-Key');
   // Security headers
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');
@@ -435,19 +447,35 @@ app.get('/api/breakers', (req, res) => res.json(orchestrator.breakers ? orchestr
 // Reset manual de breakers. Si está seteado DEBUG_KEY hay que pasar ?key=
 // para evitar que cualquiera resetee desde la internet pública.
 /* FIX 2026-05 SEGURIDAD: helper centralizado para endpoints de debug/admin.
- * Política:
- *   - En NODE_ENV=production: SIEMPRE requiere DEBUG_KEY válida (param o body).
- *     Si DEBUG_KEY no está configurada → 404 (endpoint no existe). Esto evita
- *     que endpoints internos queden accesibles en producción por accidente.
- *   - En dev local: si DEBUG_KEY está seteada, exigirla. Si no, libre (DX).
- * Devuelve true si autorizado, false si NO (y ya respondió con error). */
+ * Política con 2 capas:
+ *   1) IP allowlist (ADMIN_IPS env, CSV de IPs permitidas). Si está
+ *      configurada y la IP del request no está en la lista → 404.
+ *   2) DEBUG_KEY válida (query, body o header x-debug-key).
+ * En NODE_ENV=production: AMBAS obligatorias si están configuradas.
+ * En dev local: si DEBUG_KEY está seteada, exigirla; sino libre. */
 function requireDebugAuth(req, res) {
   const isProd = process.env.NODE_ENV === 'production';
   const cfg = process.env.DEBUG_KEY;
+  // Capa 1: IP allowlist para endpoints admin (opt-in via env)
+  const adminIpsCsv = process.env.ADMIN_IPS;
+  if (adminIpsCsv) {
+    const allowed = adminIpsCsv.split(',').map(s => s.trim()).filter(Boolean);
+    const ip = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress || '';
+    if (allowed.length && !allowed.includes(ip)) {
+      try { logSecurityEvent('admin-ip-blocked', { ip, path: req.path }); } catch (_) {}
+      res.status(404).json({ error: 'Not found' });
+      return false;
+    }
+  }
+  // Capa 2: DEBUG_KEY
   if (isProd) {
     if (!cfg) { res.status(404).json({ error: 'Not found' }); return false; }
     const provided = req.query?.key || req.body?.key || req.headers?.['x-debug-key'];
-    if (provided !== cfg) { res.status(404).json({ error: 'Not found' }); return false; }
+    if (provided !== cfg) {
+      try { logSecurityEvent('admin-key-invalid', { ip: req.socket.remoteAddress, path: req.path }); } catch (_) {}
+      res.status(404).json({ error: 'Not found' });
+      return false;
+    }
     return true;
   }
   // Dev local: si está seteada, exigirla; sino libre
@@ -457,6 +485,39 @@ function requireDebugAuth(req, res) {
   }
   return true;
 }
+
+/* FIX 2026-05 SEGURIDAD: detección básica de bots por User-Agent.
+ * Marca requests con UA sospechoso para tracking. NO los bloquea por
+ * default (riesgo de false positives), solo loguea para que el admin
+ * pueda revisar via /api/security/status. */
+const BOT_UA_PATTERNS = [
+  /python-requests/i, /curl\//i, /wget/i, /scrapy/i, /headless/i,
+  /phantomjs/i, /selenium/i, /playwright/i, /puppeteer/i,
+  /bot\b/i, /spider/i, /crawl/i
+];
+function isBotRequest(req) {
+  const ua = String(req.headers['user-agent'] || '');
+  if (!ua) return { isBot: true, reason: 'no-ua' };
+  for (const pattern of BOT_UA_PATTERNS) {
+    if (pattern.test(ua)) return { isBot: true, reason: pattern.source };
+  }
+  // Browsers reales siempre mandan Accept-Language y Accept
+  if (!req.headers['accept-language'] && !req.headers['accept']) {
+    return { isBot: true, reason: 'no-accept-headers' };
+  }
+  return { isBot: false };
+}
+// Middleware que loguea bots en endpoints sensibles (AI/odds)
+app.use((req, res, next) => {
+  const isSensitive = /^\/api\/(betsafe-ai|generator|picks|odds|surebets|combo)/.test(req.path);
+  if (!isSensitive) return next();
+  const det = isBotRequest(req);
+  if (det.isBot) {
+    const ip = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress || 'unknown';
+    try { logSecurityEvent('bot-detected', { ip, path: req.path, reason: det.reason, ua: String(req.headers['user-agent'] || '').slice(0, 120) }); } catch (_) {}
+  }
+  next();
+});
 
 //   POST /api/breakers/reset                       → resetea todos
 //   POST /api/breakers/reset?name=scraper:betano   → solo ese scraper (incluye sub-breakers)
@@ -785,6 +846,69 @@ app.get('/api/odds/match/:id', (req, res) => {
   const age = Date.now() - (ev.lastUpdate || 0);
   const stale = age > ODDS_MAX_STALE_MS;
   res.json({ ...ev, _meta: { lastUpdate: ev.lastUpdate, ageMs: age, stale } });
+});
+
+/* FIX 2026-05: /api/odds/compare/:matchId — comparación BetSafe vs casino
+ * para un partido específico. Devuelve cuotas por casa con timestamp +
+ * diff vs mejor casa. Permite que el frontend muestre transparente "lo
+ * que tenemos en cache vs lo que un user vería en el casino" — la
+ * confianza viene de la honestidad sobre el lag.
+ *
+ * Query params:
+ *   - market=h2h|totals|btts|... (default h2h)
+ *   - outcome=home|draw|away|over|under|yes|no (default home)
+ *   - line=2.5 (para totals/AH) opcional
+ */
+app.get('/api/odds/compare/:matchId', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, max-age=0, must-revalidate');
+  const ev = orchestrator.findEvent(req.params.matchId);
+  if (!ev) return res.status(404).json({ error: 'not-found' });
+
+  const market = String(req.query.market || 'h2h').toLowerCase();
+  const outcome = String(req.query.outcome || 'home').toLowerCase();
+  const line = req.query.line ? Number(req.query.line) : null;
+  const now = Date.now();
+  const evAge = now - (ev.lastUpdate || 0);
+
+  const marketData = ev.markets?.[market];
+  if (!marketData) return res.json({
+    event: { id: ev.id, home: ev.home, away: ev.away, lastUpdate: ev.lastUpdate, ageMs: evAge },
+    market, outcome, line,
+    books: [],
+    message: `Mercado '${market}' no disponible para este evento`
+  });
+
+  // Recolectar cuotas de TODAS las casas para este market/outcome/line
+  const books = [];
+  for (const [book, data] of Object.entries(marketData)) {
+    if (!data) continue;
+    let price = null;
+    if (line != null && data[line]) {
+      price = data[line][outcome];
+    } else if (Number.isFinite(data[outcome])) {
+      price = data[outcome];
+    }
+    if (Number.isFinite(price) && price > 1.01) {
+      books.push({ book, odd: Number(price.toFixed(2)) });
+    }
+  }
+  books.sort((a, b) => b.odd - a.odd);
+  const best = books[0];
+  const worst = books[books.length - 1];
+  res.json({
+    event: { id: ev.id, home: ev.home?.name, away: ev.away?.name, lastUpdate: ev.lastUpdate, ageMs: evAge, stale: evAge > 120_000 },
+    market, outcome, line,
+    books: books.map(b => ({
+      ...b,
+      diffVsBest: best ? Number((((best.odd - b.odd) / best.odd) * 100).toFixed(2)) : 0
+    })),
+    best: best ? { book: best.book, odd: best.odd } : null,
+    worst: worst ? { book: worst.book, odd: worst.odd } : null,
+    gapPct: best && worst && books.length >= 2
+      ? Number((((best.odd - worst.odd) / worst.odd) * 100).toFixed(2))
+      : 0,
+    totalBooks: books.length
+  });
 });
 
 /* FIX 2026-05: endpoint nuevo /api/odds/freshness — diagnóstico de lag
@@ -2113,6 +2237,19 @@ app.post('/api/generator', express.json(), async (req, res) => {
         return true;
       });
     for (const sel of evSelections) {
+      // FIX 2026-05: VALIDACIÓN DE MERCADO ACTIVO — cuota razonable.
+      // Una cuota null, 0, <1.01 o >1000 indica mercado cerrado o data
+      // corrupta. Una pick con `closed:true` (defensivo) también se
+      // descarta. Esto cubre el caso "mercado cerrado en casa" sin
+      // necesidad de re-query al casino.
+      if (sel.closed === true || sel.suspended === true) {
+        trace.poolRejectedByMarketClosed = (trace.poolRejectedByMarketClosed || 0) + 1;
+        continue;
+      }
+      if (!Number.isFinite(sel.odd) || sel.odd < 1.01 || sel.odd > 1000) {
+        trace.poolRejectedByInvalidOdd = (trace.poolRejectedByInvalidOdd || 0) + 1;
+        continue;
+      }
       // Pisos duros: EV y confidence por nivel de riesgo. Una pick que el
       // propio motor evalúa por debajo del piso NO debe formar combinada.
       if ((sel.consensusEv || 0) < minEv) { trace.poolRejectedLowEv++; continue; }

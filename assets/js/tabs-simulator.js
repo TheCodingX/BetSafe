@@ -331,6 +331,11 @@
 
       ${topBook ? `<div class="muted tiny" style="text-align:center;padding:4px 8px;background:color-mix(in srgb, var(--success,#16a34a) 6%, transparent);border-radius:6px">⭐ Mejor cuota encontrada en <strong style="color:var(--text)">${BSUI.esc(topBook)}</strong></div>` : ''}
 
+      ${combo.aiNarrative || combo.aiEdge || (legs[0]?.rationale) ? `<div class="muted tiny" style="padding:8px 10px;background:color-mix(in srgb, var(--brand-500) 3%, transparent);border-radius:6px;line-height:1.45;border-left:2px solid color-mix(in srgb, var(--brand-500) 50%, transparent)">
+        <strong style="color:var(--text);display:block;margin-bottom:2px;font-size:.72rem;text-transform:uppercase;letter-spacing:.04em">Análisis IA</strong>
+        ${BSUI.esc(combo.aiNarrative || combo.aiEdge || legs[0]?.rationale || '').slice(0, 220)}${(combo.aiNarrative || combo.aiEdge || legs[0]?.rationale || '').length > 220 ? '…' : ''}
+      </div>` : ''}
+
       <div class="row between" style="padding-top:8px;border-top:1px solid var(--border)">
         <div>
           <div class="muted tiny">Si apostás ${BSUI.money(stake)}</div>

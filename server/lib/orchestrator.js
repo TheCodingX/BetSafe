@@ -717,9 +717,23 @@ async function cycle() {
     }, 1200);
   };
 
+  // FIX 2026-05 CUOTAS TR: frecuencia diferenciada por source.
+  // Sources rápidas (oddsapi, espn, sofascore, github-cache) pueden correr
+  // cada ciclo (30s). Sources scraper (cloudflare/anti-bot protected) corren
+  // cada 2 ciclos (60s) para evitar baneos. Esto da updates frescos
+  // de oddsapi cada 30s sin trigger bans en betano/bplay/etc.
+  // En ciclos pares (cycles % 2 === 0) corren TODAS las sources.
+  // En ciclos impares solo las rápidas — los scrapers usan su cache.
+  const isFastCycle = state.cycles % 2 === 1;
   await Promise.allSettled(state.sources.map(src =>
     limit(async () => {
       const t = Date.now();
+      // Skip scrapers caros en ciclos impares (los rápidos siguen corriendo)
+      const isScraperSrc = String(src.name || '').startsWith('scraper:');
+      if (isFastCycle && isScraperSrc) {
+        // Usar el último status para que /api/health refleje "última corrida"
+        return;
+      }
       const evs = await src.safeFetch(['soccer', 'basketball', 'tennis', 'amfootball', 'baseball', 'hockey', 'mma']);
       evs.forEach(ev => mergeEventFromSource(src.name, ev, newEvents));
       const status = src.status();

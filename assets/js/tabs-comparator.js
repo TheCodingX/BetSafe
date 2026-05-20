@@ -176,6 +176,32 @@
       panel.querySelector('#cCount').textContent = `${filtered.length} partidos`;
       panel.querySelector('#cTimer').textContent = `Última actualización ${BSData.liveFreshness()}`;
 
+      // FIX 2026-05: modo debug ?debug=1 — muestra panel diagnóstico con
+      // sport seleccionado + cuántos eventos hay, cuántos pasaron filtros,
+      // qué casas están activas, timestamps. Útil para soporte y QA.
+      if (location.search.includes('debug=1') || location.hash.includes('debug')) {
+        const debugInfo = {
+          activeSport: activeSport,
+          totalMatches: matches?.length || 0,
+          scoredCount: scored?.length || 0,
+          filteredCount: filtered?.length || 0,
+          uniqueBooks: uniqueBooks?.size || 0,
+          totalArb: totalArb || 0,
+          maxGapEver: maxGapEver?.toFixed(2) || 0,
+          freshness: BSData.liveFreshness(),
+          serverNow: new Date().toISOString()
+        };
+        const debugHost = panel.querySelector('#cDebugPanel') || (() => {
+          const d = document.createElement('div');
+          d.id = 'cDebugPanel';
+          d.style.cssText = 'position:fixed;bottom:12px;right:12px;background:rgba(0,0,0,.85);color:#0f0;padding:10px 14px;border-radius:8px;font-family:ui-monospace,Menlo,monospace;font-size:11px;line-height:1.5;z-index:9999;max-width:340px';
+          panel.appendChild(d);
+          return d;
+        })();
+        debugHost.innerHTML = `<strong style="color:#fff">🔧 DEBUG · Comparador</strong><br>` +
+          Object.entries(debugInfo).map(([k, v]) => `${k}: ${v}`).join('<br>');
+      }
+
       tb.querySelectorAll('[data-add]').forEach(b => b.addEventListener('click', () => BSDash.addToSlip(JSON.parse(b.dataset.add))));
       tb.querySelectorAll('[data-detail]').forEach(b => b.addEventListener('click', () => openDetail(matches.find(m=>m.id===b.dataset.detail))));
     }
@@ -243,6 +269,16 @@
             </div>
             <div class="cluster" style="gap:6px;flex-wrap:wrap">
               <span class="muted tiny">${BSUI.esc(m.leagueName || '')} · ${BSUI.dt(m.start)}</span>
+              ${(() => {
+                // FIX 2026-05: freshness per-match (no solo global del snapshot).
+                // Calcula edad de las cuotas de ESTE evento específico.
+                const age = m.lastUpdate ? Math.max(0, Math.round((Date.now() - m.lastUpdate) / 1000)) : null;
+                if (age == null) return '';
+                const isStale = age > 120;
+                const cls = isStale ? 'badge-warning' : 'badge-success';
+                const txt = age < 60 ? `${age}s` : `${Math.floor(age/60)}m`;
+                return `<span class="badge ${cls} tiny" title="Edad de las cuotas">⏱ ${txt}</span>`;
+              })()}
               ${badges.join('')}
               <button class="btn-ghost btn-icon btn-sm" data-detail="${m.id}" aria-label="Ver todas las casas">${BSIcons.svg('eye',{size:16})}</button>
             </div>
