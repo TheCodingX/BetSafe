@@ -24,6 +24,7 @@
     }
 
     panel.innerHTML = `
+      ${BSUI.aiDisclaimer ? BSUI.aiDisclaimer({ compact: true }) : ''}
       <div class="row between mb-3">
         <div>
           <h2 class="h3">Armá tu combinada<a class="help-q" tabindex="0" data-tip="Elegí los partidos y selecciones que querés combinar. A medida que sumás, te mostramos en tiempo real la cuota total, cuánto podrías ganar y la probabilidad estimada. Lo mejor: te decimos qué casa argentina paga MÁS por tu combinada completa."></a></h2>

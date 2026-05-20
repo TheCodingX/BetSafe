@@ -797,6 +797,12 @@ app.get('/api/picks', async (req, res) => {
   let events = orchestrator.events({ sport: sport || 'all', league })
     .filter(e => e.bestOdds?.h2h);
 
+  // FIX 2026-05: filtro de staleness — consistente con /api/generator y
+  // /api/betsafe-ai/build. Eventos con cuotas >90s sin update se descartan.
+  // Sin esto AI Picks puede mostrar picks sobre cuotas viejas → fake edges.
+  const _picksStaleCutoff = Date.now() - 90_000;
+  events = events.filter(e => (e.lastUpdate || 0) >= _picksStaleCutoff);
+
   // FILTRO POR DEFAULT: eSports excluidos a menos que se pidan explícitamente.
   // Sin esto, las simulaciones eFootball/eBasket (que arrancan cada 4 minutos)
   // copan los picks y nunca se ven partidos reales.
@@ -1041,6 +1047,11 @@ app.get('/api/curated-combos', async (req, res) => {
   if (!includeEsports) {
     events = events.filter(e => e.sport !== 'esports' && !orchestrator.looksLikeEsports?.(e));
   }
+  // FIX 2026-05: filtro de staleness — consistente con /api/picks, /api/generator
+  // y /api/betsafe-ai/build. Sin esto, los curated-combos podían armarse sobre
+  // cuotas viejas (fake edges).
+  const _curatedStaleCutoff = Date.now() - 90_000;
+  events = events.filter(e => (e.lastUpdate || 0) >= _curatedStaleCutoff);
   // Filtro tiempo: parametrizado (default 36h, user puede pedir 2h/6h/12h/24h)
   const now = Date.now();
   events = events.filter(e => Number.isFinite(e.start) && e.start >= now && e.start <= now + timeWindowH * 3600 * 1000);
@@ -3492,10 +3503,33 @@ INSTRUCCIONES FINALES:
       // Diff vs target (suave) — segundo criterio cuando ya está en rango
       const diffPct = Math.abs(total - syntheticTarget) / syntheticTarget;
       const avgScore = combo.reduce((a, c) => a + legScore(c), 0) / combo.length;
+      // FIX 2026-05: HARD REJECT EV total negativo (consistente con /api/generator).
+      // Si la suma de EVs de las legs es <0, el combo es matemáticamente perdedor
+      // — no rankearlo nunca como mejor opción.
+      const sumEv = combo.reduce((a, c) => a + (c.sel.consensusEv || 0), 0);
+      if (sumEv < 0) {
+        return { total, inRange, fit: -1000 + sumEv, sumEv, rejected: 'negative-ev' };
+      }
+      // FIX 2026-05: HARD REJECT correlación positiva fuerte (>0.45) — consistente
+      // con buildOneCombo del generator. Coach IA antes solo penalizaba suavemente
+      // vía legScore, ahora rechaza explícitamente combos con maxCorr alta.
+      const corrLegs = combo.map(c => ({
+        eventId: c.event?.id,
+        market: c.sel.market,
+        outcome: c.sel.outcome,
+        line: c.sel.line,
+        home: c.event?.home?.name,
+        away: c.event?.away?.name
+      }));
+      const corr = analyzeCombo(corrLegs);
+      if ((corr.maxPositiveCorrelation || 0) > 0.45) {
+        return { total, inRange, fit: -800 + (corr.maxPositiveCorrelation || 0) * -10, rejected: 'high-correlation', maxCorr: corr.maxPositiveCorrelation };
+      }
       // Función objetivo: PRIORIZA estar en rango. Si fuera, penaliza fuerte.
       // Si en rango, secundario es: cerca de target + alto avg score.
-      const fit = (inRange ? 10 : 0) - outOfRangePenalty * 20 - diffPct * 2 + avgScore * 0.5;
-      return { total, inRange, fit };
+      // Bonus por EV positivo (más alto = mejor) — antes solo dependía de avgScore.
+      const fit = (inRange ? 10 : 0) - outOfRangePenalty * 20 - diffPct * 2 + avgScore * 0.5 + sumEv * 0.3;
+      return { total, inRange, fit, sumEv, maxCorr: corr.maxPositiveCorrelation || 0 };
     }
 
     // 1) Greedy 1-leg swap: empezar con top-scored y reemplazar 1 leg a la vez
