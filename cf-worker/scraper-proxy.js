@@ -126,15 +126,22 @@ export default {
       'Referer': `https://${targetUrl.hostname}/`
     };
 
-    // Fetch al target. cacheTtl=30s para reducir invocaciones repetidas a misma URL.
+    // Fetch al target. Cacheamos SOLO responses 2xx (data real); errores 4xx/5xx
+    // NO se cachean. Bug fix 2026-05-21: antes con cacheEverything=true, si el
+    // origen devolvía 403 transient (Betano hace splash anti-bot ocasional),
+    // ese 403 quedaba cacheado 30s y todos los requests durante esa ventana
+    // recibían 403 stale → breaker del scraper se abría y no se recuperaba.
     let originRes;
     try {
       originRes = await fetch(targetUrl.toString(), {
         method: 'GET',
         headers,
         cf: {
-          cacheTtl: 30,
-          cacheEverything: true
+          cacheTtlByStatus: {
+            '200-299': 30,   // cuotas frescas cacheadas 30s (data real)
+            '300-399': 5,    // redirects cortos
+            '400-599': 0     // NUNCA cachear errores — fuerza retry al origen
+          }
         }
       });
     } catch (e) {
