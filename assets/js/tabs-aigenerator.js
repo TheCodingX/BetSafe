@@ -622,6 +622,30 @@
         return { leg: l, best, alternates, reason };
       });
     }
+    /** Validación crítica: ¿esta combinada se puede armar REALMENTE en los
+     *  casinos que marcó el usuario? Esta es la regla dura que decide si la
+     *  mostramos o no — no queremos NUNCA renderizar combinadas imposibles.
+     *
+     *  - Single-book (1 casa marcada): la única casa debe cubrir TODAS las legs
+     *    con cuotas verified.
+     *  - Multi-book (2+ casas): cada leg debe estar cubierta por al menos UNA
+     *    de las casas marcadas (best-of cross-book). Si una sola leg no tiene
+     *    casa que la oferte → combinada NO armable.
+     *
+     *  Si devuelve false, el caller filtra la combinada del output y, si
+     *  quedan pocas, sobre-pide al backend o muestra estado vacío explícito.
+     */
+    function isPlayableCombo(combo, selectedBookKeys) {
+      if (!combo || !Array.isArray(combo.legs) || !combo.legs.length) return false;
+      if (!Array.isArray(selectedBookKeys) || !selectedBookKeys.length) return false;
+      if (selectedBookKeys.length === 1) {
+        const ranked = bestBookForCombo(combo.legs, selectedBookKeys, null, null);
+        return !!(ranked[0] && ranked[0].isFullCoverage);
+      }
+      const perLeg = bestBookPerLeg(combo.legs, selectedBookKeys);
+      return perLeg.length === combo.legs.length && perLeg.every(p => p && p.best);
+    }
+
     function bookChip(b, payout) {
       if (!b) return '';
       const logo = window.BSLogos ? BSLogos.bookLogo(b.key, { size: 14 }) : '';
@@ -870,6 +894,8 @@
         return;
       }
       if (_gBtn) _gBtn.dataset.busy = '1';
+      // Limpiar refresh ticker previo (si lo había de una generación anterior)
+      if (panel._agLiveTicker) { clearInterval(panel._agLiveTicker); panel._agLiveTicker = null; }
       // Validar que el usuario haya marcado al menos 1 casino
       const books = selectedBooks();
       if (!books.length) {
@@ -914,13 +940,19 @@
       const useAiBuilder = panel.querySelector('#agUseAiBuilder')?.checked !== false;
       const mixSports = panel.querySelector('#agMixSports')?.checked !== false;
 
-      // POST al backend: pipeline completa con factors + LLM + quant + correlation
+      // POST al backend: pipeline completa con factors + LLM + quant + correlation.
+      // Pedimos un buffer (count * 2 con tope 50) porque después filtramos en
+      // el cliente las combinadas que NO se puedan armar realmente en las casas
+      // marcadas — mejor sobrar candidatas que mostrar tickets imposibles.
+      const requestedCount = Math.min(50, Math.max(count * 2, count + 2));
       let payload = {
         sport: activeSport,
         leagues,
         risk: activeRisk,
         legs: n,
-        count,
+        count: requestedCount,
+        // Hint al backend: limit final visible al user (si lo respeta, mejor)
+        finalCount: count,
         markets,
         books,                       // SOLO las casas que marcó el usuario
         minSharp: useSharp ? 0.3 : 0,
@@ -977,7 +1009,7 @@
       }
 
       // Adaptar la respuesta al shape que usaba la UI original
-      const combos = backendCombos.map(c => ({
+      const allCombos = backendCombos.map(c => ({
         legs: c.legs.map(l => ({
           match: { home: { id: l.home?.toLowerCase?.().replace(/[^a-z]/g,''), name: l.home }, away: { id: l.away?.toLowerCase?.().replace(/[^a-z]/g,''), name: l.away }, id: l.eventId },
           market: l.market,
@@ -1012,9 +1044,45 @@
 
       const aiGlobalNarrative = resp.aiNarrative || null;
       const aiProvider = resp.aiProvider || null;          // 'gemini' | 'groq' | null
-      const aiHealth = resp.aiHealth || 'disabled';        // 'ok' | 'degraded' | 'no-keys' | 'disabled'
+
+      // FILTRO CRÍTICO — Solo mostramos combinadas que REALMENTE se pueden
+      // armar en los casinos que marcó el usuario. La validación replica la
+      // misma lógica que usa el render para decidir displayCoverageState:
+      //  • singleBook: la casa debe cubrir las legs todas con cuotas verified.
+      //  • multiBook: cada leg debe estar disponible en al menos UNA casa.
+      // Si alguna combinada no pasa, NO se muestra (regla dura: jamás
+      // exhibimos tickets imposibles). Si tras el filtro quedan menos que
+      // las pedidas, dejamos lo que sea armable — preferimos menos a falso.
+      const combos = allCombos
+        .filter(c => isPlayableCombo(c, books))
+        .slice(0, count);  // respetar lo que pidió el user (sobre-pedimos sólo para filtrar)
+      const droppedUnplayable = allCombos.length - combos.length;
 
       const out = panel.querySelector('#agOutput');
+
+      // Si TODAS las combinadas que devolvió el backend son imposibles de
+      // armar en los casinos seleccionados → estado vacío con accion clara,
+      // NO renderizamos combinadas imposibles.
+      if (!combos.length && allCombos.length) {
+        const bookLabel = books.length === 1
+          ? ((BSData.BOOKS_AR || []).find(b => b.key === books[0])?.name || books[0])
+          : 'los casinos que marcaste';
+        out.innerHTML = `
+          <div class="card stack reveal" style="padding:40px;text-align:center;border:1px solid var(--border)">
+            <div style="font-size:42px;line-height:1;margin-bottom:8px;opacity:.55">🎯</div>
+            <strong style="font-size:1.15rem;display:block">No encontramos combinadas armables en ${BSUI.esc(bookLabel)}</strong>
+            <p class="muted tiny" style="margin-top:8px;max-width:560px;margin-left:auto;margin-right:auto;line-height:1.55">
+              El motor evaluó <strong>${candidatesEvaluated}</strong> combinaciones, pero ninguna tiene cobertura COMPLETA en ${books.length === 1 ? 'esa casa' : 'esas casas'} ahora mismo.
+              <br><span style="color:var(--brand-500,#2563eb);font-weight:600">No te mostramos combinadas que no podés realmente jugar.</span>
+            </p>
+            <ul class="muted tiny" style="text-align:left;max-width:520px;margin:18px auto 0;line-height:1.55;padding-left:20px">
+              <li>Marcá más casinos en el paso 1 (más casas = más mercados disponibles).</li>
+              <li>Ampliá los mercados a considerar en el paso 2.</li>
+              <li>Probá nuevamente en unos segundos — las cuotas se actualizan en vivo.</li>
+            </ul>
+          </div>`;
+        return;
+      }
       out.innerHTML = `
         <div class="row between mb-3">
           <div>
@@ -1026,14 +1094,6 @@
         ${aiGlobalNarrative ? `<div class="card card-tinted card-pad-sm mb-3" style="border-left:3px solid var(--brand-500);background:rgba(var(--brand-500-rgb,30,75,200),0.04)">
           <div class="row between" style="align-items:center"><strong class="tiny">Lectura global IA${aiProvider ? ` <span class="badge badge-success tiny" style="margin-left:6px">✓ Activa</span>` : ''}</strong></div>
           <p class="muted tiny" style="margin-top:6px;line-height:1.5">${BSUI.esc(aiGlobalNarrative)}</p>
-        </div>` : ''}
-        ${aiHealth === 'degraded' ? `<div class="card card-pad-sm mb-3" style="border-left:3px solid var(--warning,#d97706);background:color-mix(in srgb, var(--warning,#d97706) 6%, transparent)">
-          <strong class="tiny">⚠ Análisis IA en mantenimiento</strong>
-          <p class="muted tiny" style="margin-top:4px;line-height:1.45">Estas combinadas se armaron con análisis estadístico. El análisis IA profundo volverá a estar disponible en unos minutos — refrescá para que las revise.</p>
-        </div>` : ''}
-        ${aiHealth === 'no-keys' ? `<div class="card card-pad-sm mb-3" style="border-left:3px solid var(--info,#2563eb);background:color-mix(in srgb, var(--info,#2563eb) 5%, transparent)">
-          <strong class="tiny">ℹ Análisis IA en mantenimiento</strong>
-          <p class="muted tiny" style="margin-top:4px;line-height:1.45">El motor estadístico armó las combinadas. El análisis IA volverá en unos minutos.</p>
         </div>` : ''}
         ${BSUI.aiDisclaimer ? BSUI.aiDisclaimer({ compact: true }) : ''}
         <div class="grid ${combos.length === 1 ? '' : 'grid-2'}" style="gap:18px">
@@ -1119,7 +1179,7 @@
             const totalPayoutReal = stake * displayTotalOdd;
             const profitReal = stake * (Math.max(0, displayTotalOdd - 1));
             return `
-            <article class="bs-prem ag-combo">
+            <article class="bs-prem ag-combo" data-combo-idx="${ci}">
               <header class="bs-prem__head">
                 <strong class="bs-prem__title">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg>
@@ -1428,6 +1488,53 @@
         if (BSUI.openModal) BSUI.openModal(html, { large: true });
         else BSUI.toast({ title: 'Análisis', message: 'Probabilidad ' + conf + '% · Ventaja ' + (c.ev*100).toFixed(1) + '%', type: 'info' });
       }));
+
+      // ─────── REFRESH EN VIVO de cuotas (cada 8s) ───────
+      // Re-valida cada combinada renderizada contra el snapshot live actual.
+      // Si una combinada DEJA de ser armable (un mercado se cerró, una casa
+      // dejó de cubrirla, evento terminado) → se quita silenciosamente del
+      // DOM. Si la cuota total cambió → se actualiza in-place con flash.
+      // Sin spinners, sin avisos de "mantenimiento" — la IA siempre activa.
+      panel._agLiveTicker = setInterval(() => {
+        // Cleanup si el output ya no está en el DOM (user navegó / regenera)
+        if (!out.isConnected || !document.body.contains(out)) {
+          clearInterval(panel._agLiveTicker);
+          panel._agLiveTicker = null;
+          return;
+        }
+        combos.forEach((c, ci) => {
+          const card = out.querySelector(`article[data-combo-idx="${ci}"]`);
+          if (!card) return;
+          if (!isPlayableCombo(c, books)) {
+            card.style.transition = 'opacity .3s, transform .3s';
+            card.style.opacity = '0';
+            card.style.transform = 'translateY(-4px)';
+            setTimeout(() => card.remove(), 320);
+            return;
+          }
+          // Recomputar cuota total real con el snapshot vigente
+          let newTotalOdd = 0;
+          if (books.length === 1) {
+            const ranked = bestBookForCombo(c.legs, books, M, COVER);
+            newTotalOdd = ranked[0]?.isFullCoverage ? ranked[0].totalOdd : 0;
+          } else {
+            const perLeg = bestBookPerLeg(c.legs, books);
+            if (perLeg.every(p => p.best)) {
+              newTotalOdd = perLeg.reduce((a, p) => a * p.best.price, 1);
+            }
+          }
+          const oddEl = card.querySelector('.bs-prem__odd');
+          if (oddEl && newTotalOdd > 0) {
+            const prev = parseFloat(oddEl.textContent) || 0;
+            if (Math.abs(prev - newTotalOdd) > 0.005) {
+              oddEl.textContent = newTotalOdd.toFixed(2);
+              oddEl.style.transition = 'color .4s, background .4s';
+              oddEl.style.color = 'var(--brand-500,#2563eb)';
+              setTimeout(() => { oddEl.style.color = ''; }, 900);
+            }
+          }
+        });
+      }, 8000);
     });
 
     updateStatus();
