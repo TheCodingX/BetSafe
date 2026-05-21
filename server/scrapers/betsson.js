@@ -431,32 +431,72 @@ async function tryPlaywright() {
     if (playwrightBreaker.state === 'OPEN') return [];
   }
   const captured = [];
+  // Debug counters — visibles en logs cuando captura 0 events
+  const dbg = {
+    totalResponses: 0,        // total responses HTTP que detectó playwright
+    jsonResponses: 0,         // de esas, cuántas son JSON
+    matchingRegex: 0,         // de esas, cuántas matchean (kambi|betsson|sb-xp|sportsbook|offering)
+    okStatus: 0,              // de esas, cuántas con status 200
+    parsedOk: 0,              // de esas, cuántas json() parseó
+    nonRegexJsonHosts: new Set(), // hosts JSON que NO matchean regex (para ajustar)
+    nav: { home: null, futbol: null }, // status code de cada navegación
+    htmlLen: 0,
+    htmlHasSplash: false
+  };
   let ctx = null;
   try {
     await playwrightBreaker.exec(async () => {
-      const handle = await browserPool.newPage({ blockResources: true });
+      // blockResources=false: necesitamos JS para que la SPA dispare XHR a Kambi
+      const handle = await browserPool.newPage({ blockResources: false });
       ctx = handle.ctx;
       const page = handle.page;
 
       page.on('response', async (res) => {
         try {
+          dbg.totalResponses++;
           const url = res.url();
-          if (!/(kambi|betsson|sb-xp|sportsbook|offering)/i.test(url)) return;
           const ct = (res.headers()['content-type'] || '').toLowerCase();
           if (!ct.includes('json')) return;
+          dbg.jsonResponses++;
+          const matchesOurRegex = /(kambi|betsson|sb-xp|sportsbook|offering|fanduel|c2c)/i.test(url);
+          if (!matchesOurRegex) {
+            // Trackear hosts JSON desconocidos para ajustar el regex después
+            try {
+              const host = new URL(url).hostname;
+              if (dbg.nonRegexJsonHosts.size < 20) dbg.nonRegexJsonHosts.add(host);
+            } catch {}
+            return;
+          }
+          dbg.matchingRegex++;
+          if (res.status() !== 200) return;
+          dbg.okStatus++;
           const json = await res.json().catch(() => null);
-          if (json && typeof json === 'object') captured.push({ url, json });
+          if (json && typeof json === 'object') {
+            dbg.parsedOk++;
+            captured.push({ url, json });
+          }
         } catch (_) {}
       });
 
-      // Cargar primero el home para cookies, luego sportsbook
-      await page.goto('https://pba.betsson.bet.ar/', { waitUntil: 'domcontentloaded', timeout: 25000 }).catch(() => {});
-      await sleep(2000);
-      await page.goto('https://pba.betsson.bet.ar/apuestas-deportivas/futbol', { waitUntil: 'domcontentloaded', timeout: 25000 }).catch(() => {});
-      await sleep(6000);  // Kambi SPA monta los eventos
+      // FASE 1: home (CF challenge + cookies)
+      try {
+        const r1 = await page.goto('https://pba.betsson.bet.ar/', { waitUntil: 'domcontentloaded', timeout: 25000 });
+        dbg.nav.home = r1?.status() || 'no-response';
+      } catch (e) { dbg.nav.home = 'err:' + (e.message?.slice(0, 50) || 'unknown'); }
+      await sleep(3000);
+
+      // FASE 2: sportsbook (donde Kambi monta los eventos)
+      try {
+        const r2 = await page.goto('https://pba.betsson.bet.ar/apuestas-deportivas/futbol', { waitUntil: 'domcontentloaded', timeout: 25000 });
+        dbg.nav.futbol = r2?.status() || 'no-response';
+      } catch (e) { dbg.nav.futbol = 'err:' + (e.message?.slice(0, 50) || 'unknown'); }
+      await sleep(8000);  // Kambi SPA monta los eventos
       await page.evaluate(() => window.scrollBy(0, 800)).catch(() => {});
-      await sleep(2000);
+      await sleep(3000);
+
       const html = await page.content().catch(() => '');
+      dbg.htmlLen = html.length;
+      dbg.htmlHasSplash = /just a moment|attention required|checking your browser|cf-wrapper|verificando|access denied/i.test(html);
       captured.push({ url: 'page-html', html, json: null });
 
       if (!captured.some(c => c.json) && !html) throw new Error('no-content-captured');
@@ -465,6 +505,13 @@ async function tryPlaywright() {
     log(`[betsson:playwright] err: ${e.message}${e.circuitOpen ? ' · circuit OPEN' : ''}`);
   } finally {
     if (ctx) try { await ctx.close(); } catch {}
+  }
+
+  // Log de debug DETALLADO (siempre, no solo cuando hay error)
+  log(`[betsson:playwright:debug] nav: home=${dbg.nav.home} futbol=${dbg.nav.futbol} | htmlLen=${dbg.htmlLen} splash=${dbg.htmlHasSplash}`);
+  log(`[betsson:playwright:debug] responses: total=${dbg.totalResponses} json=${dbg.jsonResponses} matchRegex=${dbg.matchingRegex} ok200=${dbg.okStatus} parsed=${dbg.parsedOk}`);
+  if (dbg.nonRegexJsonHosts.size) {
+    log(`[betsson:playwright:debug] JSON hosts NO matcheados (candidatos a ajustar regex): ${[...dbg.nonRegexJsonHosts].slice(0, 10).join(', ')}`);
   }
 
   const out = [];
