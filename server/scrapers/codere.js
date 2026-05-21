@@ -164,7 +164,34 @@ async function tryBases(path) {
       }
     }
   }
-  // FINAL FALLBACK: ScrapingBee con render_js=false (es API JSON, no necesita JS).
+  // PRIMER FALLBACK (gratis): Cloudflare Worker proxy.
+  //   El Worker corre en red CF → DNS resuelve desde edge CF (no Render Oregon)
+  //   y la API .NET de Codere es pública sin Cloudflare protection → responde OK.
+  //   $0 con plan Workers Free (100k req/día).
+  //   Se activa solo si CF_PROXY_URL está en env vars.
+  if (process.env.CF_PROXY_URL) {
+    const proxyUrl = process.env.CF_PROXY_URL.replace(/\/+$/, '');
+    const proxyHeaders = process.env.CF_PROXY_KEY
+      ? { 'x-proxy-key': process.env.CF_PROXY_KEY }
+      : {};
+    for (const base of bases) {
+      try {
+        const targetUrl = base + path;
+        const data = await httpJsonNative(
+          `${proxyUrl}/?url=${encodeURIComponent(targetUrl)}`,
+          { headers: { ...HEADERS, ...proxyHeaders }, timeout: 12000 }
+        );
+        if (data) {
+          CACHED_BASE = base;   // proxy resolvió, marcamos esta base como válida
+          return data;
+        }
+      } catch (e) {
+        // si el proxy mismo falla (401/403/502), salimos y probamos SBee
+        if (/proxy|401|403|502/i.test(e?.message || '')) break;
+      }
+    }
+  }
+  // ÚLTIMO FALLBACK: ScrapingBee con render_js=false (es API JSON, no necesita JS).
   // Usa IP residencial AR para bypass de geo-blocking.
   // SOLO intentamos si SBee no está marcada como inválida (evita 30s timeout).
   if (process.env.SCRAPINGBEE_KEY) {
