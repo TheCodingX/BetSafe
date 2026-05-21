@@ -2225,15 +2225,24 @@ app.post('/api/generator', express.json(), async (req, res) => {
   for (const a of passing) {
     const evSelections = (a.selections || [])
       .filter(s => markets.includes(s.market))
-      // BOOK LOCK: si user marcó casinos, las picks REALES (con book asignado)
-      // deben estar en wantedBooks. Las picks ANALYTICAL (sin book — mercados
-      // extendidos calculados por el motor: corners-total, cards-total,
-      // totals-ht, etc.) SE PERMITEN igual porque son cálculos del modelo
-      // cuantitativo, no de una casa específica. El frontend las muestra
-      // con disclaimer "cuota estimada".
+      // BOOK LOCK ESTRICTO — REGLA DURA DEL PRODUCTO:
+      //  Si el user marcó casinos, SOLO aceptamos picks REALES con cuota
+      //  scrapeada en una de las casas marcadas. Las picks "analíticas"
+      //  (calculadas por el modelo: corners-total, cards-total, totals-ht,
+      //  first-team-score, shots-on-target-total, etc.) se RECHAZAN porque
+      //  el user no las puede jugar realmente — no existen en su casa.
+      //  Mostrar "cuota estimada" rompe la promesa: el usuario abre la app
+      //  del casino y NO ENCUENTRA el mercado. Mejor ofrecer menos combos
+      //  pero que TODAS sean realmente armables.
+      //  Si no hay book lock (user sin casas marcadas), permitimos analíticas
+      //  como antes (modo exploratorio).
       .filter(s => {
         if (!wantedBooks.length) return true;
-        if (s.analytical === true || !s.book) return true;   // analytical pasa
+        // Con book lock activo: NO analíticas y NO picks sin book real
+        if (s.analytical === true || !s.book) {
+          trace.poolRejectedByBookLock++;
+          return false;
+        }
         if (!wantedBooks.includes(s.book)) { trace.poolRejectedByBookLock++; return false; }
         return true;
       });

@@ -622,28 +622,58 @@
         return { leg: l, best, alternates, reason };
       });
     }
-    /** Validación crítica: ¿esta combinada se puede armar REALMENTE en los
-     *  casinos que marcó el usuario? Esta es la regla dura que decide si la
-     *  mostramos o no — no queremos NUNCA renderizar combinadas imposibles.
+    /** ÚNICA FUENTE DE VERDAD para decidir si una combinada se puede armar
+     *  y con qué cuota total mostrarla. Replica EXACTAMENTE la lógica que
+     *  usa el render para asignar displayCoverageState, así nunca aparece
+     *  un combo que el filtro acepta pero el render marca como "no se puede
+     *  armar" (o viceversa).
      *
-     *  - Single-book (1 casa marcada): la única casa debe cubrir TODAS las legs
-     *    con cuotas verified.
-     *  - Multi-book (2+ casas): cada leg debe estar cubierta por al menos UNA
-     *    de las casas marcadas (best-of cross-book). Si una sola leg no tiene
-     *    casa que la oferte → combinada NO armable.
+     *  Estados:
+     *   • 'full_single'       → 1 casa marcada, cubre TODAS las legs
+     *   • 'full_single_book'  → multi casa, una de las marcadas cubre todo
+     *   • 'multi_book'        → multi casa, cada leg tiene best en alguna
+     *   • 'partial_single'    → 1 casa, cubre algunas (NO armable)
+     *   • 'partial'           → multi casa, mejor casa cubre algunas (NO armable)
+     *   • 'unavailable*'      → cero coverage (NO armable)
      *
-     *  Si devuelve false, el caller filtra la combinada del output y, si
-     *  quedan pocas, sobre-pide al backend o muestra estado vacío explícito.
+     *  Solo los tres primeros son armables. El render y el filtro usan
+     *  isPlayableCombo() que pregunta por esos estados.
      */
-    function isPlayableCombo(combo, selectedBookKeys) {
-      if (!combo || !Array.isArray(combo.legs) || !combo.legs.length) return false;
-      if (!Array.isArray(selectedBookKeys) || !selectedBookKeys.length) return false;
-      if (selectedBookKeys.length === 1) {
-        const ranked = bestBookForCombo(combo.legs, selectedBookKeys, null, null);
-        return !!(ranked[0] && ranked[0].isFullCoverage);
+    function getCoverage(combo, selectedBookKeys) {
+      const blank = { state: 'unavailable', totalOdd: 0, winner: null, perLegBest: null, userBookRanking: null, singleBookMode: false };
+      if (!combo || !Array.isArray(combo.legs) || !combo.legs.length) return blank;
+      if (!Array.isArray(selectedBookKeys) || !selectedBookKeys.length) return blank;
+      const singleBookMode = selectedBookKeys.length === 1;
+      const ranked = bestBookForCombo(combo.legs, selectedBookKeys, null, null);
+      const winner = ranked[0];
+      if (singleBookMode) {
+        const userBookRanking = ranked[0];
+        if (userBookRanking?.isFullCoverage) {
+          return { state: 'full_single', totalOdd: userBookRanking.totalOdd, winner, perLegBest: null, userBookRanking, singleBookMode };
+        }
+        if (userBookRanking && userBookRanking.coveredLegs > 0) {
+          return { state: 'partial_single', totalOdd: userBookRanking.totalOdd, winner, perLegBest: null, userBookRanking, singleBookMode };
+        }
+        return { state: 'unavailable_single', totalOdd: 0, winner, perLegBest: null, userBookRanking, singleBookMode };
       }
-      const perLeg = bestBookPerLeg(combo.legs, selectedBookKeys);
-      return perLeg.length === combo.legs.length && perLeg.every(p => p && p.best);
+      // Multi-book
+      if (winner?.isFullCoverage) {
+        return { state: 'full_single_book', totalOdd: winner.totalOdd, winner, perLegBest: null, userBookRanking: null, singleBookMode };
+      }
+      const perLegBest = bestBookPerLeg(combo.legs, selectedBookKeys);
+      if (perLegBest.length === combo.legs.length && perLegBest.every(p => p && p.best)) {
+        const totalOdd = perLegBest.reduce((a, p) => a * p.best.price, 1);
+        return { state: 'multi_book', totalOdd, winner, perLegBest, userBookRanking: null, singleBookMode };
+      }
+      if (winner && winner.coveredLegs > 0) {
+        return { state: 'partial', totalOdd: winner.totalOdd, winner, perLegBest, userBookRanking: null, singleBookMode };
+      }
+      return { state: 'unavailable', totalOdd: 0, winner, perLegBest, userBookRanking: null, singleBookMode };
+    }
+
+    function isPlayableCombo(combo, selectedBookKeys) {
+      const cov = getCoverage(combo, selectedBookKeys);
+      return cov.state === 'full_single' || cov.state === 'full_single_book' || cov.state === 'multi_book';
     }
 
     function bookChip(b, payout) {
@@ -923,7 +953,19 @@
       panel.querySelectorAll('.ag-mkt-chip input[type=checkbox][data-mkt]').forEach(cb => {
         if (cb.checked) marketsSet.add(cb.dataset.mkt);
       });
-      const markets = marketsSet.size ? [...marketsSet] : ['h2h', 'dc', 'totals', 'btts', 'ah'];
+      const rawMarkets = marketsSet.size ? [...marketsSet] : ['h2h', 'dc', 'totals', 'btts', 'ah'];
+
+      // CRÍTICO — filtramos el array `markets` contra BOOK_MARKET_COVERAGE:
+      // solo mandamos al backend mercados que al menos UNA de las casas
+      // seleccionadas realmente cubre. Sin esto, el backend genera combos
+      // sobre mercados que no existen en las casas del user → frontend
+      // filtra todo → estado vacío. Mejor decirle al backend qué pedirle.
+      const _covered = rawMarkets.filter(mk => books.some(bk => COVER[bk]?.[mk]));
+      // Si el filtro vaciaría TODO el array (COVER incompleto o casino raro),
+      // caemos a los mercados originales para no bloquear el request — el
+      // backend con book-lock estricto y el filtro de coverage frontend
+      // se encargan del resto.
+      const markets = _covered.length ? _covered : rawMarkets;
 
       // Filtros funcionales — directos del UI a los flags del backend
       const useInjuries = panel.querySelector('#agUseInjuries')?.checked;
@@ -1122,59 +1164,26 @@
               if (!seenFact.has(k)) { seenFact.add(k); uniqueFactors.push(f); }
               if (uniqueFactors.length >= 5) break;
             }
-            // Best book para esta combinada (cuota real en CADA casa seleccionada)
-            const ranked = bestBookForCombo(c.legs, books, M, COVER);
-            const winner = ranked[0];
-            const runnerUp = ranked[1];
-
-            // Modo de display: single-book vs multi-book (best per leg)
-            // Si el user marcó 1 sola casa → mostramos la cuota REAL de ESA casa.
-            // Si marcó varias → modo "best per leg" con qué casa ofrece cada cuota.
-            const singleBookMode = books.length === 1;
-            const userPickedBookKey = singleBookMode ? books[0] : null;
-            const userBookRanking = singleBookMode
-              ? ranked.find(r => r.book.key === userPickedBookKey)
-              : null;
-            const perLegBest = !singleBookMode ? bestBookPerLeg(c.legs, books) : null;
-
-            // CUOTA TOTAL REAL — refactor crítico 2026-05-19.
-            // Antes: usábamos c.total del backend (best cross-book) en el header,
-            // pero la combinada NO se puede armar a esa cuota cross-book si la
-            // user solo tiene 1 casa o si ninguna casa cubre todas las legs.
-            // Ahora: usamos la cuota EFECTIVA según lo que el user PUEDE jugar.
-            let displayTotalOdd, displayCoverageState, displayWinnerBookKey;
-            if (singleBookMode) {
-              if (userBookRanking?.isFullCoverage) {
-                displayTotalOdd = userBookRanking.totalOdd;
-                displayCoverageState = 'full_single';
-                displayWinnerBookKey = userPickedBookKey;
-              } else if (userBookRanking && userBookRanking.coveredLegs > 0) {
-                displayTotalOdd = userBookRanking.totalOdd;
-                displayCoverageState = 'partial_single';
-                displayWinnerBookKey = userPickedBookKey;
-              } else {
-                displayTotalOdd = 0;
-                displayCoverageState = 'unavailable_single';
-                displayWinnerBookKey = userPickedBookKey;
-              }
-            } else if (winner?.isFullCoverage) {
-              displayTotalOdd = winner.totalOdd;
-              displayCoverageState = 'full_single_book';
-              displayWinnerBookKey = winner.book.key;
-            } else if (perLegBest && perLegBest.every(p => p.best)) {
-              // Multi-book: hay best por leg en al menos UNA de las casas marcadas
-              displayTotalOdd = perLegBest.reduce((a, p) => a * (p.best.price), 1);
-              displayCoverageState = 'multi_book';
-              displayWinnerBookKey = null;
-            } else if (winner && winner.coveredLegs > 0) {
-              displayTotalOdd = winner.totalOdd;
-              displayCoverageState = 'partial';
-              displayWinnerBookKey = winner.book.key;
-            } else {
-              displayTotalOdd = 0;
-              displayCoverageState = 'unavailable';
-              displayWinnerBookKey = null;
+            // Coverage canónico (mismo cálculo que isPlayableCombo).
+            // SAFETY NET — si por alguna razón llegó hasta acá un combo no
+            // armable (race con el filtro, snapshot que cambió entre filtrar
+            // y renderizar, lo que sea) → NO LO RENDERIZAMOS. Devolvemos
+            // string vacío y el .join lo omite. Cero combos imposibles en UI.
+            const _cov = getCoverage(c, books);
+            if (_cov.state !== 'full_single' && _cov.state !== 'full_single_book' && _cov.state !== 'multi_book') {
+              return '';
             }
+            const winner = _cov.winner;
+            const runnerUp = (bestBookForCombo(c.legs, books, M, COVER) || [])[1];
+            const singleBookMode = _cov.singleBookMode;
+            const userPickedBookKey = singleBookMode ? books[0] : null;
+            const userBookRanking = _cov.userBookRanking;
+            const perLegBest = _cov.perLegBest || (!singleBookMode ? bestBookPerLeg(c.legs, books) : null);
+            const displayTotalOdd = _cov.totalOdd;
+            const displayCoverageState = _cov.state;
+            const displayWinnerBookKey = singleBookMode
+              ? userPickedBookKey
+              : (_cov.state === 'full_single_book' ? winner?.book?.key : null);
 
             const totalPayoutReal = stake * displayTotalOdd;
             const profitReal = stake * (Math.max(0, displayTotalOdd - 1));
@@ -1197,20 +1206,16 @@
               <div class="bs-prem__hero">
                 <div class="bs-prem__hero-cell">
                   <span class="bs-prem__hero-label">${
-                    displayCoverageState === 'unavailable' || displayCoverageState === 'unavailable_single'
-                      ? 'Cuota no disponible en tus casinos'
-                      : displayCoverageState === 'multi_book'
-                        ? 'Cuota total (mejor por leg entre tus casinos)'
-                        : displayCoverageState === 'partial' || displayCoverageState === 'partial_single'
-                          ? `Cuota parcial (${winner?.coveredLegs || userBookRanking?.coveredLegs}/${c.legs.length} legs)`
-                          : 'Cuota total real'
+                    displayCoverageState === 'multi_book'
+                      ? 'Cuota total (mejor por leg entre tus casinos)'
+                      : 'Cuota total real'
                   }</span>
-                  <span class="bs-prem__odd">${displayTotalOdd > 0 ? displayTotalOdd.toFixed(2) : '—'}</span>
+                  <span class="bs-prem__odd">${displayTotalOdd.toFixed(2)}</span>
                 </div>
                 <div class="bs-prem__hero-cell">
-                  <span class="bs-prem__hero-label">${displayTotalOdd > 0 ? `Si gana, cobrás (stake ${BSUI.money(stake)})` : 'No se puede armar'}</span>
-                  <span class="bs-prem__pay">${displayTotalOdd > 0 ? BSUI.money(totalPayoutReal) : '—'}</span>
-                  ${displayTotalOdd > 0 ? `<span class="bs-prem__pay-sub">profit ${BSUI.money(profitReal)}</span>` : ''}
+                  <span class="bs-prem__hero-label">Si gana, cobrás (stake ${BSUI.money(stake)})</span>
+                  <span class="bs-prem__pay">${BSUI.money(totalPayoutReal)}</span>
+                  <span class="bs-prem__pay-sub">profit ${BSUI.money(profitReal)}</span>
                 </div>
                 <div class="bs-prem__hero-cell bs-prem__edge-cell">
                   <span class="bs-prem__hero-label" title="Cuán generosa es esta cuota comparada con la 'cuota justa' del mercado. Un +5% quiere decir que la cuota te paga 5% más de lo que debería. A largo plazo, eso es plata para vos.">Ventaja vs casa</span>
@@ -1218,19 +1223,6 @@
                   ${c.evAdjusted < c.ev ? `<span class="bs-prem__edge-explain">sin ajustar: ${evSign}${BSUI.pctInt(c.ev, 1)}</span>` : ''}
                 </div>
               </div>
-              ${displayCoverageState === 'unavailable' || displayCoverageState === 'unavailable_single' ? `
-                <div class="card card-pad-sm" style="border-left:3px solid var(--danger,#dc3545);background:rgba(220,53,69,0.06);margin-top:8px">
-                  <strong class="tiny" style="color:var(--danger,#dc3545)">⚠ Esta combinada no se puede armar en ${singleBookMode ? books[0] : 'ninguno de los casinos que marcaste'}</strong>
-                  <p class="muted tiny" style="margin-top:4px;line-height:1.5">Las cuotas en vivo no están disponibles${singleBookMode ? ` en ${(BSData.BOOKS_AR || []).find(b => b.key === books[0])?.name || books[0]}` : ''} para esta combinación de mercados. Probá marcar más casinos en el paso 1 o cambiar los mercados elegidos.</p>
-                </div>
-              ` : ''}
-              ${displayCoverageState === 'partial' || displayCoverageState === 'partial_single' ? `
-                <div class="card card-pad-sm" style="border-left:3px solid var(--warning,#c49a1a);background:rgba(196,154,26,0.07);margin-top:8px">
-                  <strong class="tiny" style="color:var(--warning,#c49a1a)">⚠ Cobertura parcial en ${singleBookMode ? (BSData.BOOKS_AR || []).find(b => b.key === books[0])?.name || books[0] : (winner?.book?.name || 'tu casa')}</strong>
-                  <p class="muted tiny" style="margin-top:4px;line-height:1.5">${singleBookMode ? userBookRanking?.coveredLegs : winner?.coveredLegs}/${c.legs.length} legs tienen cuota REAL verificada en esa casa. Las que faltan están marcadas abajo con ✗ — la combinada NO se podrá armar tal cual está.</p>
-                </div>
-              ` : ''}
-
               <div class="bs-prem__conf" title="De cada 100 veces que jugaras esta combinada, en cuántas ganarías. Es el cálculo HONESTO: 3 apuestas a 70% cada una NO dan 70% — dan 34% combinado (porque tienen que ganar las 3 juntas).">
                 <div class="bs-prem__conf-head">
                   <span>De cada 100 veces, ganás</span>
@@ -1392,28 +1384,6 @@
                   <div class="tiny muted">Mirá el badge de casino en cada leg arriba · cuota total ${displayTotalOdd.toFixed(2)}</div>
                 </div>
                 <div class="bs-prem__bestbook-pay">${BSUI.money(stake * displayTotalOdd)}</div>
-              </div>` : ''}
-
-              ${displayCoverageState === 'partial_single' && userBookRanking ? `
-              <div class="bs-prem__bestbook" data-key="${userBookRanking.book.key}" style="border-left:3px solid var(--warning,#c49a1a)">
-                ${window.BSLogos ? BSLogos.bookLogo(userBookRanking.book.key, { size: 36 }) : ''}
-                <div>
-                  <div class="bs-prem__bestbook-tag" style="color:var(--warning,#c49a1a)">⚠ COBERTURA PARCIAL EN</div>
-                  <div class="bs-prem__bestbook-name">${BSUI.esc(userBookRanking.book.name)}</div>
-                  <div class="tiny muted">Solo ${userBookRanking.coveredLegs}/${c.legs.length} legs · remové las marcadas con ✗ para armarla</div>
-                </div>
-                <div class="bs-prem__bestbook-pay">${BSUI.money(stake * userBookRanking.totalOdd)}</div>
-              </div>` : ''}
-
-              ${displayCoverageState === 'partial' && winner ? `
-              <div class="bs-prem__bestbook" data-key="${winner.book.key}" style="border-left:3px solid var(--warning,#c49a1a)">
-                ${window.BSLogos ? BSLogos.bookLogo(winner.book.key, { size: 36 }) : ''}
-                <div>
-                  <div class="bs-prem__bestbook-tag" style="color:var(--warning,#c49a1a)">⚠ MEJOR COBERTURA EN</div>
-                  <div class="bs-prem__bestbook-name">${BSUI.esc(winner.book.name)}</div>
-                  <div class="tiny muted">${winner.coveredLegs}/${c.legs.length} legs · revisá las marcadas con ✗ abajo</div>
-                </div>
-                <div class="bs-prem__bestbook-pay">${BSUI.money(stake * winner.totalOdd)}</div>
               </div>` : ''}
 
               <!-- Acciones -->
