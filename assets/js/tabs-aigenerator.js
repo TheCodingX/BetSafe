@@ -926,6 +926,33 @@
       if (_gBtn) _gBtn.dataset.busy = '1';
       // Limpiar refresh ticker previo (si lo había de una generación anterior)
       if (panel._agLiveTicker) { clearInterval(panel._agLiveTicker); panel._agLiveTicker = null; }
+
+      // GUARD CRÍTICO — sin backend vivo, NO generamos combinadas falsas.
+      // Si el snapshot live está vacío o el WS está desconectado, las legs
+      // que generaría la IA no tendrían cuota real en ninguna casa →
+      // combinadas rotas. Mostramos error explícito y abortamos.
+      const _liveEvents = BSData.liveEvents({}) || [];
+      const _liveConnected = !!(window.BSLive && window.BSLive.state && window.BSLive.state.connected);
+      if (_liveEvents.length === 0) {
+        if (_gBtn) _gBtn.dataset.busy = '0';
+        panel.querySelector('#agOutput').innerHTML = `
+          <div class="card stack reveal" style="padding:32px;text-align:center;border:2px solid var(--danger,#dc3545);background:rgba(220,53,69,0.04)">
+            <div style="font-size:38px;line-height:1;margin-bottom:6px">⚠️</div>
+            <strong style="font-size:1.1rem;display:block;color:var(--danger,#dc3545)">Sin conexión al feed de cuotas en vivo</strong>
+            <p class="muted tiny" style="margin-top:10px;max-width:540px;margin-left:auto;margin-right:auto;line-height:1.6">
+              El backend que scrapea los ${(BSData.BOOKS_AR || []).length} casinos AR no está respondiendo ahora.
+              Sin cuotas reales no podemos generar combinadas armables.
+              <br><br>
+              <strong>Status:</strong> ${_liveConnected ? 'WS conectado pero sin eventos' : 'WS desconectado'}<br>
+              <strong>Última actualización:</strong> ${BSData.liveFreshness ? BSData.liveFreshness() : '—'}
+            </p>
+            <p class="muted tiny" style="margin-top:14px;max-width:540px;margin-left:auto;margin-right:auto;line-height:1.5;color:var(--text)">
+              Probá refrescar la página en unos segundos. Si el problema persiste, el servicio está en mantenimiento.
+            </p>
+          </div>`;
+        return;
+      }
+
       // Validar que el usuario haya marcado al menos 1 casino
       const books = selectedBooks();
       if (!books.length) {
