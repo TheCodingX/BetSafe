@@ -478,21 +478,37 @@ async function tryPlaywright() {
         } catch (_) {}
       });
 
-      // FASE 1: home (CF challenge + cookies)
-      // waitUntil: 'load' (en vez de domcontentloaded) → espera a TODOS los recursos
-      // initial + más tiempo para que el JS challenge de CF/WAF se resuelva
+      // Helper: esperar a que AWS WAF challenge se resuelva.
+      // El challenge devuelve una página chiquita (2-3KB) con script awswaf
+      // que ejecuta AwsWafIntegration.getToken() y después window.location.reload(true).
+      // Esperamos hasta que la página real cargue (sin #challenge-container, body con
+      // contenido > 500 chars). Si timeout, retornamos false para diagnóstico.
+      const waitForAwsWafResolve = async (timeoutMs) => {
+        return await page.waitForFunction(() => {
+          const stillChallenge = !!document.querySelector('#challenge-container')
+            || /AwsWafIntegration/.test(document.documentElement?.outerHTML || '');
+          const hasRealContent = (document.body?.innerText || '').length > 500;
+          return !stillChallenge && hasRealContent;
+        }, { timeout: timeoutMs }).then(() => true).catch(() => false);
+      };
+
+      // FASE 1: home — esperar AWS WAF challenge a resolverse
       try {
-        const r1 = await page.goto('https://pba.betsson.bet.ar/', { waitUntil: 'load', timeout: 35000 });
+        const r1 = await page.goto('https://pba.betsson.bet.ar/', { waitUntil: 'domcontentloaded', timeout: 35000 });
         dbg.nav.home = r1?.status() || 'no-response';
       } catch (e) { dbg.nav.home = 'err:' + (e.message?.slice(0, 50) || 'unknown'); }
-      await sleep(6000); // dar más tiempo al challenge
+      // Esperar resolución del AWS WAF challenge (hasta 25s)
+      dbg.nav.homeChallengeResolved = await waitForAwsWafResolve(25000);
+      await sleep(2000); // grace period para cookies persistan
 
       // FASE 2: sportsbook (donde Kambi monta los eventos)
       try {
-        const r2 = await page.goto('https://pba.betsson.bet.ar/apuestas-deportivas/futbol', { waitUntil: 'load', timeout: 35000 });
+        const r2 = await page.goto('https://pba.betsson.bet.ar/apuestas-deportivas/futbol', { waitUntil: 'domcontentloaded', timeout: 35000 });
         dbg.nav.futbol = r2?.status() || 'no-response';
       } catch (e) { dbg.nav.futbol = 'err:' + (e.message?.slice(0, 50) || 'unknown'); }
-      await sleep(10000);  // SPA monta + Kambi XHRs (mucho)
+      // Esperar AWS WAF challenge si vuelve a aparecer en sportsbook
+      dbg.nav.futbolChallengeResolved = await waitForAwsWafResolve(25000);
+      await sleep(8000);  // SPA monta + Kambi XHRs (mucho)
       await page.evaluate(() => window.scrollBy(0, 800)).catch(() => {});
       await sleep(3000);
 
@@ -524,7 +540,7 @@ async function tryPlaywright() {
   }
 
   // Log de debug DETALLADO (siempre, no solo cuando hay error)
-  log(`[betsson:playwright:debug] nav: home=${dbg.nav.home} futbol=${dbg.nav.futbol} | htmlLen=${dbg.htmlLen} splash=${dbg.htmlHasSplash}`);
+  log(`[betsson:playwright:debug] nav: home=${dbg.nav.home}(challenge=${dbg.nav.homeChallengeResolved}) futbol=${dbg.nav.futbol}(challenge=${dbg.nav.futbolChallengeResolved}) | htmlLen=${dbg.htmlLen} splash=${dbg.htmlHasSplash}`);
   log(`[betsson:playwright:debug] title=${(dbg.title || '').replace(/[^\w\s:.\-]/g, '_')}`);
   log(`[betsson:playwright:debug] innerText=${(dbg.innerText || '').replace(/[^\w\s:.\-]/g, '_')}`);
   log(`[betsson:playwright:debug] html saved → /tmp/betsafe-debug-betsson.html (${dbg.htmlLen} bytes)`);
