@@ -499,9 +499,18 @@ async function tryPlaywright() {
       const html = await page.content().catch(() => '');
       dbg.htmlLen = html.length;
       dbg.htmlHasSplash = /just a moment|attention required|checking your browser|cf-wrapper|verificando|access denied/i.test(html);
-      // DEBUG: capturar los primeros 600 chars del HTML para ver qué llegó
-      dbg.htmlSample = html.slice(0, 600).replace(/\s+/g, ' ').slice(0, 500);
-      // Detectar título y meta para identificar la página
+      // DEBUG: ESCRIBIR el HTML completo a /tmp/ para inspección offline.
+      // Más confiable que logear inline porque el HTML tiene chars que
+      // escapan mal en JSON (quotes, backslashes, etc.).
+      try {
+        const fs = require('fs');
+        fs.writeFileSync('/tmp/betsafe-debug-betsson.html', html);
+      } catch {}
+      // Texto plano legible para log (sin tags)
+      try {
+        const innerText = await page.evaluate(() => document.body?.innerText?.slice(0, 400) || '').catch(() => '');
+        dbg.innerText = innerText.replace(/\s+/g, ' ').trim().slice(0, 300);
+      } catch { dbg.innerText = '(no innerText)'; }
       const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
       dbg.title = titleMatch ? titleMatch[1].slice(0, 100) : '(no title)';
       captured.push({ url: 'page-html', html, json: null });
@@ -516,8 +525,9 @@ async function tryPlaywright() {
 
   // Log de debug DETALLADO (siempre, no solo cuando hay error)
   log(`[betsson:playwright:debug] nav: home=${dbg.nav.home} futbol=${dbg.nav.futbol} | htmlLen=${dbg.htmlLen} splash=${dbg.htmlHasSplash}`);
-  log(`[betsson:playwright:debug] title="${dbg.title}"`);
-  log(`[betsson:playwright:debug] html-sample: ${dbg.htmlSample}`);
+  log(`[betsson:playwright:debug] title=${(dbg.title || '').replace(/[^\w\s:.\-]/g, '_')}`);
+  log(`[betsson:playwright:debug] innerText=${(dbg.innerText || '').replace(/[^\w\s:.\-]/g, '_')}`);
+  log(`[betsson:playwright:debug] html saved → /tmp/betsafe-debug-betsson.html (${dbg.htmlLen} bytes)`);
   log(`[betsson:playwright:debug] responses: total=${dbg.totalResponses} json=${dbg.jsonResponses} matchRegex=${dbg.matchingRegex} ok200=${dbg.okStatus} parsed=${dbg.parsedOk}`);
   if (dbg.nonRegexJsonHosts.size) {
     log(`[betsson:playwright:debug] JSON hosts NO matcheados (candidatos a ajustar regex): ${[...dbg.nonRegexJsonHosts].slice(0, 10).join(', ')}`);
