@@ -479,24 +479,31 @@ async function tryPlaywright() {
       });
 
       // FASE 1: home (CF challenge + cookies)
+      // waitUntil: 'load' (en vez de domcontentloaded) → espera a TODOS los recursos
+      // initial + más tiempo para que el JS challenge de CF/WAF se resuelva
       try {
-        const r1 = await page.goto('https://pba.betsson.bet.ar/', { waitUntil: 'domcontentloaded', timeout: 25000 });
+        const r1 = await page.goto('https://pba.betsson.bet.ar/', { waitUntil: 'load', timeout: 35000 });
         dbg.nav.home = r1?.status() || 'no-response';
       } catch (e) { dbg.nav.home = 'err:' + (e.message?.slice(0, 50) || 'unknown'); }
-      await sleep(3000);
+      await sleep(6000); // dar más tiempo al challenge
 
       // FASE 2: sportsbook (donde Kambi monta los eventos)
       try {
-        const r2 = await page.goto('https://pba.betsson.bet.ar/apuestas-deportivas/futbol', { waitUntil: 'domcontentloaded', timeout: 25000 });
+        const r2 = await page.goto('https://pba.betsson.bet.ar/apuestas-deportivas/futbol', { waitUntil: 'load', timeout: 35000 });
         dbg.nav.futbol = r2?.status() || 'no-response';
       } catch (e) { dbg.nav.futbol = 'err:' + (e.message?.slice(0, 50) || 'unknown'); }
-      await sleep(8000);  // Kambi SPA monta los eventos
+      await sleep(10000);  // SPA monta + Kambi XHRs (mucho)
       await page.evaluate(() => window.scrollBy(0, 800)).catch(() => {});
       await sleep(3000);
 
       const html = await page.content().catch(() => '');
       dbg.htmlLen = html.length;
       dbg.htmlHasSplash = /just a moment|attention required|checking your browser|cf-wrapper|verificando|access denied/i.test(html);
+      // DEBUG: capturar los primeros 600 chars del HTML para ver qué llegó
+      dbg.htmlSample = html.slice(0, 600).replace(/\s+/g, ' ').slice(0, 500);
+      // Detectar título y meta para identificar la página
+      const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+      dbg.title = titleMatch ? titleMatch[1].slice(0, 100) : '(no title)';
       captured.push({ url: 'page-html', html, json: null });
 
       if (!captured.some(c => c.json) && !html) throw new Error('no-content-captured');
@@ -509,6 +516,8 @@ async function tryPlaywright() {
 
   // Log de debug DETALLADO (siempre, no solo cuando hay error)
   log(`[betsson:playwright:debug] nav: home=${dbg.nav.home} futbol=${dbg.nav.futbol} | htmlLen=${dbg.htmlLen} splash=${dbg.htmlHasSplash}`);
+  log(`[betsson:playwright:debug] title="${dbg.title}"`);
+  log(`[betsson:playwright:debug] html-sample: ${dbg.htmlSample}`);
   log(`[betsson:playwright:debug] responses: total=${dbg.totalResponses} json=${dbg.jsonResponses} matchRegex=${dbg.matchingRegex} ok200=${dbg.okStatus} parsed=${dbg.parsedOk}`);
   if (dbg.nonRegexJsonHosts.size) {
     log(`[betsson:playwright:debug] JSON hosts NO matcheados (candidatos a ajustar regex): ${[...dbg.nonRegexJsonHosts].slice(0, 10).join(', ')}`);
