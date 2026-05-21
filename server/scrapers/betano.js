@@ -36,10 +36,19 @@ const scrapingBeeBreaker = new CircuitBreaker({ name: 'betano:scrapingbee', fail
 // evita saturar el breaker por baches transitorios y recupera rápido.
 const cfProxyBreaker = new CircuitBreaker({ name: 'betano:cfproxy', failThreshold: 10, cooldownMs: 60_000 });
 
+// ORDEN PRIORIZADO 2026-05-21 — los endpoints que SÍ traen markets primero:
+//   1) /api/home/top-events       → Format B nested, ~267 selections (TOP DATA)
+//   2) /api/home/top-events-v2/   → Format A flat con marketIdList poblado
+//   3) /danae-webapi/.../live/overview/latest → trae shells de eventos pero
+//      marketIdList vacío en el 100% (Betano cambió API: live overview ahora
+//      es solo para listing, los markets vienen separados). Queda último por
+//      compatibilidad pero raramente aporta.
+// Con timeout 25s/endpoint + 3 retries del Worker, los 2 primeros completan
+// en <15s, dejando margen para el 3ero si llega a tiempo.
 const ENDPOINTS = [
-  'https://www.betano.bet.ar/danae-webapi/api/live/overview/latest?includeVirtuals=true&queryLanguageId=8&queryOperatorId=19',
+  'https://www.betano.bet.ar/api/home/top-events',
   'https://www.betano.bet.ar/api/home/top-events-v2/',
-  'https://www.betano.bet.ar/api/home/top-events'
+  'https://www.betano.bet.ar/danae-webapi/api/live/overview/latest?includeVirtuals=true&queryLanguageId=8&queryOperatorId=19'
 ];
 
 const HEADERS = {
