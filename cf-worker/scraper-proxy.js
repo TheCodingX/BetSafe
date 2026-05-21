@@ -72,6 +72,23 @@ const DEFAULT_HEADERS = {
   'sec-ch-ua-platform': '"Windows"'
 };
 
+// IP-spoofing headers: forzamos que el origen vea AR como país de cliente.
+// Por defecto CF inyecta cf-connecting-ip / cf-ipcountry con el país real
+// del cliente upstream (Oregon US cuando el backend de Render llama al Worker)
+// y Betano usa esos headers para devolver splash 403 a clientes non-AR.
+// Sobrescribiéndolos forzamos AR y Betano deja pasar el request.
+//
+// IP elegida: 152.169.160.182 (Telecom AR, rango residencial común).
+// No identifica a ningún usuario real — es un placeholder.
+const AR_SPOOF_HEADERS = {
+  'cf-connecting-ip': '152.169.160.182',
+  'cf-ipcountry':     'AR',
+  'x-real-ip':        '152.169.160.182',
+  'x-forwarded-for':  '152.169.160.182',
+  'true-client-ip':   '152.169.160.182',
+  'x-forwarded-proto':'https'
+};
+
 export default {
   async fetch(request, env, ctx) {
     const reqUrl = new URL(request.url);
@@ -119,9 +136,12 @@ export default {
       }
     }
 
-    // Headers del request: combinamos los DEFAULT_HEADERS con Origin/Referer del target
+    // Headers del request: DEFAULT_HEADERS browser-like + AR_SPOOF_HEADERS
+    // para que el origen vea AR como país (no Oregon donde corre el backend).
+    // Origin/Referer apuntan al hostname target para no levantar sospechas.
     const headers = {
       ...DEFAULT_HEADERS,
+      ...AR_SPOOF_HEADERS,
       'Origin': `https://${targetUrl.hostname}`,
       'Referer': `https://${targetUrl.hostname}/`
     };
