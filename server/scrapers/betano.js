@@ -28,9 +28,13 @@ const playwrightBreaker = new CircuitBreaker({ name: 'betano:playwright', failTh
 // ScrapingBee breaker — si quota agotada o API key inválida, no insistas
 // cada 30s. cooldown 10min para no quemar requests inútiles.
 const scrapingBeeBreaker = new CircuitBreaker({ name: 'betano:scrapingbee', failThreshold: 2, cooldownMs: 10 * 60_000 });
-// Cloudflare Worker proxy breaker — si configurado y funciona, es el path PRIMARIO.
-// failThreshold mayor (4) porque es más confiable que SBee. cooldown corto (3min).
-const cfProxyBreaker = new CircuitBreaker({ name: 'betano:cfproxy', failThreshold: 4, cooldownMs: 3 * 60_000 });
+// Cloudflare Worker proxy breaker — path PRIMARIO cuando CF_PROXY_URL está set.
+// 2026-05-21: subimos tolerancia. Betano hace splash anti-bot intermitente
+// (50-70% éxito por request). El Worker ya tiene 3 retries internos, así que
+// cada llamada que llega al breaker representa 3 intentos del Worker → si
+// FALLA esa llamada, son 3 fallos reales. failThreshold=10 + cooldown 60s
+// evita saturar el breaker por baches transitorios y recupera rápido.
+const cfProxyBreaker = new CircuitBreaker({ name: 'betano:cfproxy', failThreshold: 10, cooldownMs: 60_000 });
 
 const ENDPOINTS = [
   'https://www.betano.bet.ar/danae-webapi/api/live/overview/latest?includeVirtuals=true&queryLanguageId=8&queryOperatorId=19',
@@ -82,16 +86,14 @@ async function tryCloudflareProxy() {
   let anyOk = false;
   let lastErr = null;
 
-  // Los 3 endpoints en serie (el Worker tiene cache CF de 30s, las llamadas
-  // repetidas son baratas). En paralelo arriesgaría rate-limit del Worker.
+  // Los 3 endpoints en serie (el Worker tiene cache CF de 30s + 3 retries
+  // internos por request). NO usamos withRetry acá porque sería retry doble.
+  // Timeout 25s: el Worker puede tardar hasta ~3-5s si necesita los 3 retries.
   for (const url of ENDPOINTS) {
     try {
-      const json = await cfProxyBreaker.exec(() => withRetry(
-        () => httpJson(`${proxyUrl}/?url=${encodeURIComponent(url)}`, {
-          headers: proxyHeaders,
-          timeout: 18000
-        }),
-        { maxAttempts: 2, baseMs: 600 }
+      const json = await cfProxyBreaker.exec(() => httpJson(
+        `${proxyUrl}/?url=${encodeURIComponent(url)}`,
+        { headers: proxyHeaders, timeout: 25000 }
       ));
       if (!json) continue;
       anyOk = true;

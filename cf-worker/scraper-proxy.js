@@ -126,26 +126,42 @@ export default {
       'Referer': `https://${targetUrl.hostname}/`
     };
 
-    // Fetch al target. Cacheamos SOLO responses 2xx (data real); errores 4xx/5xx
-    // NO se cachean. Bug fix 2026-05-21: antes con cacheEverything=true, si el
-    // origen devolvía 403 transient (Betano hace splash anti-bot ocasional),
-    // ese 403 quedaba cacheado 30s y todos los requests durante esa ventana
-    // recibían 403 stale → breaker del scraper se abría y no se recuperaba.
-    let originRes;
-    try {
-      originRes = await fetch(targetUrl.toString(), {
-        method: 'GET',
-        headers,
-        cf: {
-          cacheTtlByStatus: {
-            '200-299': 30,   // cuotas frescas cacheadas 30s (data real)
-            '300-399': 5,    // redirects cortos
-            '400-599': 0     // NUNCA cachear errores — fuerza retry al origen
+    // Fetch al target con RETRY INTERNO. Cacheamos SOLO 2xx; 4xx/5xx no se
+    // cachean. Si el origen tira 4xx/5xx (Betano hace splash anti-bot ocasional)
+    // reintentamos hasta 3 veces con backoff 500ms. Cada retry sale de una IP
+    // edge CF distinta (la red CF balancea), así que sube mucho el éxito sin
+    // saturar al origen.
+    let originRes = null;
+    let lastErr = null;
+    const MAX_TRIES = 3;
+    for (let attempt = 1; attempt <= MAX_TRIES; attempt++) {
+      try {
+        originRes = await fetch(targetUrl.toString(), {
+          method: 'GET',
+          headers,
+          cf: {
+            cacheTtlByStatus: {
+              '200-299': 30,
+              '300-399': 5,
+              '400-599': 0
+            }
           }
+        });
+        // Éxito (2xx/3xx) → salir del retry loop
+        if (originRes.status < 400) break;
+        // 4xx/5xx → reintentamos si quedan attempts
+        if (attempt < MAX_TRIES) {
+          await new Promise(r => setTimeout(r, 500 + Math.random() * 300));
         }
-      });
-    } catch (e) {
-      return new Response(JSON.stringify({ error: 'fetch-fail', message: String(e).slice(0, 200) }), {
+      } catch (e) {
+        lastErr = e;
+        if (attempt < MAX_TRIES) {
+          await new Promise(r => setTimeout(r, 500 + Math.random() * 300));
+        }
+      }
+    }
+    if (!originRes) {
+      return new Response(JSON.stringify({ error: 'fetch-fail', message: String(lastErr).slice(0, 200), attempts: MAX_TRIES }), {
         status: 502,
         headers: { 'content-type': 'application/json' }
       });
