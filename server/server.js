@@ -670,7 +670,20 @@ app.get('/api/discrepancies', (req, res) => {
  * Sin ?url= (a diferencia del debug/scraper que usa Playwright). */
 app.get('/api/debug/scrape-now/:name', async (req, res) => {
   const name = req.params.name;
+  // Capturar TODOS los logs (console.log + log() del helper) durante el scrape
+  // y devolverlos en el response. Útil para debuggear sin tocar Render logs.
+  const captured = [];
+  const origLog = console.log;
+  const origErr = console.error;
+  const capture = (level) => (...args) => {
+    try {
+      const msg = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
+      captured.push({ level, msg: msg.slice(0, 500), t: Date.now() });
+    } catch {}
+  };
   try {
+    console.log = capture('log');
+    console.error = capture('err');
     let scraper;
     try { scraper = require('./scrapers/' + name); } catch (e) {
       return res.status(404).json({ error: 'scraper no encontrado: ' + name });
@@ -694,10 +707,15 @@ app.get('/api/debug/scrape-now/:name', async (req, res) => {
       })) : [],
       breakers: scraper.breaker ? { [name]: { state: scraper.breaker.state, fails: scraper.breaker.fails } }
               : scraper.breakers ? Object.fromEntries(Object.entries(scraper.breakers).map(([k, b]) => [k, { state: b.state, fails: b.fails }]))
-              : null
+              : null,
+      // Logs capturados durante el scrape (los últimos 100 para no inflar)
+      logs: captured.slice(-100)
     });
   } catch (e) {
-    res.status(500).json({ error: e.message, stack: e.stack?.split('\n').slice(0, 3) });
+    res.status(500).json({ error: e.message, stack: e.stack?.split('\n').slice(0, 3), logs: captured.slice(-50) });
+  } finally {
+    console.log = origLog;
+    console.error = origErr;
   }
 });
 
