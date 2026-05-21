@@ -691,6 +691,19 @@ app.get('/api/debug/scrape-now/:name', async (req, res) => {
     const t0 = Date.now();
     // Limpiar cache si existe
     if (typeof scraper.clearCache === 'function') scraper.clearCache();
+    // Forzar reset de TODOS los breakers del scraper (debug endpoint debe
+    // correr los paths reales, no rebotar por breakers stale del estado anterior)
+    const _resetBreaker = (b) => {
+      if (!b) return;
+      try {
+        b.state = 'CLOSED';
+        b.consecutiveFails = 0;
+        b.cooldownAttempts = 0;
+        b.lastOpenedAt = 0;
+      } catch {}
+    };
+    if (scraper.breaker) _resetBreaker(scraper.breaker);
+    if (scraper.breakers) Object.values(scraper.breakers).forEach(_resetBreaker);
     const events = await scraper({ sports: ['soccer', 'basketball', 'tennis'] });
     const dur = Date.now() - t0;
     res.json({
