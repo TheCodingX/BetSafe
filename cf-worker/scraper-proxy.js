@@ -76,8 +76,14 @@ export default {
   async fetch(request, env, ctx) {
     const reqUrl = new URL(request.url);
 
-    // Health check endpoint
-    if (reqUrl.pathname === '/health' || reqUrl.pathname === '/') {
+    // PROXY MODE — si la request trae ?url=..., siempre prioriza el proxy.
+    // BUG fix 2026-05-21: antes el check de `/health` o `/` matcheaba ANTES
+    // de mirar el query, así que requests a `/?url=...` caían en el health
+    // response y los scrapers nunca recibían data real.
+    const target = reqUrl.searchParams.get('url');
+
+    // Health check endpoint (solo si NO se pidió un proxy)
+    if (!target && (reqUrl.pathname === '/health' || reqUrl.pathname === '/')) {
       return new Response(JSON.stringify({
         ok: true,
         service: 'betsafe-scraper-proxy',
@@ -90,7 +96,6 @@ export default {
     }
 
     // Validate target URL
-    const target = reqUrl.searchParams.get('url');
     if (!target) {
       return new Response('missing ?url param', { status: 400 });
     }
